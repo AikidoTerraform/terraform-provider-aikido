@@ -43,6 +43,8 @@ type repositoryModel struct {
 	Branch         types.String `tfsdk:"branch"`
 	URL            types.String `tfsdk:"url"`
 	ExternalRepoID types.String `tfsdk:"external_repo_id"`
+	Label          types.String `tfsdk:"label"`
+	LabelID        types.String `tfsdk:"label_id"`
 }
 
 type repositoryAPI struct {
@@ -55,6 +57,8 @@ type repositoryAPI struct {
 	URL            string `json:"url"`
 	Connectivity   string `json:"connectivity"`
 	Sensitivity    string `json:"sensitivity"`
+	Label          string `json:"label"`
+	LabelID        string `json:"label_id"`
 }
 
 // Metadata sets the resource type name.
@@ -91,6 +95,15 @@ func (r *repositoryResource) Schema(_ context.Context, _ resource.SchemaRequest,
 				Optional:    true,
 				Computed:    true,
 				Description: "Whether the code runs on an internet-connected server. One of: connected, not_connected, unknown.",
+			},
+			"label": schema.StringAttribute{
+				Computed:    true,
+				Optional:    true,
+				Description: "Label for the code repository. If set to null, the label will be removed from the repository.",
+			},
+			"label_id": schema.StringAttribute{
+				Computed:    true,
+				Description: "ID of the label for the code repository.",
 			},
 			"name": schema.StringAttribute{
 				Computed:    true,
@@ -226,6 +239,12 @@ func (r *repositoryResource) setRepoConfig(ctx context.Context, plan repositoryM
 		}
 	}
 
+	if !plan.Label.IsNull() && !plan.Label.IsUnknown() {
+		if err := r.setRepoLabel(ctx, id, plan.Label.ValueString(), plan.LabelID.ValueString()); err != nil {
+			return repositoryModel{}, fmt.Errorf("updating label: %w", err)
+		}
+	}
+
 	return r.read(ctx, id)
 }
 
@@ -241,6 +260,22 @@ func (r *repositoryResource) setActive(ctx context.Context, id string, active bo
 		path = basePath + "/activate"
 	}
 	return r.client.Do(ctx, "POST", path, map[string]int64{"code_repo_id": codeRepoID}, nil)
+}
+
+// setRepoLabel sets the label for the repository.
+// An empty labelID means create; a non-empty labelID with an empty label means delete.
+// An empty labelID with a non-empty label means update.
+func (r *repositoryResource) setRepoLabel(ctx context.Context, repoID, label, labelID string) error {
+	if label == "" && labelID != "" {
+		return r.client.Do(ctx, "DELETE", basePath+"/"+repoID+"/labels/"+labelID, nil, nil)
+	}
+
+	body := map[string]string{"name": label}
+	if labelID != "" {
+		return r.client.Do(ctx, "POST", basePath+"/"+repoID+"/labels/"+labelID, body, nil)
+	}
+
+	return r.client.Do(ctx, "POST", basePath+"/"+repoID+"/label", body, nil)
 }
 
 // read reads the repository from the API into the state.
@@ -268,6 +303,11 @@ func (r *repositoryResource) read(ctx context.Context, id string) (repositoryMod
 		state.Connectivity = types.StringValue(repo.Connectivity)
 	} else {
 		state.Connectivity = types.StringNull()
+	}
+	if repo.Label != "" {
+		state.Label = types.StringValue(repo.Label)
+	} else {
+		state.Label = types.StringNull()
 	}
 	return state, nil
 }
