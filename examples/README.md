@@ -45,6 +45,11 @@ resource "aikido_repository" "example" {
 
   sensitivity  = "sensitive"
   connectivity = "connected"
+
+  labels = [
+    { name = "payments" },
+    { name = "production" },
+  ]
 }
 ```
 
@@ -61,5 +66,6 @@ Prefer env vars for credentials so secrets are not committed. The provider block
 ## Notes
 
 - `aikido_repository` configures an **existing** code repository by ID. It does not create the repo in your SCM.
+- `labels` is optional. Only labels listed in config are managed; omit the attribute to leave existing Aikido labels untouched.
 - After changing provider Go code locally, re-run `make install` before `terraform apply`.
 - Full local/staging setup: [`README.dev.md`](../README.dev.md)

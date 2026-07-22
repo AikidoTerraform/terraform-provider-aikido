@@ -33,6 +33,8 @@ type repositoryResource struct {
 
 // repositoryModel is the Terraform state. IDs are strings by TF convention even
 // though the API uses integers.
+// Labels is nil when omitted from config (leave Aikido labels alone). A non-nil
+// slice means Terraform manages only that set.
 type repositoryModel struct {
 	ID             types.String `tfsdk:"id"`
 	Active         types.Bool   `tfsdk:"active"`
@@ -43,8 +45,7 @@ type repositoryModel struct {
 	Branch         types.String `tfsdk:"branch"`
 	URL            types.String `tfsdk:"url"`
 	ExternalRepoID types.String `tfsdk:"external_repo_id"`
-	Label          types.String `tfsdk:"label"`
-	LabelID        types.String `tfsdk:"label_id"`
+	Labels         []labelModel `tfsdk:"labels"`
 }
 
 type repositoryAPI struct {
@@ -57,8 +58,6 @@ type repositoryAPI struct {
 	URL            string `json:"url"`
 	Connectivity   string `json:"connectivity"`
 	Sensitivity    string `json:"sensitivity"`
-	Label          string `json:"label"`
-	LabelID        string `json:"label_id"`
 }
 
 // Metadata sets the resource type name.
@@ -96,15 +95,6 @@ func (r *repositoryResource) Schema(_ context.Context, _ resource.SchemaRequest,
 				Computed:    true,
 				Description: "Whether the code runs on an internet-connected server. One of: connected, not_connected, unknown.",
 			},
-			"label": schema.StringAttribute{
-				Computed:    true,
-				Optional:    true,
-				Description: "Label for the code repository. If set to null, the label will be removed from the repository.",
-			},
-			"label_id": schema.StringAttribute{
-				Computed:    true,
-				Description: "ID of the label for the code repository.",
-			},
 			"name": schema.StringAttribute{
 				Computed:    true,
 				Description: "Name of the code repository.",
@@ -125,6 +115,7 @@ func (r *repositoryResource) Schema(_ context.Context, _ resource.SchemaRequest,
 				Computed:    true,
 				Description: "Repository ID from the Git provider.",
 			},
+			"labels": labelsSchemaAttribute(),
 		},
 	}
 }
@@ -153,7 +144,7 @@ func (r *repositoryResource) Create(ctx context.Context, req resource.CreateRequ
 		return
 	}
 
-	state, err := r.setRepoConfig(ctx, plan)
+	state, err := r.setRepoConfig(ctx, plan, nil)
 	if err != nil {
 		resp.Diagnostics.AddError("Error configuring repository", err.Error())
 		return
@@ -162,6 +153,8 @@ func (r *repositoryResource) Create(ctx context.Context, req resource.CreateRequ
 }
 
 // Read is called during refresh/plan to sync the repository from the API into state.
+// Managed labels stay as previously written; we do not load labels from the API
+// (avoids adopting or deleting pre-existing ones).
 func (r *repositoryResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var state repositoryModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
@@ -169,6 +162,7 @@ func (r *repositoryResource) Read(ctx context.Context, req resource.ReadRequest,
 		return
 	}
 
+	labels := state.Labels
 	updated, err := r.read(ctx, state.ID.ValueString())
 	if err != nil {
 		if client.NotFound(err) {
@@ -178,19 +172,20 @@ func (r *repositoryResource) Read(ctx context.Context, req resource.ReadRequest,
 		resp.Diagnostics.AddError("Error reading repository", err.Error())
 		return
 	}
+	updated.Labels = labels
 	resp.Diagnostics.Append(resp.State.Set(ctx, updated)...)
 }
 
 // Update is called on apply when config changes in-place (no replacement).
-// It applies the new config to the existing Aikido repo.
 func (r *repositoryResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var plan repositoryModel
+	var plan, prior repositoryModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &prior)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	state, err := r.setRepoConfig(ctx, plan)
+	state, err := r.setRepoConfig(ctx, plan, prior.Labels)
 	if err != nil {
 		resp.Diagnostics.AddError("Error configuring repository", err.Error())
 		return
@@ -217,21 +212,25 @@ func (r *repositoryResource) ImportState(ctx context.Context, req resource.Impor
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }
 
-// configure is shared by Create and Update because both do the same thing for this resource:
-// repos already exist in Aikido, so apply only sets active and optional config fields.
-// It pushes the planned values to the API, then re-reads the repo for the response state.
-func (r *repositoryResource) setRepoConfig(ctx context.Context, plan repositoryModel) (repositoryModel, error) {
+// setRepoConfig is shared by Create and Update. priorLabels is nil on create.
+// Labels sync only when plan.Labels != nil; omitted means leave Aikido labels alone.
+func (r *repositoryResource) setRepoConfig(ctx context.Context, plan repositoryModel, priorLabels []labelModel) (repositoryModel, error) {
 	id := plan.ID.ValueString()
 
+	// activate/deactivate the repository
 	if err := r.setActive(ctx, id, plan.Active.ValueBool()); err != nil {
 		return repositoryModel{}, err
 	}
+
+	// repo sensitivity
 	if !plan.Sensitivity.IsNull() && !plan.Sensitivity.IsUnknown() {
 		body := map[string]string{"sensitivity": plan.Sensitivity.ValueString()}
 		if err := r.client.Do(ctx, "PUT", basePath+"/"+id+"/sensitivity", body, nil); err != nil {
 			return repositoryModel{}, fmt.Errorf("updating sensitivity: %w", err)
 		}
 	}
+
+	// repo connectivity
 	if !plan.Connectivity.IsNull() && !plan.Connectivity.IsUnknown() {
 		body := map[string]string{"connectivity": plan.Connectivity.ValueString()}
 		if err := r.client.Do(ctx, "PUT", basePath+"/"+id+"/connectivity", body, nil); err != nil {
@@ -239,13 +238,34 @@ func (r *repositoryResource) setRepoConfig(ctx context.Context, plan repositoryM
 		}
 	}
 
-	if !plan.Label.IsNull() && !plan.Label.IsUnknown() {
-		if err := r.setRepoLabel(ctx, id, plan.Label.ValueString(), plan.LabelID.ValueString()); err != nil {
-			return repositoryModel{}, fmt.Errorf("updating label: %w", err)
+	var syncedLabels []labelModel
+	switch {
+	case plan.Labels != nil:
+		var err error
+		syncedLabels, err = r.syncLabels(ctx, id, plan.Labels, priorLabels)
+		if err != nil {
+			return repositoryModel{}, fmt.Errorf("updating labels: %w", err)
+		}
+	case len(priorLabels) > 0:
+		// Last managed label(s) removed from config → plan.Labels is nil, but we
+		// must still DELETE the ones Terraform previously tracked.
+		var err error
+		syncedLabels, err = r.syncLabels(ctx, id, []labelModel{}, priorLabels)
+		if err != nil {
+			return repositoryModel{}, fmt.Errorf("updating labels: %w", err)
 		}
 	}
 
-	return r.read(ctx, id)
+	state, err := r.read(ctx, id)
+	if err != nil {
+		return repositoryModel{}, err
+	}
+	if plan.Labels != nil {
+		state.Labels = syncedLabels
+	} else {
+		state.Labels = nil
+	}
+	return state, nil
 }
 
 // setActive activates or deactivates the repository.
@@ -262,23 +282,11 @@ func (r *repositoryResource) setActive(ctx context.Context, id string, active bo
 	return r.client.Do(ctx, "POST", path, map[string]int64{"code_repo_id": codeRepoID}, nil)
 }
 
-// setRepoLabel sets the label for the repository.
-// An empty labelID means create; a non-empty labelID with an empty label means delete.
-// An empty labelID with a non-empty label means update.
-func (r *repositoryResource) setRepoLabel(ctx context.Context, repoID, label, labelID string) error {
-	if label == "" && labelID != "" {
-		return r.client.Do(ctx, "DELETE", basePath+"/"+repoID+"/labels/"+labelID, nil, nil)
-	}
-
-	body := map[string]string{"name": label}
-	if labelID != "" {
-		return r.client.Do(ctx, "POST", basePath+"/"+repoID+"/labels/"+labelID, body, nil)
-	}
-
-	return r.client.Do(ctx, "POST", basePath+"/"+repoID+"/label", body, nil)
-}
-
 // read reads the repository from the API into the state.
+// Labels are intentionally omitted: the detail GET would adopt pre-existing ones into state.
+// Managed labels are set by syncLabels (create/update) or kept from prior state (refresh).
+// Only labels in the terraform are affected.
+// pre existing labels are not adopted into state and therefore are not accidentally deleted when removing the labels attribute from the terraform config.
 func (r *repositoryResource) read(ctx context.Context, id string) (repositoryModel, error) {
 	var repo repositoryAPI
 	if err := r.client.Do(ctx, "GET", basePath+"/"+id, nil, &repo); err != nil {
@@ -303,11 +311,6 @@ func (r *repositoryResource) read(ctx context.Context, id string) (repositoryMod
 		state.Connectivity = types.StringValue(repo.Connectivity)
 	} else {
 		state.Connectivity = types.StringNull()
-	}
-	if repo.Label != "" {
-		state.Label = types.StringValue(repo.Label)
-	} else {
-		state.Label = types.StringNull()
 	}
 	return state, nil
 }

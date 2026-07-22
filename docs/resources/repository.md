@@ -18,6 +18,11 @@ resource "aikido_repository" "example" {
 
   sensitivity  = "sensitive"
   connectivity = "connected"
+
+  labels = [
+    { name = "payments" },
+    { name = "production" },
+  ]
 }
 ```
 
@@ -32,6 +37,7 @@ resource "aikido_repository" "example" {
 ### Optional
 
 - `connectivity` (String) Whether the code runs on an internet-connected server. One of: connected, not_connected, unknown.
+- `labels` (Attributes List) Labels managed by this resource. Omit to leave existing labels untouched; only listed labels are created/updated/removed. (see [below for nested schema](#nestedatt--labels))
 - `sensitivity` (String) Sensitivity level of the repository. One of: extreme, sensitive, normal, not_sensitive, no_data.
 
 ### Read-Only
@@ -41,6 +47,18 @@ resource "aikido_repository" "example" {
 - `name` (String) Name of the code repository.
 - `git_provider` (String) Git provider hosting the repository (e.g. github, gitlab, bitbucket).
 - `url` (String) External URL of the repository.
+
+<a id="nestedatt--labels"></a>
+### Nested Schema for `labels`
+
+Required:
+
+- `name` (String) Label name.
+
+Read-Only:
+
+- `id` (String) Aikido label ID.
+- `is_imported` (Boolean) True when the label was imported from the Git provider (read-only).
 
 ## Import
 

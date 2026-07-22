@@ -90,7 +90,7 @@ func TestConfigure_UpdatesConfig(t *testing.T) {
 		Sensitivity:  types.StringValue("sensitive"),
 		Connectivity: types.StringValue("connected"),
 	}
-	if _, err := res.setRepoConfig(context.Background(), plan); err != nil {
+	if _, err := res.setRepoConfig(context.Background(), plan, nil); err != nil {
 		t.Fatalf("configure: %v", err)
 	}
 
@@ -129,7 +129,7 @@ func TestConfigure_SkipsNullConfig(t *testing.T) {
 		Sensitivity:  types.StringNull(),
 		Connectivity: types.StringNull(),
 	}
-	if _, err := res.setRepoConfig(context.Background(), plan); err != nil {
+	if _, err := res.setRepoConfig(context.Background(), plan, nil); err != nil {
 		t.Fatalf("configure: %v", err)
 	}
 
@@ -179,41 +179,4 @@ func TestRead(t *testing.T) {
 	if state.Sensitivity.ValueString() != "normal" || state.Connectivity.ValueString() != "connected" {
 		t.Errorf("sensitivity/connectivity = %s/%s", state.Sensitivity.ValueString(), state.Connectivity.ValueString())
 	}
-}
-
-
-func TestSetRepoLabel(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/public/v1/repositories/code/1/label" {
-			t.Errorf("unexpected path %s", r.URL.Path)
-		}
-		if err := json.NewEncoder(w).Encode(map[string]string{"name": "test"}); err != nil {
-			t.Errorf("encoding response: %v", err)
-		}
-	}))
-	t.Cleanup(srv.Close)
-}
-
-func TestSetRepoLabel_Delete(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/public/v1/repositories/code/1/label" {
-			t.Errorf("unexpected path %s", r.URL.Path)
-		}
-		if err := json.NewEncoder(w).Encode(map[string]string{"name": "test"}); err != nil {
-			t.Errorf("encoding response: %v", err)
-		}
-	}))
-	t.Cleanup(srv.Close)
-}
-
-func TestSetRepoLabel_Update(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/public/v1/repositories/code/1/label" {
-			t.Errorf("unexpected path %s", r.URL.Path)
-		}
-		if err := json.NewEncoder(w).Encode(map[string]string{"name": "test"}); err != nil {
-			t.Errorf("encoding response: %v", err)
-		}
-	}))
-	t.Cleanup(srv.Close)
 }
