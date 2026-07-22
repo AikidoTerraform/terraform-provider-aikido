@@ -27,7 +27,7 @@ func TestDo_DecodesSuccessBody(t *testing.T) {
 			t.Errorf("Accept header = %q, want application/json", got)
 		}
 		w.WriteHeader(http.StatusOK)
-		io.WriteString(w, `{"id":7,"name":"platform"}`)
+		_, _ = io.WriteString(w, `{"id":7,"name":"platform"}`)
 	})
 
 	var out struct {
@@ -55,7 +55,7 @@ func TestDo_EncodesRequestBody(t *testing.T) {
 			t.Errorf("request body code_repo_id = %d, want 1", body["code_repo_id"])
 		}
 		w.WriteHeader(http.StatusCreated)
-		io.WriteString(w, `{"success":1}`)
+		_, _ = io.WriteString(w, `{"success":1}`)
 	})
 
 	err := c.Do(context.Background(), "POST", "/public/v1/repositories/code/activate", map[string]int64{"code_repo_id": 1}, nil)
@@ -80,7 +80,7 @@ func TestDo_NoContentTypeWithoutBody(t *testing.T) {
 func TestDo_NonSuccessReturnsAPIError(t *testing.T) {
 	c := newServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
-		io.WriteString(w, "invalid name")
+		_, _ = io.WriteString(w, "invalid name")
 	})
 
 	err := c.Do(context.Background(), "POST", "/public/v1/repositories/code/activate", map[string]int64{"code_repo_id": 0}, nil)
@@ -102,7 +102,7 @@ func TestDo_NonSuccessReturnsAPIError(t *testing.T) {
 func TestDo_NotFoundDetectsDeletion(t *testing.T) {
 	c := newServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
-		io.WriteString(w, "not found")
+		_, _ = io.WriteString(w, "not found")
 	})
 
 	err := c.Do(context.Background(), "GET", "/public/v1/repositories/code/999", nil, nil)
@@ -129,7 +129,7 @@ func TestDo_RetriesOn429ThenSucceeds(t *testing.T) {
 			return
 		}
 		w.WriteHeader(http.StatusOK)
-		io.WriteString(w, `{"id":1}`)
+		_, _ = io.WriteString(w, `{"id":1}`)
 	})
 
 	var out struct {
