@@ -21,16 +21,16 @@ type labelWriteResponse struct {
 }
 
 type labelIndex struct {
-	byID   map[string]labelModel
-	byName map[string]labelModel
+	byLabelID   map[string]labelModel
+	byLabelName map[string]labelModel
 }
 
 func labelsSchemaAttribute() schema.ListNestedAttribute {
 	return schema.ListNestedAttribute{
 		Optional: true,
 		Description: "Labels managed by this resource. Only listed labels are created/updated/removed; " +
-			"pre-existing labels never managed here are left alone. Removing the last label from " +
-			"config deletes it from Aikido.",
+			"pre-existing labels never managed here are left alone. Removing labels from config or " +
+			"setting an empty list deletes previously managed labels and clears them from state.",
 		NestedObject: schema.NestedAttributeObject{
 			Attributes: map[string]schema.Attribute{
 				"name": schema.StringAttribute{
@@ -50,42 +50,83 @@ func labelsSchemaAttribute() schema.ListNestedAttribute {
 	}
 }
 
+// applyLabels syncs managed labels to the API and returns the value to store in
+// Terraform state. Sync runs when config lists labels (including empty) or when
+// config omits them but prior state still had managed ones. Only when both plan
+// and prior are empty do we leave Aikido labels untouched.
+//
+// State: omitted attribute → nil; empty list → empty non-nil slice (avoids null↔[] drift).
+func (r *repositoryResource) applyLabels(ctx context.Context, repositoryID string, plannedLabels, priorLabels []labelModel) ([]labelModel, error) {
+	if plannedLabels == nil && len(priorLabels) == 0 {
+		return nil, nil
+	}
+
+	labelsToSync := plannedLabels
+	if labelsToSync == nil {
+		// Attribute removed from config (e.g. last label deleted) — treat as empty.
+		labelsToSync = []labelModel{}
+	}
+
+	syncedLabels, err := r.syncLabels(ctx, repositoryID, labelsToSync, priorLabels)
+	if err != nil {
+		return nil, fmt.Errorf("updating labels: %w", err)
+	}
+	if plannedLabels == nil {
+		return nil, nil
+	}
+	if syncedLabels == nil {
+		return []labelModel{}, nil
+	}
+	return syncedLabels, nil
+}
+
 // syncLabels creates/updates/deletes only against prior Terraform state.
 // Labels that exist in Aikido but were never in state are never deleted.
-func (r *repositoryResource) syncLabels(ctx context.Context, repoID string, plan, prior []labelModel) ([]labelModel, error) {
-	priorIdx := indexLabels(prior)
-	out := make([]labelModel, 0, len(plan))
-	kept := make(map[string]struct{}, len(plan))
+// An empty plan (attribute removed or labels = []) deletes all previously
+// managed labels and returns a nil slice so Terraform state is reset.
+func (r *repositoryResource) syncLabels(ctx context.Context, repositoryID string, plannedLabels, priorLabels []labelModel) ([]labelModel, error) {
+	priorLabelIndex := indexLabels(priorLabels)
 
-	for i, planned := range plan {
-		label, err := r.upsertLabel(ctx, repoID, i, planned, prior, priorIdx)
+	// Removed from config or explicitly empty → drop managed labels from API + state.
+	if len(plannedLabels) == 0 {
+		if err := r.deleteRemovedLabels(ctx, repositoryID, priorLabelIndex.byLabelID, nil); err != nil {
+			return nil, err
+		}
+		return nil, nil
+	}
+
+	syncedLabels := make([]labelModel, 0, len(plannedLabels))
+	keptLabelIDs := make(map[string]struct{}, len(plannedLabels))
+
+	for planIndex, plannedLabel := range plannedLabels {
+		label, err := r.upsertLabel(ctx, repositoryID, planIndex, plannedLabel, priorLabels, priorLabelIndex)
 		if err != nil {
 			return nil, err
 		}
-		kept[label.ID.ValueString()] = struct{}{}
-		out = append(out, label)
+		keptLabelIDs[label.ID.ValueString()] = struct{}{}
+		syncedLabels = append(syncedLabels, label)
 	}
 
-	if err := r.deleteRemovedLabels(ctx, repoID, priorIdx.byID, kept); err != nil {
+	if err := r.deleteRemovedLabels(ctx, repositoryID, priorLabelIndex.byLabelID, keptLabelIDs); err != nil {
 		return nil, err
 	}
-	return out, nil
+	return syncedLabels, nil
 }
 
 func indexLabels(labels []labelModel) labelIndex {
-	idx := labelIndex{
-		byID:   make(map[string]labelModel, len(labels)),
-		byName: make(map[string]labelModel, len(labels)),
+	index := labelIndex{
+		byLabelID:   make(map[string]labelModel, len(labels)),
+		byLabelName: make(map[string]labelModel, len(labels)),
 	}
-	for _, l := range labels {
-		if id := l.ID.ValueString(); id != "" {
-			idx.byID[id] = l
+	for _, label := range labels {
+		if labelID := label.ID.ValueString(); labelID != "" {
+			index.byLabelID[labelID] = label
 		}
-		if name := l.Name.ValueString(); name != "" {
-			idx.byName[name] = l
+		if labelName := label.Name.ValueString(); labelName != "" {
+			index.byLabelName[labelName] = label
 		}
 	}
-	return idx
+	return index
 }
 
 // upsertLabel resolves a planned label against prior state:
@@ -93,58 +134,59 @@ func indexLabels(labels []labelModel) labelIndex {
 //  2. known plan id still in prior → rename if needed
 //  3. unknown id at same list index → treat as in-place rename
 //  4. otherwise create
-func (r *repositoryResource) upsertLabel(ctx context.Context, repoID string, index int, planned labelModel, prior []labelModel, priorIdx labelIndex) (labelModel, error) {
-	name := planned.Name.ValueString()
+func (r *repositoryResource) upsertLabel(ctx context.Context, repositoryID string, planIndex int, plannedLabel labelModel, priorLabels []labelModel, priorLabelIndex labelIndex) (labelModel, error) {
+	labelName := plannedLabel.Name.ValueString()
 
-	if existing, ok := priorIdx.byName[name]; ok && existing.ID.ValueString() != "" {
-		return existing, nil
+	if existingLabel, found := priorLabelIndex.byLabelName[labelName]; found && existingLabel.ID.ValueString() != "" {
+		return existingLabel, nil
 	}
 
-	if id := knownLabelID(planned); id != "" {
-		if p, ok := priorIdx.byID[id]; ok {
-			return r.renameLabelIfNeeded(ctx, repoID, id, name, p)
+	if labelID := knownLabelID(plannedLabel); labelID != "" {
+		if priorLabel, found := priorLabelIndex.byLabelID[labelID]; found {
+			return r.renameLabelIfNeeded(ctx, repositoryID, labelID, labelName, priorLabel)
 		}
 	}
 
 	// Computed id is often unknown on update; reuse the prior label at this index.
-	if index < len(prior) {
-		if id := prior[index].ID.ValueString(); id != "" {
-			return r.renameLabelIfNeeded(ctx, repoID, id, name, prior[index])
+	if planIndex < len(priorLabels) {
+		priorLabel := priorLabels[planIndex]
+		if labelID := priorLabel.ID.ValueString(); labelID != "" {
+			return r.renameLabelIfNeeded(ctx, repositoryID, labelID, labelName, priorLabel)
 		}
 	}
 
-	return r.createLabel(ctx, repoID, name)
+	return r.createLabel(ctx, repositoryID, labelName)
 }
 
-func (r *repositoryResource) renameLabelIfNeeded(ctx context.Context, repoID, id, name string, prior labelModel) (labelModel, error) {
-	if prior.ID.ValueString() != "" && prior.Name.ValueString() != name {
-		path := basePath + "/" + repoID + "/labels/" + id
-		if err := r.client.Do(ctx, "POST", path, map[string]string{"name": name}, nil); err != nil {
+func (r *repositoryResource) renameLabelIfNeeded(ctx context.Context, repositoryID, labelID, labelName string, priorLabel labelModel) (labelModel, error) {
+	if priorLabel.ID.ValueString() != "" && priorLabel.Name.ValueString() != labelName {
+		path := basePath + "/" + repositoryID + "/labels/" + labelID
+		if err := r.client.Do(ctx, "POST", path, map[string]string{"name": labelName}, nil); err != nil {
 			return labelModel{}, err
 		}
 	}
-	imported := prior.ID.ValueString() != "" && prior.IsImported.ValueBool()
-	return newLabel(id, name, imported), nil
+	isImported := priorLabel.ID.ValueString() != "" && priorLabel.IsImported.ValueBool()
+	return newLabel(labelID, labelName, isImported), nil
 }
 
-func (r *repositoryResource) createLabel(ctx context.Context, repoID, name string) (labelModel, error) {
-	var resp labelWriteResponse
-	path := basePath + "/" + repoID + "/labels"
-	if err := r.client.Do(ctx, "POST", path, map[string]string{"name": name}, &resp); err != nil {
+func (r *repositoryResource) createLabel(ctx context.Context, repositoryID, labelName string) (labelModel, error) {
+	var writeResponse labelWriteResponse
+	path := basePath + "/" + repositoryID + "/labels"
+	if err := r.client.Do(ctx, "POST", path, map[string]string{"name": labelName}, &writeResponse); err != nil {
 		return labelModel{}, err
 	}
-	if resp.LabelID == 0 {
-		return labelModel{}, fmt.Errorf("create label %q: empty label_id", name)
+	if writeResponse.LabelID == 0 {
+		return labelModel{}, fmt.Errorf("create label %q: empty label_id", labelName)
 	}
-	return newLabel(strconv.FormatInt(resp.LabelID, 10), name, false), nil
+	return newLabel(strconv.FormatInt(writeResponse.LabelID, 10), labelName, false), nil
 }
 
-func (r *repositoryResource) deleteRemovedLabels(ctx context.Context, repoID string, priorByID map[string]labelModel, kept map[string]struct{}) error {
-	for id, l := range priorByID {
-		if _, ok := kept[id]; ok || l.IsImported.ValueBool() {
+func (r *repositoryResource) deleteRemovedLabels(ctx context.Context, repositoryID string, priorLabelsByID map[string]labelModel, keptLabelIDs map[string]struct{}) error {
+	for labelID, label := range priorLabelsByID {
+		if _, stillKept := keptLabelIDs[labelID]; stillKept || label.IsImported.ValueBool() {
 			continue
 		}
-		path := basePath + "/" + repoID + "/labels/" + id
+		path := basePath + "/" + repositoryID + "/labels/" + labelID
 		if err := r.client.Do(ctx, "DELETE", path, nil, nil); err != nil {
 			return err
 		}
@@ -152,17 +194,17 @@ func (r *repositoryResource) deleteRemovedLabels(ctx context.Context, repoID str
 	return nil
 }
 
-func knownLabelID(l labelModel) string {
-	if l.ID.IsNull() || l.ID.IsUnknown() {
+func knownLabelID(label labelModel) string {
+	if label.ID.IsNull() || label.ID.IsUnknown() {
 		return ""
 	}
-	return l.ID.ValueString()
+	return label.ID.ValueString()
 }
 
-func newLabel(id, name string, imported bool) labelModel {
+func newLabel(labelID, labelName string, isImported bool) labelModel {
 	return labelModel{
-		ID:         types.StringValue(id),
-		Name:       types.StringValue(name),
-		IsImported: types.BoolValue(imported),
+		ID:         types.StringValue(labelID),
+		Name:       types.StringValue(labelName),
+		IsImported: types.BoolValue(isImported),
 	}
 }

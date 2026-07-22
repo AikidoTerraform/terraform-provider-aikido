@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/aikido/terraform-provider-aikido/internal/client"
@@ -236,7 +237,7 @@ func TestSyncLabels_RenamesUsingPriorIndexWhenIDUnknown(t *testing.T) {
 }
 
 // Removing the last managed label omits labels from the plan (nil), but prior
-// still has it — must DELETE, not skip sync.
+// still has it — must DELETE and clear state.
 func TestConfigure_DeletesLastManagedLabelWhenOmitted(t *testing.T) {
 	var deleted []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -275,5 +276,48 @@ func TestConfigure_DeletesLastManagedLabelWhenOmitted(t *testing.T) {
 	}
 	if state.Labels != nil {
 		t.Errorf("state.Labels = %+v, want nil", state.Labels)
+	}
+}
+
+// labels = [] must delete previously managed labels and reset state to empty.
+func TestConfigure_ResetsLabelsWhenEmptyArray(t *testing.T) {
+	var deleted []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/public/v1/repositories/code/activate":
+			_, _ = io.WriteString(w, `{}`)
+		case r.Method == http.MethodDelete && strings.HasPrefix(r.URL.Path, "/public/v1/repositories/code/1/labels/"):
+			deleted = append(deleted, r.URL.Path)
+			_, _ = io.WriteString(w, `{}`)
+		case r.Method == http.MethodGet && r.URL.Path == "/public/v1/repositories/code/1":
+			if err := json.NewEncoder(w).Encode(repositoryAPI{ID: 1, Active: true}); err != nil {
+				t.Errorf("encoding response: %v", err)
+			}
+		default:
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	res := &repositoryResource{client: client.New(srv.Client(), srv.URL)}
+	prior := []labelModel{
+		{ID: types.StringValue("10"), Name: types.StringValue("payments"), IsImported: types.BoolValue(false)},
+		{ID: types.StringValue("11"), Name: types.StringValue("production"), IsImported: types.BoolValue(false)},
+	}
+	plan := repositoryModel{
+		ID:     types.StringValue("1"),
+		Active: types.BoolValue(true),
+		Labels: []labelModel{}, // explicit empty list
+	}
+	state, err := res.setRepoConfig(context.Background(), plan, prior)
+	if err != nil {
+		t.Fatalf("configure: %v", err)
+	}
+	if len(deleted) != 2 {
+		t.Errorf("deleted = %v, want both managed labels", deleted)
+	}
+	if state.Labels == nil || len(state.Labels) != 0 {
+		t.Errorf("state.Labels = %+v, want empty non-nil slice", state.Labels)
 	}
 }

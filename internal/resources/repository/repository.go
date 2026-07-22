@@ -33,8 +33,9 @@ type repositoryResource struct {
 
 // repositoryModel is the Terraform state. IDs are strings by TF convention even
 // though the API uses integers.
-// Labels is nil when omitted from config (leave Aikido labels alone). A non-nil
-// slice means Terraform manages only that set.
+// Labels is nil when omitted and nothing was previously managed. A non-nil
+// slice (including empty) means Terraform manages that set; empty or removing
+// previously managed labels clears them from Aikido and from state.
 type repositoryModel struct {
 	ID             types.String `tfsdk:"id"`
 	Active         types.Bool   `tfsdk:"active"`
@@ -213,7 +214,6 @@ func (r *repositoryResource) ImportState(ctx context.Context, req resource.Impor
 }
 
 // setRepoConfig is shared by Create and Update. priorLabels is nil on create.
-// Labels sync only when plan.Labels != nil; omitted means leave Aikido labels alone.
 func (r *repositoryResource) setRepoConfig(ctx context.Context, plan repositoryModel, priorLabels []labelModel) (repositoryModel, error) {
 	id := plan.ID.ValueString()
 
@@ -238,33 +238,17 @@ func (r *repositoryResource) setRepoConfig(ctx context.Context, plan repositoryM
 		}
 	}
 
-	var syncedLabels []labelModel
-	switch {
-	case plan.Labels != nil:
-		var err error
-		syncedLabels, err = r.syncLabels(ctx, id, plan.Labels, priorLabels)
-		if err != nil {
-			return repositoryModel{}, fmt.Errorf("updating labels: %w", err)
-		}
-	case len(priorLabels) > 0:
-		// Last managed label(s) removed from config → plan.Labels is nil, but we
-		// must still DELETE the ones Terraform previously tracked.
-		var err error
-		syncedLabels, err = r.syncLabels(ctx, id, []labelModel{}, priorLabels)
-		if err != nil {
-			return repositoryModel{}, fmt.Errorf("updating labels: %w", err)
-		}
+	// manage labels
+	syncedLabels, err := r.applyLabels(ctx, id, plan.Labels, priorLabels)
+	if err != nil {
+		return repositoryModel{}, err
 	}
 
 	state, err := r.read(ctx, id)
 	if err != nil {
 		return repositoryModel{}, err
 	}
-	if plan.Labels != nil {
-		state.Labels = syncedLabels
-	} else {
-		state.Labels = nil
-	}
+	state.Labels = syncedLabels
 	return state, nil
 }
 
