@@ -1,0 +1,65 @@
+# Examples
+
+Terraform snippets for the Aikido provider. See the [Aikido management API docs](https://apidocs.aikido.dev/) for API details.
+
+These are **fragments**, not a complete root module by themselves. Combine the provider example with a resource example (or copy into a scratch directory) before running Terraform.
+
+## Layout
+
+| Path | Purpose |
+|------|---------|
+| [`provider/provider.tf`](provider/provider.tf) | `required_providers` + `provider "aikido"` block |
+| [`resources/aikido_repository/resource.tf`](resources/aikido_repository/resource.tf) | `aikido_repository` resource |
+
+## Prerequisites
+
+- Terraform >= 1.0
+- Aikido API credentials (`AIKIDO_CLIENT_ID` / `AIKIDO_CLIENT_SECRET`)
+- For a **local** provider build: install the binary and set a `dev_overrides` entry — see [`README.dev.md`](../README.dev.md)
+
+## Quick start
+
+```shell
+export AIKIDO_CLIENT_ID="your-client-id"
+export AIKIDO_CLIENT_SECRET="your-client-secret"
+
+mkdir -p /tmp/aikido-tf-example && cd /tmp/aikido-tf-example
+```
+
+Create `main.tf` by combining the examples (replace the repository `id` with a real one from your workspace):
+
+```hcl
+terraform {
+  required_providers {
+    aikido = {
+      source = "aikido/aikido"
+    }
+  }
+}
+
+provider "aikido" {}
+
+resource "aikido_repository" "example" {
+  id     = "12345"
+  active = true
+
+  sensitivity  = "sensitive"
+  connectivity = "connected"
+}
+```
+
+Then:
+
+```shell
+terraform init
+terraform plan
+terraform apply
+```
+
+Prefer env vars for credentials so secrets are not committed. The provider block in [`provider/provider.tf`](provider/provider.tf) shows the attribute form; omitting `client_id` / `client_secret` and using env vars is fine for local runs.
+
+## Notes
+
+- `aikido_repository` configures an **existing** code repository by ID. It does not create the repo in your SCM.
+- After changing provider Go code locally, re-run `make install` before `terraform apply`.
+- Full local/staging setup: [`README.dev.md`](../README.dev.md)
