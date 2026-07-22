@@ -39,7 +39,7 @@ resource "aikido_repository" "example" {
 - `branch` (String) Branch configured for scanning.
 - `external_repo_id` (String) Repository ID from the Git provider.
 - `name` (String) Name of the code repository.
-- `provider` (String) Git provider hosting the repository (e.g. github, gitlab, bitbucket).
+- `git_provider` (String) Git provider hosting the repository (e.g. github, gitlab, bitbucket).
 - `url` (String) External URL of the repository.
 
 ## Import
