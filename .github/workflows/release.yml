@@ -1,0 +1,57 @@
+# Release signed provider binaries with GoReleaser when a version tag is pushed.
+# Requires repository secrets: GPG_PRIVATE_KEY, PASSPHRASE.
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions: {}
+
+jobs:
+  goreleaser:
+    name: Release
+    runs-on: standard-runner-no-rights-public-ip
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Import GPG key
+        id: import_gpg
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          PASSPHRASE: ${{ secrets.PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.gnupg
+          chmod 700 ~/.gnupg
+
+          echo "$GPG_PRIVATE_KEY" | gpg --batch --import
+
+          FINGERPRINT=$(gpg --list-secret-keys --with-colons | awk -F: '$1 == "fpr" { print $10; exit }')
+          if [ -z "$FINGERPRINT" ]; then
+            echo "Failed to determine GPG fingerprint" >&2
+            exit 1
+          fi
+          echo "fingerprint=$FINGERPRINT" >> "$GITHUB_OUTPUT"
+
+          if [ -n "$PASSPHRASE" ]; then
+            printf 'allow-preset-passphrase\n' > ~/.gnupg/gpg-agent.conf
+            gpgconf --kill gpg-agent || true
+            KEYGRIP=$(gpg --with-keygrip --list-secret-keys "$FINGERPRINT" | awk '/Keygrip/ { print $3; exit }')
+            HEX_PASS=$(printf '%s' "$PASSPHRASE" | od -An -tx1 | tr -d ' \n' | tr '[:lower:]' '[:upper:]')
+            gpg-connect-agent "PRESET_PASSPHRASE $KEYGRIP -1 $HEX_PASS" /bye
+          fi
+      - name: Install GoReleaser
+        run: go install github.com/goreleaser/goreleaser/v2@v2.8.2
+      - name: Run GoReleaser
+        run: goreleaser release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GPG_FINGERPRINT: ${{ steps.import_gpg.outputs.fingerprint }}
