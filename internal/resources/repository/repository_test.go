@@ -20,9 +20,11 @@ func TestSetActive_Activate(t *testing.T) {
 		gotMethod = r.Method
 		gotPath = r.URL.Path
 		defer r.Body.Close()
-		json.NewDecoder(r.Body).Decode(&gotBody)
+		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+			t.Errorf("decoding request body: %v", err)
+		}
 		w.WriteHeader(http.StatusOK)
-		io.WriteString(w, `{"success":1,"was_already_activated":0}`)
+		_, _ = io.WriteString(w, `{"success":1,"was_already_activated":0}`)
 	}))
 	t.Cleanup(srv.Close)
 
@@ -46,7 +48,7 @@ func TestSetActive_Deactivate(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
 		w.WriteHeader(http.StatusOK)
-		io.WriteString(w, `{"success":1,"was_already_deactivated":0}`)
+		_, _ = io.WriteString(w, `{"success":1,"was_already_deactivated":0}`)
 	}))
 	t.Cleanup(srv.Close)
 
@@ -71,11 +73,13 @@ func TestConfigure_UpdatesConfig(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls[r.URL.Path]++
 		if r.Method == http.MethodGet {
-			json.NewEncoder(w).Encode(repositoryAPI{ID: 9, Active: true})
+			if err := json.NewEncoder(w).Encode(repositoryAPI{ID: 9, Active: true}); err != nil {
+				t.Errorf("encoding response: %v", err)
+			}
 			return
 		}
 		w.WriteHeader(http.StatusOK)
-		io.WriteString(w, `{}`)
+		_, _ = io.WriteString(w, `{}`)
 	}))
 	t.Cleanup(srv.Close)
 
@@ -108,11 +112,13 @@ func TestConfigure_SkipsNullConfig(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls[r.URL.Path]++
 		if r.Method == http.MethodGet {
-			json.NewEncoder(w).Encode(repositoryAPI{ID: 9, Active: false})
+			if err := json.NewEncoder(w).Encode(repositoryAPI{ID: 9, Active: false}); err != nil {
+				t.Errorf("encoding response: %v", err)
+			}
 			return
 		}
 		w.WriteHeader(http.StatusOK)
-		io.WriteString(w, `{}`)
+		_, _ = io.WriteString(w, `{}`)
 	}))
 	t.Cleanup(srv.Close)
 
@@ -143,7 +149,7 @@ func TestRead(t *testing.T) {
 		if r.URL.Path != "/public/v1/repositories/code/1" {
 			t.Errorf("unexpected path %s", r.URL.Path)
 		}
-		json.NewEncoder(w).Encode(repositoryAPI{
+		if err := json.NewEncoder(w).Encode(repositoryAPI{
 			ID:             1,
 			Name:           "Compression service",
 			Provider:       "github",
@@ -153,7 +159,9 @@ func TestRead(t *testing.T) {
 			URL:            "https://github.com/example/repo",
 			Connectivity:   "connected",
 			Sensitivity:    "normal",
-		})
+		}); err != nil {
+			t.Errorf("encoding response: %v", err)
+		}
 	}))
 	t.Cleanup(srv.Close)
 

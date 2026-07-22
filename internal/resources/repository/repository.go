@@ -39,7 +39,7 @@ type repositoryModel struct {
 	Sensitivity    types.String `tfsdk:"sensitivity"`
 	Connectivity   types.String `tfsdk:"connectivity"`
 	Name           types.String `tfsdk:"name"`
-	Provider       types.String `tfsdk:"provider"`
+	GitProvider    types.String `tfsdk:"git_provider"`
 	Branch         types.String `tfsdk:"branch"`
 	URL            types.String `tfsdk:"url"`
 	ExternalRepoID types.String `tfsdk:"external_repo_id"`
@@ -63,7 +63,7 @@ func (r *repositoryResource) Metadata(_ context.Context, req resource.MetadataRe
 }
 
 // Schema defines the full resource shape: user-settable fields and computed-only fields
-// populated from the API (name, provider, etc.). Computed attributes cannot be set in .tf
+// populated from the API (name, git_provider, etc.). Computed attributes cannot be set in .tf
 // but must be declared so the provider can store them in state and expose them in show/outputs.
 func (r *repositoryResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
@@ -96,7 +96,7 @@ func (r *repositoryResource) Schema(_ context.Context, _ resource.SchemaRequest,
 				Computed:    true,
 				Description: "Name of the code repository.",
 			},
-			"provider": schema.StringAttribute{
+			"git_provider": schema.StringAttribute{
 				Computed:    true,
 				Description: "Git provider hosting the repository (e.g. github, gitlab, bitbucket).",
 			},
@@ -185,7 +185,7 @@ func (r *repositoryResource) Update(ctx context.Context, req resource.UpdateRequ
 	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
 }
 
-// Delete is called when the resource is removed from config or on destroy. 
+// Delete is called when the resource is removed from config or on destroy.
 // Deactivates the repo.
 func (r *repositoryResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var state repositoryModel
@@ -254,7 +254,7 @@ func (r *repositoryResource) read(ctx context.Context, id string) (repositoryMod
 		ID:             types.StringValue(strconv.FormatInt(repo.ID, 10)),
 		Active:         types.BoolValue(repo.Active),
 		Name:           types.StringValue(repo.Name),
-		Provider:       types.StringValue(repo.Provider),
+		GitProvider:    types.StringValue(repo.Provider),
 		Branch:         types.StringValue(repo.Branch),
 		URL:            types.StringValue(repo.URL),
 		ExternalRepoID: types.StringValue(repo.ExternalRepoID),
