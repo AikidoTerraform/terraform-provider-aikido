@@ -11,7 +11,7 @@ The Aikido Terraform provider allows you to manage resources in [Aikido Security
 
 ## Authentication
 
-The provider authenticates using OAuth2 client credentials. You can obtain a client ID and secret from the [Aikido REST API integration page](https://app.test.aikido.dev/settings/integrations/api/aikido/rest).
+The provider authenticates using OAuth2 client credentials. You can obtain a client ID and secret from the [Aikido REST API integration page](https://app.aikido.dev/settings/integrations/api/aikido/rest).
 
 ```hcl
 provider "aikido" {

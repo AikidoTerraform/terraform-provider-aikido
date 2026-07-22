@@ -88,7 +88,7 @@ func (p *aikidoProvider) Configure(ctx context.Context, req provider.ConfigureRe
 		return
 	}
 
-	httpClient := auth.NewHTTPClient(clientID, clientSecret)
+	httpClient := auth.NewHTTPClient(clientID, clientSecret, baseURL)
 	c := client.New(httpClient, baseURL)
 
 	// Make the configured client available to resources and data sources.
