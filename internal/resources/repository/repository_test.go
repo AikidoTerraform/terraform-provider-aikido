@@ -90,7 +90,7 @@ func TestConfigure_UpdatesConfig(t *testing.T) {
 		Sensitivity:  types.StringValue("sensitive"),
 		Connectivity: types.StringValue("connected"),
 	}
-	if _, err := res.configure(context.Background(), plan); err != nil {
+	if _, err := res.setRepoConfig(context.Background(), plan); err != nil {
 		t.Fatalf("configure: %v", err)
 	}
 
@@ -129,7 +129,7 @@ func TestConfigure_SkipsNullConfig(t *testing.T) {
 		Sensitivity:  types.StringNull(),
 		Connectivity: types.StringNull(),
 	}
-	if _, err := res.configure(context.Background(), plan); err != nil {
+	if _, err := res.setRepoConfig(context.Background(), plan); err != nil {
 		t.Fatalf("configure: %v", err)
 	}
 
