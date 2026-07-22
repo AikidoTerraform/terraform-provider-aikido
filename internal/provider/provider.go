@@ -25,6 +25,7 @@ type aikidoProvider struct {
 type aikidoProviderModel struct {
 	ClientID     types.String `tfsdk:"client_id"`
 	ClientSecret types.String `tfsdk:"client_secret"`
+	BaseURL      types.String `tfsdk:"base_url"`
 }
 
 func New(version string) func() provider.Provider {
@@ -51,6 +52,10 @@ func (p *aikidoProvider) Schema(_ context.Context, _ provider.SchemaRequest, res
 				Sensitive:   true,
 				Description: "Aikido API client secret. Falls back to the AIKIDO_CLIENT_SECRET environment variable.",
 			},
+			"base_url": schema.StringAttribute{
+				Optional:    true,
+				Description: "Aikido API base URL. Falls back to the AIKIDO_BASE_URL environment variable, then the public API.",
+			},
 		},
 	}
 }
@@ -64,7 +69,7 @@ func (p *aikidoProvider) Configure(ctx context.Context, req provider.ConfigureRe
 
 	clientID := firstNonEmpty(config.ClientID.ValueString(), os.Getenv("AIKIDO_CLIENT_ID"))
 	clientSecret := firstNonEmpty(config.ClientSecret.ValueString(), os.Getenv("AIKIDO_CLIENT_SECRET"))
-	baseURL := client.DefaultBaseURL
+	baseURL := firstNonEmpty(config.BaseURL.ValueString(), os.Getenv("AIKIDO_BASE_URL"), client.DefaultBaseURL)
 
 	if clientID == "" {
 		resp.Diagnostics.AddAttributeError(
