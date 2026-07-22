@@ -58,15 +58,15 @@ type repositoryAPI struct {
 }
 
 // Metadata sets the resource type name.
-func (r *repositoryResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_repository"
+func (r *repositoryResource) Metadata(_ context.Context, request resource.MetadataRequest, response *resource.MetadataResponse) {
+	response.TypeName = request.ProviderTypeName + "_repository"
 }
 
 // Schema defines the full resource shape: user-settable fields and computed-only fields
 // populated from the API (name, git_provider, etc.). Computed attributes cannot be set in .tf
 // but must be declared so the provider can store them in state and expose them in show/outputs.
-func (r *repositoryResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
-	resp.Schema = schema.Schema{
+func (r *repositoryResource) Schema(_ context.Context, _ resource.SchemaRequest, response *resource.SchemaResponse) {
+	response.Schema = schema.Schema{
 		Description: "Manages activation and configuration of an existing Aikido code repository. " +
 			"The repository must already exist in Aikido (synced from a Git provider); this resource never creates or deletes the repo. " +
 			"Apply sets active and optional config; destroy deactivates it.",
@@ -116,158 +116,158 @@ func (r *repositoryResource) Schema(_ context.Context, _ resource.SchemaRequest,
 	}
 }
 
-func (r *repositoryResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	if req.ProviderData == nil {
+func (r *repositoryResource) Configure(_ context.Context, request resource.ConfigureRequest, response *resource.ConfigureResponse) {
+	if request.ProviderData == nil {
 		return
 	}
-	c, ok := req.ProviderData.(*client.Client)
-	if !ok {
-		resp.Diagnostics.AddError(
+	apiClient, isClient := request.ProviderData.(*client.Client)
+	if !isClient {
+		response.Diagnostics.AddError(
 			"Unexpected provider data type",
-			fmt.Sprintf("Expected *client.Client, got %T. This is a provider bug.", req.ProviderData),
+			fmt.Sprintf("Expected *client.Client, got %T. This is a provider bug.", request.ProviderData),
 		)
 		return
 	}
-	r.client = c
+	r.client = apiClient
 }
 
 // Create is called on first apply when the resource is in config but not yet in state.
 // It activates/deactivates and optionally configures an existing Aikido repo.
-func (r *repositoryResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
-	var plan repositoryModel
-	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
-	if resp.Diagnostics.HasError() {
+func (r *repositoryResource) Create(ctx context.Context, request resource.CreateRequest, response *resource.CreateResponse) {
+	var plannedRepository repositoryModel
+	response.Diagnostics.Append(request.Plan.Get(ctx, &plannedRepository)...)
+	if response.Diagnostics.HasError() {
 		return
 	}
 
-	state, err := r.setRepoConfig(ctx, plan)
+	repositoryState, err := r.setRepoConfig(ctx, plannedRepository)
 	if err != nil {
-		resp.Diagnostics.AddError("Error configuring repository", err.Error())
+		response.Diagnostics.AddError("Error configuring repository", err.Error())
 		return
 	}
-	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
+	response.Diagnostics.Append(response.State.Set(ctx, repositoryState)...)
 }
 
 // Read is called during refresh/plan to sync the repository from the API into state.
-func (r *repositoryResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
-	var state repositoryModel
-	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
-	if resp.Diagnostics.HasError() {
+func (r *repositoryResource) Read(ctx context.Context, request resource.ReadRequest, response *resource.ReadResponse) {
+	var priorState repositoryModel
+	response.Diagnostics.Append(request.State.Get(ctx, &priorState)...)
+	if response.Diagnostics.HasError() {
 		return
 	}
 
-	updated, err := r.read(ctx, state.ID.ValueString())
+	updatedState, err := r.read(ctx, priorState.ID.ValueString())
 	if err != nil {
 		if client.NotFound(err) {
-			resp.State.RemoveResource(ctx)
+			response.State.RemoveResource(ctx)
 			return
 		}
-		resp.Diagnostics.AddError("Error reading repository", err.Error())
+		response.Diagnostics.AddError("Error reading repository", err.Error())
 		return
 	}
-	resp.Diagnostics.Append(resp.State.Set(ctx, updated)...)
+	response.Diagnostics.Append(response.State.Set(ctx, updatedState)...)
 }
 
 // Update is called on apply when config changes in-place (no replacement).
 // It applies the new config to the existing Aikido repo.
-func (r *repositoryResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var plan repositoryModel
-	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
-	if resp.Diagnostics.HasError() {
+func (r *repositoryResource) Update(ctx context.Context, request resource.UpdateRequest, response *resource.UpdateResponse) {
+	var plannedRepository repositoryModel
+	response.Diagnostics.Append(request.Plan.Get(ctx, &plannedRepository)...)
+	if response.Diagnostics.HasError() {
 		return
 	}
 
-	state, err := r.setRepoConfig(ctx, plan)
+	repositoryState, err := r.setRepoConfig(ctx, plannedRepository)
 	if err != nil {
-		resp.Diagnostics.AddError("Error configuring repository", err.Error())
+		response.Diagnostics.AddError("Error configuring repository", err.Error())
 		return
 	}
-	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
+	response.Diagnostics.Append(response.State.Set(ctx, repositoryState)...)
 }
 
 // Delete is called when the resource is removed from config or on destroy.
 // Deactivates the repo.
-func (r *repositoryResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
-	var state repositoryModel
-	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
-	if resp.Diagnostics.HasError() {
+func (r *repositoryResource) Delete(ctx context.Context, request resource.DeleteRequest, response *resource.DeleteResponse) {
+	var priorState repositoryModel
+	response.Diagnostics.Append(request.State.Get(ctx, &priorState)...)
+	if response.Diagnostics.HasError() {
 		return
 	}
 
-	if err := r.setActive(ctx, state.ID.ValueString(), false); err != nil && !client.NotFound(err) {
-		resp.Diagnostics.AddError("Error deactivating repository", err.Error())
+	if err := r.setActive(ctx, priorState.ID.ValueString(), false); err != nil && !client.NotFound(err) {
+		response.Diagnostics.AddError("Error deactivating repository", err.Error())
 	}
 }
 
 // ImportState lets users adopt an existing Aikido repo into Terraform state by ID.
-func (r *repositoryResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
+func (r *repositoryResource) ImportState(ctx context.Context, request resource.ImportStateRequest, response *resource.ImportStateResponse) {
+	resource.ImportStatePassthroughID(ctx, path.Root("id"), request, response)
 }
 
 // configure is shared by Create and Update because both do the same thing for this resource:
 // repos already exist in Aikido, so apply only sets active and optional config fields.
 // It pushes the planned values to the API, then re-reads the repo for the response state.
-func (r *repositoryResource) setRepoConfig(ctx context.Context, plan repositoryModel) (repositoryModel, error) {
-	id := plan.ID.ValueString()
+func (r *repositoryResource) setRepoConfig(ctx context.Context, plannedRepository repositoryModel) (repositoryModel, error) {
+	repositoryID := plannedRepository.ID.ValueString()
 
-	if err := r.setActive(ctx, id, plan.Active.ValueBool()); err != nil {
+	if err := r.setActive(ctx, repositoryID, plannedRepository.Active.ValueBool()); err != nil {
 		return repositoryModel{}, err
 	}
-	if !plan.Sensitivity.IsNull() && !plan.Sensitivity.IsUnknown() {
-		body := map[string]string{"sensitivity": plan.Sensitivity.ValueString()}
-		if err := r.client.Do(ctx, "PUT", basePath+"/"+id+"/sensitivity", body, nil); err != nil {
+	if !plannedRepository.Sensitivity.IsNull() && !plannedRepository.Sensitivity.IsUnknown() {
+		sensitivityBody := map[string]string{"sensitivity": plannedRepository.Sensitivity.ValueString()}
+		if err := r.client.Do(ctx, "PUT", basePath+"/"+repositoryID+"/sensitivity", sensitivityBody, nil); err != nil {
 			return repositoryModel{}, fmt.Errorf("updating sensitivity: %w", err)
 		}
 	}
-	if !plan.Connectivity.IsNull() && !plan.Connectivity.IsUnknown() {
-		body := map[string]string{"connectivity": plan.Connectivity.ValueString()}
-		if err := r.client.Do(ctx, "PUT", basePath+"/"+id+"/connectivity", body, nil); err != nil {
+	if !plannedRepository.Connectivity.IsNull() && !plannedRepository.Connectivity.IsUnknown() {
+		connectivityBody := map[string]string{"connectivity": plannedRepository.Connectivity.ValueString()}
+		if err := r.client.Do(ctx, "PUT", basePath+"/"+repositoryID+"/connectivity", connectivityBody, nil); err != nil {
 			return repositoryModel{}, fmt.Errorf("updating connectivity: %w", err)
 		}
 	}
 
-	return r.read(ctx, id)
+	return r.read(ctx, repositoryID)
 }
 
 // setActive activates or deactivates the repository.
-func (r *repositoryResource) setActive(ctx context.Context, id string, active bool) error {
-	codeRepoID, err := strconv.ParseInt(id, 10, 64)
+func (r *repositoryResource) setActive(ctx context.Context, repositoryID string, isActive bool) error {
+	codeRepoID, err := strconv.ParseInt(repositoryID, 10, 64)
 	if err != nil {
-		return fmt.Errorf("invalid repository id %q: %w", id, err)
+		return fmt.Errorf("invalid repository id %q: %w", repositoryID, err)
 	}
 
-	path := basePath + "/deactivate"
-	if active {
-		path = basePath + "/activate"
+	endpoint := basePath + "/deactivate"
+	if isActive {
+		endpoint = basePath + "/activate"
 	}
-	return r.client.Do(ctx, "POST", path, map[string]int64{"code_repo_id": codeRepoID}, nil)
+	return r.client.Do(ctx, "POST", endpoint, map[string]int64{"code_repo_id": codeRepoID}, nil)
 }
 
 // read reads the repository from the API into the state.
-func (r *repositoryResource) read(ctx context.Context, id string) (repositoryModel, error) {
-	var repo repositoryAPI
-	if err := r.client.Do(ctx, "GET", basePath+"/"+id, nil, &repo); err != nil {
+func (r *repositoryResource) read(ctx context.Context, repositoryID string) (repositoryModel, error) {
+	var apiRepository repositoryAPI
+	if err := r.client.Do(ctx, "GET", basePath+"/"+repositoryID, nil, &apiRepository); err != nil {
 		return repositoryModel{}, err
 	}
 
-	state := repositoryModel{
-		ID:             types.StringValue(strconv.FormatInt(repo.ID, 10)),
-		Active:         types.BoolValue(repo.Active),
-		Name:           types.StringValue(repo.Name),
-		GitProvider:    types.StringValue(repo.Provider),
-		Branch:         types.StringValue(repo.Branch),
-		URL:            types.StringValue(repo.URL),
-		ExternalRepoID: types.StringValue(repo.ExternalRepoID),
+	repositoryState := repositoryModel{
+		ID:             types.StringValue(strconv.FormatInt(apiRepository.ID, 10)),
+		Active:         types.BoolValue(apiRepository.Active),
+		Name:           types.StringValue(apiRepository.Name),
+		GitProvider:    types.StringValue(apiRepository.Provider),
+		Branch:         types.StringValue(apiRepository.Branch),
+		URL:            types.StringValue(apiRepository.URL),
+		ExternalRepoID: types.StringValue(apiRepository.ExternalRepoID),
 	}
-	if repo.Sensitivity != "" {
-		state.Sensitivity = types.StringValue(repo.Sensitivity)
+	if apiRepository.Sensitivity != "" {
+		repositoryState.Sensitivity = types.StringValue(apiRepository.Sensitivity)
 	} else {
-		state.Sensitivity = types.StringNull()
+		repositoryState.Sensitivity = types.StringNull()
 	}
-	if repo.Connectivity != "" {
-		state.Connectivity = types.StringValue(repo.Connectivity)
+	if apiRepository.Connectivity != "" {
+		repositoryState.Connectivity = types.StringValue(apiRepository.Connectivity)
 	} else {
-		state.Connectivity = types.StringNull()
+		repositoryState.Connectivity = types.StringNull()
 	}
-	return state, nil
+	return repositoryState, nil
 }
