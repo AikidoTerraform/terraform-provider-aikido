@@ -140,7 +140,7 @@ func (r *repositoryResource) Create(ctx context.Context, req resource.CreateRequ
 		return
 	}
 
-	state, err := r.configure(ctx, plan)
+	state, err := r.setRepoConfig(ctx, plan)
 	if err != nil {
 		resp.Diagnostics.AddError("Error configuring repository", err.Error())
 		return
@@ -177,7 +177,7 @@ func (r *repositoryResource) Update(ctx context.Context, req resource.UpdateRequ
 		return
 	}
 
-	state, err := r.configure(ctx, plan)
+	state, err := r.setRepoConfig(ctx, plan)
 	if err != nil {
 		resp.Diagnostics.AddError("Error configuring repository", err.Error())
 		return
@@ -207,7 +207,7 @@ func (r *repositoryResource) ImportState(ctx context.Context, req resource.Impor
 // configure is shared by Create and Update because both do the same thing for this resource:
 // repos already exist in Aikido, so apply only sets active and optional config fields.
 // It pushes the planned values to the API, then re-reads the repo for the response state.
-func (r *repositoryResource) configure(ctx context.Context, plan repositoryModel) (repositoryModel, error) {
+func (r *repositoryResource) setRepoConfig(ctx context.Context, plan repositoryModel) (repositoryModel, error) {
 	id := plan.ID.ValueString()
 
 	if err := r.setActive(ctx, id, plan.Active.ValueBool()); err != nil {
