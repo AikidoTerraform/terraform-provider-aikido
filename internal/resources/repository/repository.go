@@ -7,11 +7,13 @@ import (
 	"strconv"
 
 	"github.com/aikido/terraform-provider-aikido/internal/client"
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
@@ -86,11 +88,17 @@ func (r *repositoryResource) Schema(_ context.Context, _ resource.SchemaRequest,
 				Optional:    true,
 				Computed:    true,
 				Description: "Sensitivity level of the repository. One of: extreme, sensitive, normal, not_sensitive, no_data.",
+				Validators: []validator.String{
+					stringvalidator.OneOf("extreme", "sensitive", "normal", "not_sensitive", "no_data"),
+				},
 			},
 			"connectivity": schema.StringAttribute{
 				Optional:    true,
 				Computed:    true,
 				Description: "Whether the code runs on an internet-connected server. One of: connected, not_connected, unknown.",
+				Validators: []validator.String{
+					stringvalidator.OneOf("connected", "not_connected", "unknown"),
+				},
 			},
 			"name": schema.StringAttribute{
 				Computed:    true,
