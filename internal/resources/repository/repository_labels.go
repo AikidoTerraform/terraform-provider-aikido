@@ -184,8 +184,8 @@ func (r *repositoryResource) deleteLabel(ctx context.Context, repositoryID, labe
 }
 
 func (r *repositoryResource) deleteAllLabels(ctx context.Context, repositoryID string) error {
-	// fetch all labels from the repository. We cannot rely on the state. 
-	// When deleting the labels entirely, the state will be empty and no id's will be present to delete. 
+	// fetch all labels from the repository. We cannot rely on the state.
+	// When deleting the labels entirely, the state will be empty and no id's will be present to delete.
 	details, err := r.getRepositoryDetails(ctx, repositoryID)
 	if err != nil {
 		return fmt.Errorf("reading labels: %w", err)
