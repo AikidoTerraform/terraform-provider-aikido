@@ -6,13 +6,15 @@ package auth
 import (
 	"context"
 	"net/http"
+	"strings"
 
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/clientcredentials"
 )
 
-// TokenURL is the Aikido OAuth 2.0 token endpoint.
-const TokenURL = "https://app.aikido.dev/api/oauth/token"
+// tokenPath is the OAuth 2.0 token endpoint, appended to the API base URL so
+// authentication targets the same environment as the API calls.
+const tokenPath = "/oauth/token"
 
 // NewHTTPClient returns an *http.Client that authenticates every request with a
 // bearer token obtained via the client-credentials grant. The underlying
@@ -24,11 +26,11 @@ const TokenURL = "https://app.aikido.dev/api/oauth/token"
 // context for later token fetches. Passing it would make the first API call
 // fail with "context canceled". Per-request cancellation still comes from the
 // context on each http.Request (see client.Do).
-func NewHTTPClient(clientID, clientSecret string) *http.Client {
+func NewHTTPClient(clientID, clientSecret, baseURL string) *http.Client {
 	cfg := clientcredentials.Config{
 		ClientID:     clientID,
 		ClientSecret: clientSecret,
-		TokenURL:     TokenURL,
+		TokenURL:     strings.TrimRight(baseURL, "/") + tokenPath,
 		// Aikido expects Basic auth: base64(client_id:client_secret) in the header.
 		AuthStyle: oauth2.AuthStyleInHeader,
 	}
