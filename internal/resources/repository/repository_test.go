@@ -166,7 +166,7 @@ func TestRead(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	res := &repositoryResource{client: client.New(srv.Client(), srv.URL)}
-	state, err := res.read(context.Background(), "1")
+	state, err := res.getRepositoryDetails(context.Background(), "1")
 	if err != nil {
 		t.Fatalf("read: %v", err)
 	}
@@ -178,5 +178,8 @@ func TestRead(t *testing.T) {
 	}
 	if state.Sensitivity.ValueString() != "normal" || state.Connectivity.ValueString() != "connected" {
 		t.Errorf("sensitivity/connectivity = %s/%s", state.Sensitivity.ValueString(), state.Connectivity.ValueString())
+	}
+	if state.Labels == nil || len(state.Labels) != 0 {
+		t.Errorf("labels = %+v, want empty non-nil slice", state.Labels)
 	}
 }

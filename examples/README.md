@@ -66,6 +66,6 @@ Prefer env vars for credentials so secrets are not committed. The provider block
 ## Notes
 
 - `aikido_repository` configures an **existing** code repository by ID. It does not create the repo in your SCM.
-- `labels` is optional. Only labels listed in config are managed. Omitting `labels` or setting `labels = []` clears previously managed labels from Aikido; pre-existing labels never managed here are left alone.
+- `labels` is optional. Labels listed in config are fully managed. Omitting `labels` or setting `labels = []` clears them from Aikido.
 - After changing provider Go code locally, re-run `make install` before `terraform apply`.
 - Full local/staging setup: [`README.dev.md`](../README.dev.md)

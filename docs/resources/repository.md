@@ -37,7 +37,7 @@ resource "aikido_repository" "example" {
 ### Optional
 
 - `connectivity` (String) Whether the code runs on an internet-connected server. One of: connected, not_connected, unknown.
-- `labels` (Attributes List) Labels managed by this resource. Only listed labels are created/updated/removed; pre-existing labels never managed here are left alone. Removing labels from config or setting an empty list deletes previously managed labels. (see [below for nested schema](#nestedatt--labels))
+- `labels` (Attributes List) Labels are managed by this resource. Removing labels from config or setting an empty list deletes them. (see [below for nested schema](#nestedatt--labels))
 - `sensitivity` (String) Sensitivity level of the repository. One of: extreme, sensitive, normal, not_sensitive, no_data.
 
 ### Read-Only

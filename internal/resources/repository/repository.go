@@ -33,9 +33,6 @@ type repositoryResource struct {
 
 // repositoryModel is the Terraform state. IDs are strings by TF convention even
 // though the API uses integers.
-// Labels is nil when omitted and nothing was previously managed. A non-nil
-// slice (including empty) means Terraform manages that set; empty or removing
-// previously managed labels clears them from Aikido and from state.
 type repositoryModel struct {
 	ID             types.String `tfsdk:"id"`
 	Active         types.Bool   `tfsdk:"active"`
@@ -50,15 +47,16 @@ type repositoryModel struct {
 }
 
 type repositoryAPI struct {
-	ID             int64  `json:"id"`
-	Name           string `json:"name"`
-	Provider       string `json:"provider"`
-	ExternalRepoID string `json:"external_repo_id"`
-	Active         bool   `json:"active"`
-	Branch         string `json:"branch"`
-	URL            string `json:"url"`
-	Connectivity   string `json:"connectivity"`
-	Sensitivity    string `json:"sensitivity"`
+	ID             int64      `json:"id"`
+	Name           string     `json:"name"`
+	Provider       string     `json:"provider"`
+	ExternalRepoID string     `json:"external_repo_id"`
+	Active         bool       `json:"active"`
+	Branch         string     `json:"branch"`
+	URL            string     `json:"url"`
+	Connectivity   string     `json:"connectivity"`
+	Sensitivity    string     `json:"sensitivity"`
+	Labels         []labelAPI `json:"labels"`
 }
 
 // Metadata sets the resource type name.
@@ -154,8 +152,6 @@ func (r *repositoryResource) Create(ctx context.Context, request resource.Create
 }
 
 // Read is called during refresh/plan to sync the repository from the API into state.
-// Managed labels stay as previously written; we do not load labels from the API
-// (avoids adopting or deleting pre-existing ones).
 func (r *repositoryResource) Read(ctx context.Context, request resource.ReadRequest, response *resource.ReadResponse) {
 	var priorState repositoryModel
 	response.Diagnostics.Append(request.State.Get(ctx, &priorState)...)
@@ -163,8 +159,7 @@ func (r *repositoryResource) Read(ctx context.Context, request resource.ReadRequ
 		return
 	}
 
-	managedLabels := priorState.Labels
-	updatedState, err := r.read(ctx, priorState.ID.ValueString())
+	updatedState, err := r.getRepositoryDetails(ctx, priorState.ID.ValueString())
 	if err != nil {
 		if client.NotFound(err) {
 			response.State.RemoveResource(ctx)
@@ -173,7 +168,6 @@ func (r *repositoryResource) Read(ctx context.Context, request resource.ReadRequ
 		response.Diagnostics.AddError("Error reading repository", err.Error())
 		return
 	}
-	updatedState.Labels = managedLabels
 	response.Diagnostics.Append(response.State.Set(ctx, updatedState)...)
 }
 
@@ -214,7 +208,7 @@ func (r *repositoryResource) ImportState(ctx context.Context, request resource.I
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), request, response)
 }
 
-// setRepoConfig is shared by Create and Update. priorLabels is nil on create.
+// setRepoConfig is shared by Create and Update.
 func (r *repositoryResource) setRepoConfig(ctx context.Context, plannedRepository repositoryModel, priorLabels []labelModel) (repositoryModel, error) {
 	repositoryID := plannedRepository.ID.ValueString()
 
@@ -239,7 +233,7 @@ func (r *repositoryResource) setRepoConfig(ctx context.Context, plannedRepositor
 		return repositoryModel{}, err
 	}
 
-	repositoryState, err := r.read(ctx, repositoryID)
+	repositoryState, err := r.getRepositoryDetails(ctx, repositoryID)
 	if err != nil {
 		return repositoryModel{}, err
 	}
@@ -262,11 +256,7 @@ func (r *repositoryResource) setActive(ctx context.Context, repositoryID string,
 }
 
 // read reads the repository from the API into the state.
-// Labels are intentionally omitted: the detail GET would adopt pre-existing ones into state.
-// Managed labels are set by syncLabels (create/update) or kept from prior state (refresh).
-// Only labels in the terraform are affected.
-// pre existing labels are not adopted into state and therefore are not accidentally deleted when removing the labels attribute from the terraform config.
-func (r *repositoryResource) read(ctx context.Context, repositoryID string) (repositoryModel, error) {
+func (r *repositoryResource) getRepositoryDetails(ctx context.Context, repositoryID string) (repositoryModel, error) {
 	var apiRepository repositoryAPI
 	if err := r.client.Do(ctx, "GET", basePath+"/"+repositoryID, nil, &apiRepository); err != nil {
 		return repositoryModel{}, err
@@ -280,6 +270,7 @@ func (r *repositoryResource) read(ctx context.Context, repositoryID string) (rep
 		Branch:         types.StringValue(apiRepository.Branch),
 		URL:            types.StringValue(apiRepository.URL),
 		ExternalRepoID: types.StringValue(apiRepository.ExternalRepoID),
+		Labels:         labelModelsFromAPI(apiRepository.Labels),
 	}
 	if apiRepository.Sensitivity != "" {
 		repositoryState.Sensitivity = types.StringValue(apiRepository.Sensitivity)
