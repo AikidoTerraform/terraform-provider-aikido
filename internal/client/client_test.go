@@ -6,11 +6,20 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/aikido/terraform-provider-aikido/internal/client"
+	"golang.org/x/time/rate"
 )
+
+// unlimited disables request pacing so tests exercising retries do not wait on
+// the production rate limiter.
+func unlimited() client.Option {
+	return client.WithRateLimiter(rate.NewLimiter(rate.Inf, 1))
+}
 
 // newServer spins up a test server with the given handler and returns a Client
 // pointed at it.
@@ -18,7 +27,7 @@ func newServer(t *testing.T, handler http.HandlerFunc) *client.Client {
 	t.Helper()
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
-	return client.New(srv.Client(), srv.URL)
+	return client.New(srv.Client(), srv.URL, unlimited())
 }
 
 func TestDo_DecodesSuccessBody(t *testing.T) {
@@ -177,11 +186,41 @@ func TestDo_TrimsBaseURLAndJoinsPath(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	// Trailing slash on the base URL must not produce a doubled slash.
-	c := client.New(srv.Client(), srv.URL+"/")
+	c := client.New(srv.Client(), srv.URL+"/", unlimited())
 	if err := c.Do(context.Background(), "GET", "/public/v1/repositories/code", nil, nil); err != nil {
 		t.Fatalf("Do returned error: %v", err)
 	}
 	if gotPath != "/public/v1/repositories/code" {
 		t.Errorf("request path = %q, want /public/v1/repositories/code", gotPath)
+	}
+}
+
+func TestDo_RateLimiterAbortsWhenPacingExceedsDeadline(t *testing.T) {
+	var hits int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&hits, 1)
+	}))
+	t.Cleanup(srv.Close)
+
+	// A limiter whose only token is already spent: the next request must wait
+	// ~1h, which no reasonable deadline allows.
+	limiter := rate.NewLimiter(rate.Every(time.Hour), 1)
+	if err := limiter.Wait(context.Background()); err != nil {
+		t.Fatalf("draining initial token: %v", err)
+	}
+	c := client.New(srv.Client(), srv.URL, client.WithRateLimiter(limiter))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+
+	err := c.Do(ctx, "GET", "/public/v1/repositories/code", nil, nil)
+	if err == nil {
+		t.Fatal("expected error when pacing exceeds deadline, got nil")
+	}
+	if !strings.Contains(err.Error(), "rate limiter") {
+		t.Fatalf("expected rate limiter error, got: %v", err)
+	}
+	if got := atomic.LoadInt32(&hits); got != 0 {
+		t.Fatalf("request should not have been sent; server hit %d times", got)
 	}
 }

@@ -5,6 +5,7 @@ go 1.26
 require (
 	github.com/hashicorp/terraform-plugin-framework v1.13.0
 	golang.org/x/oauth2 v0.24.0
+	golang.org/x/time v0.15.0
 )
 
 require (
