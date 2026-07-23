@@ -14,6 +14,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"golang.org/x/time/rate"
 )
 
 const DefaultBaseURL = "https://app.aikido.dev/api"
@@ -24,20 +26,44 @@ const DefaultBaseURL = "https://app.aikido.dev/api"
 const (
 	maxRetries    = 4
 	maxRetryDelay = 60 * time.Second
+
+	// requestInterval paces outbound requests to stay under the 20 calls/min
+	// limit proactively, instead of relying on 429 retries. requestBurst allows an
+	// initial burst (matching Terraform's default parallelism) before pacing kicks
+	// in, so small plans are not serialized needlessly.
+	requestInterval = 3 * time.Second
+	requestBurst    = 10
 )
 
 type Client struct {
 	http    *http.Client
 	baseURL string
+	limiter *rate.Limiter
+}
+
+// Option configures a Client.
+type Option func(*Client)
+
+// WithRateLimiter overrides the default request rate limiter, chiefly so tests
+// can disable pacing with rate.NewLimiter(rate.Inf, 1).
+func WithRateLimiter(limiter *rate.Limiter) Option {
+	return func(c *Client) { c.limiter = limiter }
 }
 
 // New wraps an already-authenticated HTTP client (see the auth package) with a
 // base URL. The httpClient is expected to inject the bearer token itself.
-func New(httpClient *http.Client, baseURL string) *Client {
-	return &Client{
+func New(httpClient *http.Client, baseURL string, opts ...Option) *Client {
+	c := &Client{
 		http:    httpClient,
 		baseURL: strings.TrimRight(baseURL, "/"),
 	}
+	for _, opt := range opts {
+		opt(c)
+	}
+	if c.limiter == nil {
+		c.limiter = rate.NewLimiter(rate.Every(requestInterval), requestBurst)
+	}
+	return c
 }
 
 // APIError is returned when the API responds with a non-2xx status.
@@ -61,7 +87,8 @@ func NotFound(err error) bool {
 
 // Do sends an HTTP request. If body is non-nil it is JSON-encoded. If out is
 // non-nil the JSON response is decoded into it. path is joined to the base URL.
-// On a 429 it waits per the Retry-After header and retries, up to maxRetries.
+// Requests are paced client-side to stay under the API rate limit; on a 429 it
+// still waits per the Retry-After header and retries, up to maxRetries.
 func (c *Client) Do(ctx context.Context, method, path string, body, out any) error {
 	var encoded []byte
 	if body != nil {
@@ -73,6 +100,10 @@ func (c *Client) Do(ctx context.Context, method, path string, body, out any) err
 	}
 
 	for attempt := 0; ; attempt++ {
+		if err := c.limiter.Wait(ctx); err != nil {
+			return fmt.Errorf("rate limiter wait: %w", err)
+		}
+
 		var reader io.Reader
 		if body != nil {
 			reader = bytes.NewReader(encoded)
