@@ -168,6 +168,10 @@ func (r *repositoryResource) Read(ctx context.Context, request resource.ReadRequ
 		response.Diagnostics.AddError("Error reading repository", err.Error())
 		return
 	}
+	// Labels omitted from config are unmanaged — don't import API labels into state.
+	if priorState.Labels == nil {
+		updatedState.Labels = nil
+	}
 	response.Diagnostics.Append(response.State.Set(ctx, updatedState)...)
 }
 

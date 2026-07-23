@@ -6,10 +6,12 @@ import (
 	"strconv"
 
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
-// labelAPI is a label as returned by the repository detail endpoint.
 type labelAPI struct {
 	ID         int64  `json:"id"`
 	Name       string `json:"name"`
@@ -28,8 +30,9 @@ type labelWriteResponse struct {
 
 func labelsSchemaAttribute() schema.ListNestedAttribute {
 	return schema.ListNestedAttribute{
-		Optional:    true,
-		Description: "Labels fully managed by this resource. Removing labels from config or setting an empty list deletes them.",
+		Optional: true,
+		Description: "Labels managed by this resource. When set, Terraform creates/updates/deletes labels to match. " +
+			"Omitting labels leaves Aikido labels untouched. An empty list deletes all labels currently on the repository.",
 		NestedObject: schema.NestedAttributeObject{
 			Attributes: map[string]schema.Attribute{
 				"name": schema.StringAttribute{
@@ -39,81 +42,91 @@ func labelsSchemaAttribute() schema.ListNestedAttribute {
 				"id": schema.StringAttribute{
 					Computed:    true,
 					Description: "Aikido label ID.",
+					PlanModifiers: []planmodifier.String{
+						stringplanmodifier.UseStateForUnknown(),
+					},
 				},
 				"is_imported": schema.BoolAttribute{
 					Computed:    true,
 					Description: "True when the label was imported from the Git provider (read-only).",
+					PlanModifiers: []planmodifier.Bool{
+						boolplanmodifier.UseStateForUnknown(),
+					},
 				},
 			},
 		},
 	}
 }
 
-// applyLabels makes Aikido match the planned label names.
-// Omitted labels (nil) with no prior state is a no-op; otherwise nil is treated as empty
-// and clears managed labels from Aikido (state becomes nil again).
+// applyLabels makes Aikido match the planned labels.
+// nil (omitted) is a no-op and leaves Aikido labels unchanged.
+// An empty list fetches current labels from Aikido and deletes them.
+// A non-empty list syncs against prior Terraform state (create/update/delete).
 func (r *repositoryResource) applyLabels(ctx context.Context, repositoryID string, plannedLabels, priorLabels []labelModel) ([]labelModel, error) {
-	if plannedLabels == nil && len(priorLabels) == 0 {
+	if plannedLabels == nil {
 		return nil, nil
 	}
 
-	omitted := plannedLabels == nil
-	if omitted {
-		plannedLabels = []labelModel{}
+	// labels = [] means delete all labels
+	if len(plannedLabels) == 0 {
+		if err := r.deleteAllLabels(ctx, repositoryID); err != nil {
+			return nil, err
+		}
+		return []labelModel{}, nil
 	}
 
-	result := make([]labelModel, 0, len(plannedLabels))
+	synced := make([]labelModel, 0, len(plannedLabels))
+
 	for _, planned := range plannedLabels {
 		name := planned.Name.ValueString()
-		if priorLabel, found := findLabelByName(priorLabels, name); found {
+		id := planned.ID.ValueString()
 
-			// update the label name when the label already existed and the name is different
-			if err := r.updateLabel(ctx, repositoryID, priorLabel.ID.ValueString(), name); err != nil {
-				return nil, fmt.Errorf("updating label: %w", err)
+		// existing id means update the label
+		if id != "" {
+			if existing, ok := labelByID(priorLabels, id); ok {
+				if existing.Name.ValueString() != name {
+					if err := r.updateLabel(ctx, repositoryID, id, name); err != nil {
+						return nil, fmt.Errorf("updating label: %w", err)
+					}
+					existing.Name = types.StringValue(name)
+				}
+				synced = append(synced, existing)
+				continue
 			}
-
-			result = append(result, priorLabel)
-			continue
 		}
 
-		// create the label when the label does not exist
+		// create new label
 		created, err := r.createLabel(ctx, repositoryID, name)
 		if err != nil {
 			return nil, fmt.Errorf("creating label: %w", err)
 		}
-
-		result = append(result, created)
+		synced = append(synced, created)
 	}
 
-	for _, priorLabel := range priorLabels {
-		if _, found := findLabelByName(plannedLabels, priorLabel.Name.ValueString()); found {
-			// skip the label when it exists in the planned labels
+	// delete removed labels. Labels not existing in planned but existing in prior means they were deleted.
+	for _, prior := range priorLabels {
+		id := prior.ID.ValueString()
+		if id == "" {
 			continue
 		}
-
-		if id := priorLabel.ID.ValueString(); id != "" {
-			// delete the label when the label does not exist in the planned labels and it exists in the prior labels
-			if err := r.deleteLabel(ctx, repositoryID, id); err != nil {
-				return nil, fmt.Errorf("deleting label %q: %w", priorLabel.Name.ValueString(), err)
-			}
+		if _, ok := labelByID(plannedLabels, id); ok {
+			continue
+		}
+		if err := r.deleteLabel(ctx, repositoryID, id); err != nil {
+			return nil, fmt.Errorf("deleting label %q: %w", prior.Name.ValueString(), err)
 		}
 	}
 
-	if omitted {
-		return nil, nil
-	}
-	return result, nil
+	return synced, nil
 }
 
-func findLabelByName(labels []labelModel, name string) (labelModel, bool) {
-	found := false
+func labelByID(labels []labelModel, id string) (labelModel, bool) {
 	for _, label := range labels {
-		if label.Name.ValueString() == name {
-			found = true
-			return label, found
+		if label.ID.ValueString() == id {
+			return label, true
 		}
 	}
-	return labelModel{}, found
+	return labelModel{}, false
 }
 
 // labelModelsFromAPI maps API labels into Terraform state models.
@@ -143,8 +156,6 @@ func (r *repositoryResource) createLabel(ctx context.Context, repositoryID, labe
 		return labelModel{}, fmt.Errorf("create label %q: empty label_id", labelName)
 	}
 
-	fmt.Printf("created label %q\n", labelName)
-
 	return labelModel{
 		ID:   types.StringValue(strconv.FormatInt(resp.LabelID, 10)),
 		Name: types.StringValue(labelName),
@@ -159,7 +170,6 @@ func (r *repositoryResource) updateLabel(ctx context.Context, repositoryID, labe
 		return fmt.Errorf("update label %q: %w", labelName, err)
 	}
 
-	fmt.Printf("updated label %q\n", labelName)
 	return nil
 }
 
@@ -170,6 +180,25 @@ func (r *repositoryResource) deleteLabel(ctx context.Context, repositoryID, labe
 		return fmt.Errorf("delete label %q: %w", labelID, err)
 	}
 
-	fmt.Printf("deleted label %q\n", labelID)
+	return nil
+}
+
+func (r *repositoryResource) deleteAllLabels(ctx context.Context, repositoryID string) error {
+	// fetch all labels from the repository. We cannot rely on the state. 
+	// When deleting the labels entirely, the state will be empty and no id's will be present to delete. 
+	details, err := r.getRepositoryDetails(ctx, repositoryID)
+	if err != nil {
+		return fmt.Errorf("reading labels: %w", err)
+	}
+
+	for _, label := range details.Labels {
+		id := label.ID.ValueString()
+		if id == "" {
+			continue
+		}
+		if err := r.deleteLabel(ctx, repositoryID, id); err != nil {
+			return fmt.Errorf("deleting label %q: %w", label.Name.ValueString(), err)
+		}
+	}
 	return nil
 }
