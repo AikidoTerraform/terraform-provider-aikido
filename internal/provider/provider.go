@@ -54,7 +54,7 @@ func (p *aikidoProvider) Schema(_ context.Context, _ provider.SchemaRequest, res
 			},
 			"base_url": schema.StringAttribute{
 				Optional:    true,
-				Description: "Aikido API base URL. Falls back to the AIKIDO_BASE_URL environment variable, then the public API.",
+				Description: "Aikido API base URL. Set this to target a non-default region (e.g. AU, ME, US) or the GovCloud instance (app.aikidogov.us). Falls back to the AIKIDO_BASE_URL environment variable, then the default public API.",
 			},
 		},
 	}
@@ -89,7 +89,7 @@ func (p *aikidoProvider) Configure(ctx context.Context, req provider.ConfigureRe
 		return
 	}
 
-	httpClient := auth.NewHTTPClient(clientID, clientSecret)
+	httpClient := auth.NewHTTPClient(clientID, clientSecret, baseURL)
 	c := client.New(httpClient, baseURL)
 
 	// Make the configured client available to resources and data sources.
