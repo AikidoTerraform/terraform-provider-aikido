@@ -32,7 +32,7 @@ func labelsSchemaAttribute() schema.ListNestedAttribute {
 	return schema.ListNestedAttribute{
 		Optional: true,
 		Description: "Labels managed by this resource. When set, Terraform creates/updates/deletes labels to match. " +
-			"Omitting labels leaves Aikido labels untouched. An empty list deletes all labels currently on the repository.",
+			"Omitting labels leaves Aikido labels untouched. Setting an empty list deletes previously managed labels.",
 		NestedObject: schema.NestedAttributeObject{
 			Attributes: map[string]schema.Attribute{
 				"name": schema.StringAttribute{
@@ -58,30 +58,20 @@ func labelsSchemaAttribute() schema.ListNestedAttribute {
 	}
 }
 
-// applyLabels makes Aikido match the planned labels.
-// nil (omitted) is a no-op and leaves Aikido labels unchanged.
-// An empty list fetches current labels from Aikido and deletes them.
-// A non-empty list syncs against prior Terraform state (create/update/delete).
+// applyLabels reconciles labels only when the labels attribute is set.
+// Omitted labels (nil) are unmanaged and leave Aikido labels unchanged.
 func (r *repositoryResource) applyLabels(ctx context.Context, repositoryID string, plannedLabels, priorLabels []labelModel) ([]labelModel, error) {
 	if plannedLabels == nil {
 		return nil, nil
 	}
 
-	// labels = [] means delete all labels
-	if len(plannedLabels) == 0 {
-		if err := r.deleteAllLabels(ctx, repositoryID); err != nil {
-			return nil, err
-		}
-		return []labelModel{}, nil
-	}
-
 	synced := make([]labelModel, 0, len(plannedLabels))
+	keptLabelIDs := make(map[string]struct{}, len(plannedLabels))
 
 	for _, planned := range plannedLabels {
 		name := planned.Name.ValueString()
 		id := planned.ID.ValueString()
 
-		// existing id means update the label
 		if id != "" {
 			if existing, ok := labelByID(priorLabels, id); ok {
 				if existing.Name.ValueString() != name {
@@ -91,25 +81,36 @@ func (r *repositoryResource) applyLabels(ctx context.Context, repositoryID strin
 					existing.Name = types.StringValue(name)
 				}
 				synced = append(synced, existing)
+				keptLabelIDs[id] = struct{}{}
 				continue
 			}
 		}
 
-		// create new label
+		// Terraform list planning can lose the computed id on shrink/reorder.
+		if existing, ok := labelByName(priorLabels, name); ok {
+			synced = append(synced, existing)
+			if existingID := existing.ID.ValueString(); existingID != "" {
+				keptLabelIDs[existingID] = struct{}{}
+			}
+			continue
+		}
+
 		created, err := r.createLabel(ctx, repositoryID, name)
 		if err != nil {
 			return nil, fmt.Errorf("creating label: %w", err)
 		}
 		synced = append(synced, created)
+		if createdID := created.ID.ValueString(); createdID != "" {
+			keptLabelIDs[createdID] = struct{}{}
+		}
 	}
 
-	// delete removed labels. Labels not existing in planned but existing in prior means they were deleted.
 	for _, prior := range priorLabels {
 		id := prior.ID.ValueString()
 		if id == "" {
 			continue
 		}
-		if _, ok := labelByID(plannedLabels, id); ok {
+		if _, ok := keptLabelIDs[id]; ok {
 			continue
 		}
 		if err := r.deleteLabel(ctx, repositoryID, id); err != nil {
@@ -123,6 +124,15 @@ func (r *repositoryResource) applyLabels(ctx context.Context, repositoryID strin
 func labelByID(labels []labelModel, id string) (labelModel, bool) {
 	for _, label := range labels {
 		if label.ID.ValueString() == id {
+			return label, true
+		}
+	}
+	return labelModel{}, false
+}
+
+func labelByName(labels []labelModel, name string) (labelModel, bool) {
+	for _, label := range labels {
+		if label.Name.ValueString() == name {
 			return label, true
 		}
 	}
@@ -180,25 +190,5 @@ func (r *repositoryResource) deleteLabel(ctx context.Context, repositoryID, labe
 		return fmt.Errorf("delete label %q: %w", labelID, err)
 	}
 
-	return nil
-}
-
-func (r *repositoryResource) deleteAllLabels(ctx context.Context, repositoryID string) error {
-	// fetch all labels from the repository. We cannot rely on the state.
-	// When deleting the labels entirely, the state will be empty and no id's will be present to delete.
-	details, err := r.getRepositoryDetails(ctx, repositoryID)
-	if err != nil {
-		return fmt.Errorf("reading labels: %w", err)
-	}
-
-	for _, label := range details.Labels {
-		id := label.ID.ValueString()
-		if id == "" {
-			continue
-		}
-		if err := r.deleteLabel(ctx, repositoryID, id); err != nil {
-			return fmt.Errorf("deleting label %q: %w", label.Name.ValueString(), err)
-		}
-	}
 	return nil
 }
