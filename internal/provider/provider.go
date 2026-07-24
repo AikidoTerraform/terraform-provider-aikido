@@ -41,7 +41,8 @@ func (p *aikidoProvider) Metadata(_ context.Context, _ provider.MetadataRequest,
 
 func (p *aikidoProvider) Schema(_ context.Context, _ provider.SchemaRequest, resp *provider.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Manage Aikido Security resources via the Aikido REST API.",
+		Description:         "Manage Aikido Security resources via the Aikido REST API.",
+		MarkdownDescription: "Manage [Aikido Security](https://www.aikido.dev/) resources via the [management API](https://apidocs.aikido.dev/).",
 		Attributes: map[string]schema.Attribute{
 			"client_id": schema.StringAttribute{
 				Optional:    true,
