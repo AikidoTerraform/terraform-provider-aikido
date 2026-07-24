@@ -46,10 +46,7 @@ resource "aikido_repository" "example" {
   sensitivity  = "sensitive"
   connectivity = "connected"
 
-  labels = [
-    { name = "payments" },
-    { name = "production" },
-  ]
+  labels = [ "payments", "production" ]
 }
 ```
 
