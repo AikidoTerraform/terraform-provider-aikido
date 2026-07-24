@@ -90,7 +90,7 @@ func TestConfigure_UpdatesConfig(t *testing.T) {
 		Sensitivity:  types.StringValue("sensitive"),
 		Connectivity: types.StringValue("connected"),
 	}
-	if _, err := res.setRepoConfig(context.Background(), plan, nil); err != nil {
+	if _, err := res.setRepoConfig(context.Background(), plan); err != nil {
 		t.Fatalf("configure: %v", err)
 	}
 
@@ -129,7 +129,7 @@ func TestConfigure_SkipsNullConfig(t *testing.T) {
 		Sensitivity:  types.StringNull(),
 		Connectivity: types.StringNull(),
 	}
-	if _, err := res.setRepoConfig(context.Background(), plan, nil); err != nil {
+	if _, err := res.setRepoConfig(context.Background(), plan); err != nil {
 		t.Fatalf("configure: %v", err)
 	}
 
@@ -166,10 +166,11 @@ func TestRead(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	res := &repositoryResource{client: client.New(srv.Client(), srv.URL)}
-	state, err := res.getRepositoryDetails(context.Background(), "1")
+	apiRepository, err := res.getRepositoryDetails(context.Background(), "1")
 	if err != nil {
 		t.Fatalf("read: %v", err)
 	}
+	state := repositoryModelFromAPI(apiRepository)
 	if state.ID.ValueString() != "1" || !state.Active.ValueBool() {
 		t.Errorf("unexpected state id/active: %+v", state)
 	}
