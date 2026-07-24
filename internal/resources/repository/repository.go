@@ -36,27 +36,29 @@ type repositoryResource struct {
 // repositoryModel is the Terraform state. IDs are strings by TF convention even
 // though the API uses integers.
 type repositoryModel struct {
-	ID             types.String `tfsdk:"id"`
-	Active         types.Bool   `tfsdk:"active"`
-	Sensitivity    types.String `tfsdk:"sensitivity"`
-	Connectivity   types.String `tfsdk:"connectivity"`
-	Name           types.String `tfsdk:"name"`
-	GitProvider    types.String `tfsdk:"git_provider"`
-	Branch         types.String `tfsdk:"branch"`
-	URL            types.String `tfsdk:"url"`
-	ExternalRepoID types.String `tfsdk:"external_repo_id"`
+	ID             types.String   `tfsdk:"id"`
+	Active         types.Bool     `tfsdk:"active"`
+	Sensitivity    types.String   `tfsdk:"sensitivity"`
+	Connectivity   types.String   `tfsdk:"connectivity"`
+	Name           types.String   `tfsdk:"name"`
+	GitProvider    types.String   `tfsdk:"git_provider"`
+	Branch         types.String   `tfsdk:"branch"`
+	URL            types.String   `tfsdk:"url"`
+	ExternalRepoID types.String   `tfsdk:"external_repo_id"`
+	Labels         []types.String `tfsdk:"labels"`
 }
 
 type repositoryAPI struct {
-	ID             int64  `json:"id"`
-	Name           string `json:"name"`
-	Provider       string `json:"provider"`
-	ExternalRepoID string `json:"external_repo_id"`
-	Active         bool   `json:"active"`
-	Branch         string `json:"branch"`
-	URL            string `json:"url"`
-	Connectivity   string `json:"connectivity"`
-	Sensitivity    string `json:"sensitivity"`
+	ID             int64      `json:"id"`
+	Name           string     `json:"name"`
+	Provider       string     `json:"provider"`
+	ExternalRepoID string     `json:"external_repo_id"`
+	Active         bool       `json:"active"`
+	Branch         string     `json:"branch"`
+	URL            string     `json:"url"`
+	Connectivity   string     `json:"connectivity"`
+	Sensitivity    string     `json:"sensitivity"`
+	Labels         []labelAPI `json:"labels"`
 }
 
 // Metadata sets the resource type name.
@@ -120,6 +122,7 @@ func (r *repositoryResource) Schema(_ context.Context, _ resource.SchemaRequest,
 				Computed:    true,
 				Description: "Repository ID from the Git provider.",
 			},
+			"labels": labelsSchemaAttribute(),
 		},
 	}
 }
@@ -164,7 +167,7 @@ func (r *repositoryResource) Read(ctx context.Context, request resource.ReadRequ
 		return
 	}
 
-	updatedState, err := r.read(ctx, priorState.ID.ValueString())
+	apiRepository, err := r.getRepositoryDetails(ctx, priorState.ID.ValueString())
 	if err != nil {
 		if client.NotFound(err) {
 			response.State.RemoveResource(ctx)
@@ -172,6 +175,11 @@ func (r *repositoryResource) Read(ctx context.Context, request resource.ReadRequ
 		}
 		response.Diagnostics.AddError("Error reading repository", err.Error())
 		return
+	}
+	updatedState := repositoryModelFromAPI(apiRepository)
+	// Labels omitted from config are unmanaged — don't import API labels into state.
+	if priorState.Labels == nil {
+		updatedState.Labels = nil
 	}
 	response.Diagnostics.Append(response.State.Set(ctx, updatedState)...)
 }
@@ -212,9 +220,7 @@ func (r *repositoryResource) ImportState(ctx context.Context, request resource.I
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), request, response)
 }
 
-// configure is shared by Create and Update because both do the same thing for this resource:
-// repos already exist in Aikido, so apply only sets active and optional config fields.
-// It pushes the planned values to the API, then re-reads the repo for the response state.
+// setRepoConfig is shared by Create and Update.
 func (r *repositoryResource) setRepoConfig(ctx context.Context, plannedRepository repositoryModel) (repositoryModel, error) {
 	repositoryID := plannedRepository.ID.ValueString()
 
@@ -234,7 +240,19 @@ func (r *repositoryResource) setRepoConfig(ctx context.Context, plannedRepositor
 		}
 	}
 
-	return r.read(ctx, repositoryID)
+	apiRepository, err := r.getRepositoryDetails(ctx, repositoryID)
+	if err != nil {
+		return repositoryModel{}, err
+	}
+
+	if err := r.applyLabels(ctx, repositoryID, plannedRepository.Labels, apiRepository.Labels); err != nil {
+		return repositoryModel{}, err
+	}
+
+	repositoryState := repositoryModelFromAPI(apiRepository)
+	repositoryState.Labels = plannedRepository.Labels
+
+	return repositoryState, nil
 }
 
 // setActive activates or deactivates the repository.
@@ -251,13 +269,17 @@ func (r *repositoryResource) setActive(ctx context.Context, repositoryID string,
 	return r.client.Do(ctx, "POST", endpoint, map[string]int64{"code_repo_id": codeRepoID}, nil)
 }
 
-// read reads the repository from the API into the state.
-func (r *repositoryResource) read(ctx context.Context, repositoryID string) (repositoryModel, error) {
+// getRepositoryDetails reads the repository (including label IDs) from the API.
+func (r *repositoryResource) getRepositoryDetails(ctx context.Context, repositoryID string) (repositoryAPI, error) {
 	var apiRepository repositoryAPI
 	if err := r.client.Do(ctx, "GET", basePath+"/"+repositoryID, nil, &apiRepository); err != nil {
-		return repositoryModel{}, err
+		return repositoryAPI{}, err
 	}
+	return apiRepository, nil
+}
 
+// repositoryModelFromAPI maps an API repository into a Terraform state model.
+func repositoryModelFromAPI(apiRepository repositoryAPI) repositoryModel {
 	repositoryState := repositoryModel{
 		ID:             types.StringValue(strconv.FormatInt(apiRepository.ID, 10)),
 		Active:         types.BoolValue(apiRepository.Active),
@@ -266,6 +288,7 @@ func (r *repositoryResource) read(ctx context.Context, repositoryID string) (rep
 		Branch:         types.StringValue(apiRepository.Branch),
 		URL:            types.StringValue(apiRepository.URL),
 		ExternalRepoID: types.StringValue(apiRepository.ExternalRepoID),
+		Labels:         labelNamesFromAPI(apiRepository.Labels),
 	}
 	if apiRepository.Sensitivity != "" {
 		repositoryState.Sensitivity = types.StringValue(apiRepository.Sensitivity)
@@ -277,5 +300,16 @@ func (r *repositoryResource) read(ctx context.Context, repositoryID string) (rep
 	} else {
 		repositoryState.Connectivity = types.StringNull()
 	}
-	return repositoryState, nil
+	return repositoryState
+}
+
+// labelNamesFromAPI maps API labels into Terraform state (names only).
+// Always returns a non-nil slice so a managed empty set differs from omitted (nil).
+func labelNamesFromAPI(apiLabels []labelAPI) []types.String {
+	names := make([]types.String, 0, len(apiLabels))
+	for _, apiLabel := range apiLabels {
+		names = append(names, types.StringValue(apiLabel.Name))
+	}
+
+	return names
 }

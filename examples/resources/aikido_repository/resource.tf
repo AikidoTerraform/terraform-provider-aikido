@@ -5,4 +5,6 @@ resource "aikido_repository" "example" {
 
   sensitivity  = "sensitive"
   connectivity = "connected"
+
+  labels = ["payments", "production"]
 }

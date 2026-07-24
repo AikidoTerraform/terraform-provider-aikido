@@ -53,6 +53,8 @@ resource "aikido_repository" "app" {
 
   sensitivity  = "sensitive"
   connectivity = "connected"
+
+  labels = [ "payments", "production"]
 }
 ```
 

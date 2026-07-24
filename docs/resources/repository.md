@@ -20,6 +20,8 @@ resource "aikido_repository" "example" {
 
   sensitivity  = "sensitive"
   connectivity = "connected"
+
+  labels = ["payments", "production"]
 }
 ```
 
@@ -34,6 +36,7 @@ resource "aikido_repository" "example" {
 ### Optional
 
 - `connectivity` (String) Whether the code runs on an internet-connected server. One of: connected, not_connected, unknown.
+- `labels` (Set of String) Label names managed by this resource. When set, Terraform creates/deletes labels to match. Omitting labels leaves Aikido labels untouched. An empty set deletes all labels currently on the repository.
 - `sensitivity` (String) Sensitivity level of the repository. One of: extreme, sensitive, normal, not_sensitive, no_data.
 
 ### Read-Only
