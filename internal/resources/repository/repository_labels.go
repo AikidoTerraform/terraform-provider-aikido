@@ -51,8 +51,12 @@ func (r *repositoryResource) applyLabels(ctx context.Context, repositoryID strin
 		}
 	}
 
-	// Delete existing labels that are no longer planned.
+	// Delete existing labels that are no longer planned. Imported labels are never deleted.
 	for _, label := range currentLabels {
+		if label.IsImported {
+			continue
+		}
+		
 		if slices.ContainsFunc(plannedLabels, func(p types.String) bool { return p.ValueString() == label.Name }) {
 			continue
 		}

@@ -230,10 +230,11 @@ func TestApplyLabels_CreatesAndDeletesByName(t *testing.T) {
 
 	res := &repositoryResource{client: client.New(srv.Client(), srv.URL)}
 	current := []labelAPI{
-		{ID: 10, Name: "payments"},
-		{ID: 11, Name: "production"},
+		{ID: 10, Name: "payments", IsImported: false},
+		{ID: 11, Name: "production", IsImported: false},
+		{ID: 12, Name: "imported", IsImported: true},
 	}
-	// Keep production, add billing, drop payments.
+	// Keep production, add billing, drop payments; imported stays even though unplanned.
 	plan := labelSet("production", "billing")
 	if err := res.applyLabels(context.Background(), "1", plan, current); err != nil {
 		t.Fatalf("applyLabels: %v", err)
