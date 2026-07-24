@@ -45,6 +45,7 @@ func (r *repositoryResource) applyLabels(ctx context.Context, repositoryID strin
 		if slices.ContainsFunc(currentLabels, func(l labelAPI) bool { return l.Name == name }) {
 			continue
 		}
+
 		if err := r.createLabel(ctx, repositoryID, name); err != nil {
 			return fmt.Errorf("creating label %q: %w", name, err)
 		}
@@ -55,6 +56,7 @@ func (r *repositoryResource) applyLabels(ctx context.Context, repositoryID strin
 		if slices.ContainsFunc(plannedLabels, func(p types.String) bool { return p.ValueString() == label.Name }) {
 			continue
 		}
+
 		if err := r.deleteLabel(ctx, repositoryID, strconv.FormatInt(label.ID, 10)); err != nil {
 			return fmt.Errorf("deleting label %q: %w", label.Name, err)
 		}

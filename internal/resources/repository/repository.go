@@ -251,6 +251,7 @@ func (r *repositoryResource) setRepoConfig(ctx context.Context, plannedRepositor
 
 	repositoryState := repositoryModelFromAPI(apiRepository)
 	repositoryState.Labels = plannedRepository.Labels
+
 	return repositoryState, nil
 }
 
@@ -309,5 +310,6 @@ func labelNamesFromAPI(apiLabels []labelAPI) []types.String {
 	for _, apiLabel := range apiLabels {
 		names = append(names, types.StringValue(apiLabel.Name))
 	}
+
 	return names
 }
