@@ -56,7 +56,7 @@ func (r *repositoryResource) applyLabels(ctx context.Context, repositoryID strin
 		if label.IsImported {
 			continue
 		}
-		
+
 		if slices.ContainsFunc(plannedLabels, func(p types.String) bool { return p.ValueString() == label.Name }) {
 			continue
 		}
