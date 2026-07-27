@@ -60,7 +60,8 @@ func (r *autofixSettingsResource) Schema(_ context.Context, _ resource.SchemaReq
 	response.Schema = schema.Schema{
 		Description: "Manages workspace Autofix settings for automatic AutoFix PR creation. " +
 			"When enabled is false, the API forces upgrade_type to none and dependency_repo_ids to an empty set. " +
-			"Repo ID sets are ignored when the corresponding scope is all or none.",
+			"When sast_autofix_type is none, the API may force sast_repos_scope to none and clear sast_repo_ids. " +
+			"Repo ID sets are ignored when the corresponding scope is all.",
 		Attributes: map[string]schema.Attribute{
 			"enabled": schema.BoolAttribute{
 				Required:    true,
@@ -83,17 +84,16 @@ func (r *autofixSettingsResource) Schema(_ context.Context, _ resource.SchemaReq
 			},
 			"dependency_repos_scope": schema.StringAttribute{
 				Required: true,
-				Description: "Scope of the dependency (libraries) autofix. One of: all, selected, none. " +
+				Description: "Scope of the dependency (libraries) autofix. One of: all, selected. " +
 					"Ignored when enabled is false.",
 				Validators: []validator.String{
-					stringvalidator.OneOf("all", "selected", "none"),
+					stringvalidator.OneOf("all", "selected"),
 				},
 			},
 			"dependency_repo_ids": schema.SetAttribute{
 				Required:    true,
 				ElementType: types.Int64Type,
 				Description: "Code repository IDs for dependency (libraries) autofix. " +
-					"Ignored when dependency_repos_scope is all or none. " +
 					"Ignored when enabled is false (API forces an empty set).",
 			},
 			"use_aikido_library_for_major": schema.BoolAttribute{
@@ -117,16 +117,18 @@ func (r *autofixSettingsResource) Schema(_ context.Context, _ resource.SchemaReq
 				},
 			},
 			"sast_repos_scope": schema.StringAttribute{
-				Required:    true,
-				Description: "Scope of the SAST & IaC autofix. One of: all, selected, none.",
+				Required: true,
+				Description: "Scope of the SAST & IaC autofix. One of: all, selected. " +
+					"Ignored when sast_autofix_type is none.",
 				Validators: []validator.String{
-					stringvalidator.OneOf("all", "selected", "none"),
+					stringvalidator.OneOf("all", "selected"),
 				},
 			},
 			"sast_repo_ids": schema.SetAttribute{
 				Required:    true,
 				ElementType: types.Int64Type,
-				Description: "Code repository IDs for SAST & IaC autofix. Ignored when sast_repos_scope is all or none.",
+				Description: "Code repository IDs for SAST & IaC autofix. " +
+					"Ignored when sast_autofix_type is none.",
 			},
 		},
 	}
@@ -214,6 +216,9 @@ func (r *autofixSettingsResource) Delete(ctx context.Context, request resource.D
 		"sast_autofix_type":            priorState.SastAutofixType.ValueString(),
 		"sast_repos_scope":             priorState.SastReposScope.ValueString(),
 		"sast_repo_ids":                normalizeIDs(priorState.SastRepoIDs),
+		"dependency_repo_ids":          normalizeIDs(priorState.DependencyRepoIDs),
+		"dependency_repos_scope":       priorState.DependencyReposScope.ValueString(),
+		"upgrade_type":                 priorState.UpgradeType.ValueString(),
 	}
 
 	if err := r.client.Do(ctx, "PUT", basePath, body, nil); err != nil && !client.NotFound(err) {
@@ -238,19 +243,24 @@ func (r *autofixSettingsResource) applySettings(ctx context.Context, planned aut
 
 	state := modelFromAPI(apiSettings)
 
-	// write known planned values to state. This is required because the API
+	// Write known planned values to state. This is required because the API
 	// silently REWRITES fields (e.g. enabled=false forces upgrade_type to
-	// "none" and dependency_repo_ids to []). If we stored those rewritten
-	// values while the plan promised the config values, Terraform would fail
-	// the apply with "provider produced inconsistent result".
+	// "none" and dependency_repo_ids to []; sast_autofix_type=none forces
+	// sast_repos_scope to "none" and clear sast_repo_ids). If we stored those
+	// rewritten values while the plan promised the config values, Terraform
+	// would fail the apply with "provider produced inconsistent result".
 	if !planned.UpgradeType.IsUnknown() {
 		state.UpgradeType = planned.UpgradeType
 	}
 	if !planned.DependencyReposScope.IsUnknown() {
 		state.DependencyReposScope = planned.DependencyReposScope
 	}
+	if !planned.SastReposScope.IsUnknown() {
+		state.SastReposScope = planned.SastReposScope
+	}
 
 	state.DependencyRepoIDs = normalizeIDs(planned.DependencyRepoIDs)
+	state.SastRepoIDs = normalizeIDs(planned.SastRepoIDs)
 
 	return state, diags
 }

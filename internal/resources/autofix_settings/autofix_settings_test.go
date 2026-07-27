@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	"github.com/aikido/terraform-provider-aikido/internal/client"
+	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
@@ -86,6 +88,8 @@ func TestGetAutofixSettings_Error(t *testing.T) {
 }
 
 func TestModelFromAPI(t *testing.T) {
+	// API may still return sast_repos_scope "none" when sast_autofix_type is none,
+	// even though Terraform config only allows all/selected.
 	state := modelFromAPI(autofixSettingsAPI{
 		Enabled:                  true,
 		UpgradeType:              "none",
@@ -94,8 +98,8 @@ func TestModelFromAPI(t *testing.T) {
 		UseAikidoLibraryForMajor: true,
 		PentestAutofixType:       "critical_and_high_only",
 		SastAutofixType:          "none",
-		SastReposScope:           "all",
-		SastRepoIDs:              []int64{8, 9},
+		SastReposScope:           "none",
+		SastRepoIDs:              []int64{},
 	})
 
 	if !state.Enabled.ValueBool() {
@@ -119,10 +123,10 @@ func TestModelFromAPI(t *testing.T) {
 	if state.SastAutofixType.ValueString() != "none" {
 		t.Errorf("sast_autofix_type = %s", state.SastAutofixType.ValueString())
 	}
-	if state.SastReposScope.ValueString() != "all" {
+	if state.SastReposScope.ValueString() != "none" {
 		t.Errorf("sast_repos_scope = %s", state.SastReposScope.ValueString())
 	}
-	if !reflect.DeepEqual(state.SastRepoIDs, []int64{8, 9}) {
+	if !reflect.DeepEqual(state.SastRepoIDs, []int64{}) {
 		t.Errorf("sast_repo_ids = %#v", state.SastRepoIDs)
 	}
 }
@@ -216,7 +220,8 @@ func TestApplySettings_EchoesPlannedWhenAPIRewrites(t *testing.T) {
 			}
 			_, _ = io.WriteString(w, `{"success":1}`)
 		case http.MethodGet:
-			// API silently forces these when enabled=false.
+			// API silently forces dependency fields when enabled=false, and
+			// SAST scope/IDs when sast_autofix_type is none.
 			_, _ = io.WriteString(w, `{
 				"settings": {
 					"enabled": false,
@@ -225,9 +230,9 @@ func TestApplySettings_EchoesPlannedWhenAPIRewrites(t *testing.T) {
 					"dependency_repo_ids": [],
 					"use_aikido_library_for_major": true,
 					"pentest_autofix_type": "all",
-					"sast_autofix_type": "critical_issues_only",
-					"sast_repos_scope": "selected",
-					"sast_repo_ids": [30, 40]
+					"sast_autofix_type": "none",
+					"sast_repos_scope": "none",
+					"sast_repo_ids": []
 				}
 			}`)
 		default:
@@ -242,6 +247,9 @@ func TestApplySettings_EchoesPlannedWhenAPIRewrites(t *testing.T) {
 	planned.UpgradeType = types.StringValue("critical_and_high_only")
 	planned.DependencyReposScope = types.StringValue("selected")
 	planned.DependencyRepoIDs = []int64{10, 20}
+	planned.SastAutofixType = types.StringValue("none")
+	planned.SastReposScope = types.StringValue("selected")
+	planned.SastRepoIDs = []int64{30, 40}
 
 	res := &autofixSettingsResource{client: client.New(srv.Client(), srv.URL)}
 	state, diags := res.applySettings(context.Background(), planned)
@@ -254,6 +262,9 @@ func TestApplySettings_EchoesPlannedWhenAPIRewrites(t *testing.T) {
 	}
 	if putBody["upgrade_type"] != "critical_and_high_only" {
 		t.Errorf("PUT upgrade_type = %#v", putBody["upgrade_type"])
+	}
+	if putBody["sast_repos_scope"] != "selected" {
+		t.Errorf("PUT sast_repos_scope = %#v", putBody["sast_repos_scope"])
 	}
 
 	// State must keep planned values for fields the API rewrites, so Terraform
@@ -270,8 +281,14 @@ func TestApplySettings_EchoesPlannedWhenAPIRewrites(t *testing.T) {
 	if !reflect.DeepEqual(state.DependencyRepoIDs, []int64{10, 20}) {
 		t.Errorf("dependency_repo_ids = %#v, want planned [10 20]", state.DependencyRepoIDs)
 	}
+	if state.SastReposScope.ValueString() != "selected" {
+		t.Errorf("sast_repos_scope = %s, want planned value", state.SastReposScope.ValueString())
+	}
+	if !reflect.DeepEqual(state.SastRepoIDs, []int64{30, 40}) {
+		t.Errorf("sast_repo_ids = %#v, want planned [30 40]", state.SastRepoIDs)
+	}
 	// Non-rewritten fields come from the API refresh.
-	if state.SastAutofixType.ValueString() != "critical_issues_only" {
+	if state.SastAutofixType.ValueString() != "none" {
 		t.Errorf("sast_autofix_type = %s", state.SastAutofixType.ValueString())
 	}
 }
@@ -305,6 +322,7 @@ func TestApplySettings_UsesAPIWhenPlannedUnknown(t *testing.T) {
 	planned := testPlanned()
 	planned.UpgradeType = types.StringUnknown()
 	planned.DependencyReposScope = types.StringUnknown()
+	planned.SastReposScope = types.StringUnknown()
 
 	res := &autofixSettingsResource{client: client.New(srv.Client(), srv.URL)}
 	state, diags := res.applySettings(context.Background(), planned)
@@ -318,9 +336,15 @@ func TestApplySettings_UsesAPIWhenPlannedUnknown(t *testing.T) {
 	if state.DependencyReposScope.ValueString() != "all" {
 		t.Errorf("dependency_repos_scope = %s, want API value", state.DependencyReposScope.ValueString())
 	}
+	if state.SastReposScope.ValueString() != "all" {
+		t.Errorf("sast_repos_scope = %s, want API value", state.SastReposScope.ValueString())
+	}
 	// Required set attributes are always known; planned IDs are echoed.
 	if !reflect.DeepEqual(state.DependencyRepoIDs, []int64{10, 20}) {
 		t.Errorf("dependency_repo_ids = %#v, want planned", state.DependencyRepoIDs)
+	}
+	if !reflect.DeepEqual(state.SastRepoIDs, []int64{30, 40}) {
+		t.Errorf("sast_repo_ids = %#v, want planned", state.SastRepoIDs)
 	}
 }
 
@@ -360,6 +384,100 @@ func TestApplySettings_GETErrorAfterPUT(t *testing.T) {
 	_, diags := res.applySettings(context.Background(), testPlanned())
 	if !diags.HasError() {
 		t.Fatal("expected diagnostics error on GET failure")
+	}
+}
+
+func TestDelete_DisablesWithPriorState(t *testing.T) {
+	var putBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPut || r.URL.Path != basePath {
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		defer r.Body.Close()
+		if err := json.NewDecoder(r.Body).Decode(&putBody); err != nil {
+			t.Errorf("decoding PUT body: %v", err)
+		}
+		_, _ = io.WriteString(w, `{"success":1}`)
+	}))
+	t.Cleanup(srv.Close)
+
+	ctx := context.Background()
+	res := &autofixSettingsResource{client: client.New(srv.Client(), srv.URL)}
+
+	var schemaResp resource.SchemaResponse
+	res.Schema(ctx, resource.SchemaRequest{}, &schemaResp)
+
+	state := tfsdk.State{Schema: schemaResp.Schema}
+	diags := state.Set(ctx, testPlanned())
+	if diags.HasError() {
+		t.Fatalf("state.Set: %v", diags)
+	}
+
+	var resp resource.DeleteResponse
+	res.Delete(ctx, resource.DeleteRequest{State: state}, &resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("Delete: %v", resp.Diagnostics)
+	}
+
+	want := map[string]any{
+		"enabled":                      false,
+		"use_aikido_library_for_major": true,
+		"pentest_autofix_type":         "all",
+		"sast_autofix_type":            "critical_issues_only",
+		"sast_repos_scope":             "selected",
+		"sast_repo_ids":                []any{float64(30), float64(40)},
+		"dependency_repo_ids":          []any{float64(10), float64(20)},
+		"dependency_repos_scope":       "selected",
+		"upgrade_type":                 "critical_and_high_only",
+	}
+	if putBody["enabled"] != false {
+		t.Errorf("enabled = %#v, want false", putBody["enabled"])
+	}
+	for _, key := range []string{
+		"upgrade_type",
+		"dependency_repos_scope",
+		"use_aikido_library_for_major",
+		"pentest_autofix_type",
+		"sast_autofix_type",
+		"sast_repos_scope",
+	} {
+		if putBody[key] != want[key] {
+			t.Errorf("%s = %#v, want %#v", key, putBody[key], want[key])
+		}
+	}
+	if !reflect.DeepEqual(putBody["dependency_repo_ids"], want["dependency_repo_ids"]) {
+		t.Errorf("dependency_repo_ids = %#v, want %#v", putBody["dependency_repo_ids"], want["dependency_repo_ids"])
+	}
+	if !reflect.DeepEqual(putBody["sast_repo_ids"], want["sast_repo_ids"]) {
+		t.Errorf("sast_repo_ids = %#v, want %#v", putBody["sast_repo_ids"], want["sast_repo_ids"])
+	}
+}
+
+func TestDelete_IgnoresNotFound(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = io.WriteString(w, "missing")
+	}))
+	t.Cleanup(srv.Close)
+
+	ctx := context.Background()
+	res := &autofixSettingsResource{client: client.New(srv.Client(), srv.URL)}
+
+	var schemaResp resource.SchemaResponse
+	res.Schema(ctx, resource.SchemaRequest{}, &schemaResp)
+
+	state := tfsdk.State{Schema: schemaResp.Schema}
+	diags := state.Set(ctx, testPlanned())
+	if diags.HasError() {
+		t.Fatalf("state.Set: %v", diags)
+	}
+
+	var resp resource.DeleteResponse
+	res.Delete(ctx, resource.DeleteRequest{State: state}, &resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("Delete should ignore 404, got: %v", resp.Diagnostics)
 	}
 }
 

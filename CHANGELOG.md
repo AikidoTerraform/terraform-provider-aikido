@@ -8,4 +8,4 @@ NOTES:
 FEATURES:
 
 * **New Resource:** `aikido_repository` — manages an existing Aikido code repository by ID. Apply activates/deactivates and optionally sets `sensitivity` and `connectivity`; destroy deactivates the repo (it is never created or deleted in Aikido/SCM).
-* **New Resource:** `aikido_autofix_settings` — manages workspace-wide Autofix settings (automatic AutoFix PR creation). All attributes are required; uses `*_repos_scope` (`all` / `selected` / `none`) with `*_repo_ids` sets. Destroy disables automatic PR creation.
+* **New Resource:** `aikido_autofix_settings` — manages workspace-wide Autofix settings (automatic AutoFix PR creation). All attributes are required; uses `*_repos_scope` (`all` / `selected`) with `*_repo_ids` sets. Destroy disables automatic PR creation.

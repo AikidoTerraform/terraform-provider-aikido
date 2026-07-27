@@ -3,14 +3,14 @@
 page_title: "Aikido Autofix Settings"
 subcategory: ""
 description: |-
-  Manages workspace Autofix settings for automatic AutoFix PR creation. When enabled is false, the API forces upgrade_type to none and dependency_repo_ids to an empty set. Repo ID sets are ignored when the corresponding scope is all or none.
+  Manages workspace Autofix settings for automatic AutoFix PR creation. When enabled is false, the API forces upgrade_type to none and dependency_repo_ids to an empty set. When sast_autofix_type is none, the API may force sast_repos_scope to none and clear sast_repo_ids. Repo ID sets are ignored when the corresponding scope is all.
 ---
 
 # aikido_autofix_settings (Resource)
 
-Manages workspace Autofix settings for automatic AutoFix PR creation. When enabled is false, the API forces upgrade_type to none and dependency_repo_ids to an empty set. Repo ID sets are ignored when the corresponding scope is all or none.
+Manages workspace Autofix settings for automatic AutoFix PR creation. When enabled is false, the API forces upgrade_type to none and dependency_repo_ids to an empty set. When sast_autofix_type is none, the API may force sast_repos_scope to none and clear sast_repo_ids. Repo ID sets are ignored when the corresponding scope is all.
 
-There is exactly one Autofix settings object per workspace, so define this resource at most once. All attributes are required. Use `dependency_repos_scope` / `sast_repos_scope` (`all`, `selected`, or `none`) with the matching `*_repo_ids` sets. When scope is `all` or `none`, the ID set is ignored (use `[]`). When `enabled` is `false`, the API ignores dependency fields.
+There is exactly one Autofix settings object per workspace, so define this resource at most once. All attributes are required. Use `dependency_repos_scope` / `sast_repos_scope` (`all` or `selected`) with the matching `*_repo_ids` sets. When scope is `all`, the ID set is ignored (use `[]`). When `enabled` is `false`, the API ignores dependency fields. When `sast_autofix_type` is `none`, the API may ignore SAST scope and repo IDs.
 
 ## Example Usage
 
@@ -39,12 +39,12 @@ resource "aikido_autofix_settings" "this" {
 
 ### Required
 
-- `dependency_repo_ids` (Set of Number) Code repository IDs for dependency (libraries) autofix. Ignored when dependency_repos_scope is all or none. Ignored when enabled is false (API forces an empty set).
-- `dependency_repos_scope` (String) Scope of the dependency (libraries) autofix. One of: all, selected, none. Ignored when enabled is false.
+- `dependency_repo_ids` (Set of Number) Code repository IDs for dependency (libraries) autofix. Ignored when enabled is false (API forces an empty set).
+- `dependency_repos_scope` (String) Scope of the dependency (libraries) autofix. One of: all, selected. Ignored when enabled is false.
 - `enabled` (Boolean) Whether automatic AutoFix PR creation is enabled.
 - `pentest_autofix_type` (String) Severity filter for Pentest & AI Code Analysis autofix. Use none to disable. One of: all, critical_and_high_only, none.
 - `sast_autofix_type` (String) Severity filter for SAST & IaC autofix. Use none to disable. One of: critical_issues_only, critical_and_high_only, all, none.
-- `sast_repo_ids` (Set of Number) Code repository IDs for SAST & IaC autofix. Ignored when sast_repos_scope is all or none.
-- `sast_repos_scope` (String) Scope of the SAST & IaC autofix. One of: all, selected, none.
+- `sast_repo_ids` (Set of Number) Code repository IDs for SAST & IaC autofix. Ignored when sast_autofix_type is none.
+- `sast_repos_scope` (String) Scope of the SAST & IaC autofix. One of: all, selected. Ignored when sast_autofix_type is none.
 - `upgrade_type` (String) Dependency (libraries) upgrade types to autofix. Use none to disable dependency autofix. Ignored when enabled is false (API forces none). One of: upgrade_all_packages, minor_and_patch_versions_only, critical_issues_only, critical_and_high_only, none.
 - `use_aikido_library_for_major` (Boolean) Use Aikido Libraries to avoid major upgrades when available.
