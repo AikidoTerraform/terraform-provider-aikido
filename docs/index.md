@@ -5,9 +5,9 @@ description: |-
   Manage Aikido Security resources via the Aikido REST API.
 ---
 
-# aikido Provider
+# Aikido Provider
 
-Manage Aikido Security resources via the Aikido REST API.
+Manage [Aikido Security](https://www.aikido.dev/) resources via the [management API](https://apidocs.aikido.dev/).
 
 ## Example Usage
 

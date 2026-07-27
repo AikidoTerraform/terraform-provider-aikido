@@ -56,6 +56,21 @@ resource "aikido_repository" "app" {
 
   labels = [ "payments", "production"]
 }
+
+resource "aikido_autofix_settings" "this" {
+  enabled = true
+
+  upgrade_type                 = "critical_and_high_only"
+  dependency_repos_scope       = "all"
+  dependency_repo_ids          = []
+  use_aikido_library_for_major = true
+
+  pentest_autofix_type = "critical_and_high_only"
+
+  sast_autofix_type = "critical_and_high_only"
+  sast_repos_scope  = "selected"
+  sast_repo_ids     = [123, 456]
+}
 ```
 
 ## Documentation

@@ -10,6 +10,7 @@ These are **fragments**, not a complete root module by themselves. Combine the p
 |------|---------|
 | [`provider/provider.tf`](provider/provider.tf) | `required_providers` + `provider "aikido"` block |
 | [`resources/aikido_repository/resource.tf`](resources/aikido_repository/resource.tf) | `aikido_repository` resource |
+| [`resources/aikido_autofix_settings/resource.tf`](resources/aikido_autofix_settings/resource.tf) | `aikido_autofix_settings` resource |
 
 ## Prerequisites
 
@@ -46,7 +47,23 @@ resource "aikido_repository" "example" {
   sensitivity  = "sensitive"
   connectivity = "connected"
 
-  labels = [ "payments", "production" ]
+  labels = ["payments", "production"]
+}
+
+# Optional: workspace-wide Autofix settings (at most one per workspace).
+resource "aikido_autofix_settings" "this" {
+  enabled = true
+
+  upgrade_type                 = "critical_and_high_only"
+  dependency_repos_scope       = "all"
+  dependency_repo_ids          = []
+  use_aikido_library_for_major = true
+
+  pentest_autofix_type = "critical_and_high_only"
+
+  sast_autofix_type = "critical_and_high_only"
+  sast_repos_scope  = "selected"
+  sast_repo_ids     = [123, 456]
 }
 ```
 
@@ -64,5 +81,6 @@ Prefer env vars for credentials so secrets are not committed. The provider block
 
 - `aikido_repository` configures an **existing** code repository by ID. It does not create the repo in your SCM.
 - `labels` is optional. When set, labels are fully managed from Terraform state. Omitting `labels` leaves Aikido labels untouched; `labels = []` fetches current labels from Aikido and deletes them.
+- `aikido_autofix_settings` manages the single **workspace-wide** Autofix settings object; define it at most once. All attributes are required. Set `dependency_repos_scope` / `sast_repos_scope` to `all`, `selected`, or `none`, and pass matching `dependency_repo_ids` / `sast_repo_ids` sets (ignored when scope is `all` or `none`; use `[]`). When `enabled` is `false`, the API ignores dependency fields (`upgrade_type` → `none`, `dependency_repo_ids` → `[]`). Destroying the resource disables automatic AutoFix PR creation.
 - After changing provider Go code locally, re-run `make install` before `terraform apply`.
 - Full local/staging setup: [`README.dev.md`](../README.dev.md)
