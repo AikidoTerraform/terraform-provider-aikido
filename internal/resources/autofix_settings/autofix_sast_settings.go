@@ -304,7 +304,6 @@ func mergeSastAPIAndPrior(api sastSettingsAPI, prior *sastModel) *sastModel {
 
 	return state
 }
-}
 
 func normalizeIDs(ids []int64) []int64 {
 	if ids == nil {
