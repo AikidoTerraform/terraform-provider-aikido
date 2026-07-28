@@ -133,7 +133,17 @@ resource "aikido_repository" "example" {
 
   labels = [ "payments", "production" ]
 }
+
+resource "aikido_autofix_dependency_settings" "example" {
+  enabled                      = true
+  upgrade_type                 = "critical_and_high_only"
+  repos_scope                  = "all"
+  repo_ids                     = []
+  use_aikido_library_for_major = true
+}
 ```
+
+`aikido_autofix_dependency_settings` is workspace-wide and should be declared at most once.
 
 You can also start from [`examples/`](examples/) (`provider/` + `resources/aikido_repository/`), but wire credentials via env vars rather than committing them.
 
