@@ -1,7 +1,7 @@
 # Manages the workspace-wide Autofix settings (automatic AutoFix PR creation).
 # There is exactly one settings object per workspace; destroying this resource
 # disables automatic PR creation.
-resource "aikido_autofix_settings" "this" {
+resource "aikido_autofix_settings" "test-workspace" {
   enabled = true
 
   upgrade_type                 = "critical_and_high_only"

@@ -51,7 +51,7 @@ resource "aikido_repository" "example" {
 }
 
 # Optional: workspace-wide Autofix settings (at most one per workspace).
-resource "aikido_autofix_settings" "this" {
+resource "aikido_autofix_settings" "test-workspace" {
   enabled = true
 
   upgrade_type                 = "critical_and_high_only"

@@ -7,6 +7,7 @@ import (
 	"github.com/aikido/terraform-provider-aikido/internal/client"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -14,10 +15,12 @@ import (
 )
 
 const basePath = "/public/v1/repositories/autofix/settings"
+const autofixSettingsResourceID = "autofix_settings"
 
 var (
-	_ resource.Resource              = &autofixSettingsResource{}
-	_ resource.ResourceWithConfigure = &autofixSettingsResource{}
+	_ resource.Resource                = &autofixSettingsResource{}
+	_ resource.ResourceWithImportState = &autofixSettingsResource{}
+	_ resource.ResourceWithConfigure   = &autofixSettingsResource{}
 )
 
 func NewResource() resource.Resource {
@@ -29,6 +32,7 @@ type autofixSettingsResource struct {
 }
 
 type autofixSettingsModel struct {
+	ID                       types.String `tfsdk:"id"`
 	Enabled                  types.Bool   `tfsdk:"enabled"`
 	UpgradeType              types.String `tfsdk:"upgrade_type"`
 	DependencyReposScope     types.String `tfsdk:"dependency_repos_scope"`
@@ -63,6 +67,10 @@ func (r *autofixSettingsResource) Schema(_ context.Context, _ resource.SchemaReq
 			"When sast_autofix_type is none, the API may force sast_repos_scope to none and clear sast_repo_ids and disables automatic SAST autofix PR creation. " +
 			"Repo ID sets are ignored when the corresponding scope is all.",
 		Attributes: map[string]schema.Attribute{
+			"id": schema.StringAttribute{
+				Computed:    true,
+				Description: "Workspace name Autofix settings identifier.",
+			},
 			"enabled": schema.BoolAttribute{
 				Required:    true,
 				Description: "Whether automatic dependency AutoFix PR creation is enabled.",
@@ -232,6 +240,11 @@ func (r *autofixSettingsResource) Delete(ctx context.Context, request resource.D
 	}
 }
 
+// ImportState lets users adopt existing workspace Autofix settings into state.
+func (r *autofixSettingsResource) ImportState(ctx context.Context, request resource.ImportStateRequest, response *resource.ImportStateResponse) {
+	resource.ImportStatePassthroughID(ctx, path.Root("id"), request, response)
+}
+
 // applySettings upserts the planned config and updates state.
 func (r *autofixSettingsResource) applySettings(ctx context.Context, planned autofixSettingsModel) (autofixSettingsModel, diag.Diagnostics) {
 	var diags diag.Diagnostics
@@ -248,6 +261,7 @@ func (r *autofixSettingsResource) applySettings(ctx context.Context, planned aut
 	}
 
 	state := mapApiResponseToStateModel(apiSettings)
+	state.ID = types.StringValue(autofixSettingsResourceID)
 
 	// Prefer the plan over the GET response for fields the API may rewrite
 	// when they are unused (e.g. enabled=false → upgrade_type "none" and empty
@@ -307,6 +321,7 @@ func constructBody(planned autofixSettingsModel) map[string]any {
 
 func mapApiResponseToStateModel(api autofixSettingsAPI) autofixSettingsModel {
 	return autofixSettingsModel{
+		ID:                       types.StringValue(autofixSettingsResourceID),
 		Enabled:                  types.BoolValue(api.Enabled),
 		UpgradeType:              types.StringValue(api.UpgradeType),
 		DependencyReposScope:     types.StringValue(api.DependencyReposScope),

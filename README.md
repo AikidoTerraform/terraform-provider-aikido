@@ -57,7 +57,7 @@ resource "aikido_repository" "app" {
   labels = [ "payments", "production"]
 }
 
-resource "aikido_autofix_settings" "this" {
+resource "aikido_autofix_settings" "test-workspace" {
   enabled = true
 
   upgrade_type                 = "critical_and_high_only"

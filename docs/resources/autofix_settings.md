@@ -18,7 +18,7 @@ There is exactly one Autofix settings object per workspace, so define this resou
 # Manages the workspace-wide Autofix settings (automatic AutoFix PR creation).
 # There is exactly one settings object per workspace; destroying this resource
 # disables automatic PR creation.
-resource "aikido_autofix_settings" "this" {
+resource "aikido_autofix_settings" "test-workspace" {
   enabled = true
 
   upgrade_type                 = "critical_and_high_only"
@@ -48,3 +48,19 @@ resource "aikido_autofix_settings" "this" {
 - `sast_repos_scope` (String) Scope of the SAST & IaC autofix. One of: all, selected. Ignored when sast_autofix_type is none.
 - `upgrade_type` (String) Dependency (libraries) upgrade types to autofix. Use none to disable dependency autofix. Ignored when enabled is false (API forces none). One of: upgrade_all_packages, minor_and_patch_versions_only, critical_issues_only, critical_and_high_only, none.
 - `use_aikido_library_for_major` (Boolean) Use Aikido Libraries to avoid major upgrades when available.
+
+### Read-Only
+
+- `id` (String) Workspace-wide Autofix settings identifier.
+
+## Import
+
+Import is supported using the following syntax:
+
+The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
+
+```shell
+# There is a single Autofix settings object per workspace.
+# Use the fixed singleton identifier.
+terraform import aikido_autofix_settings.workspace autofix_settings
+```
