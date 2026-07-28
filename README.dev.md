@@ -133,7 +133,14 @@ resource "aikido_repository" "example" {
 
   labels = [ "payments", "production" ]
 }
+
+resource "aikido_autofix_pentest_settings" "example" {
+  enabled      = true
+  autofix_type = "critical_and_high_only"
+}
 ```
+
+`aikido_autofix_pentest_settings` is workspace-wide and should be declared at most once.
 
 You can also start from [`examples/`](examples/) (`provider/` + `resources/aikido_repository/`), but wire credentials via env vars rather than committing them.
 

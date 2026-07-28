@@ -10,6 +10,7 @@ These are **fragments**, not a complete root module by themselves. Combine the p
 |------|---------|
 | [`provider/provider.tf`](provider/provider.tf) | `required_providers` + `provider "aikido"` block |
 | [`resources/aikido_repository/resource.tf`](resources/aikido_repository/resource.tf) | `aikido_repository` resource |
+| [`resources/aikido_autofix_pentest_settings/resource.tf`](resources/aikido_autofix_pentest_settings/resource.tf) | `aikido_autofix_pentest_settings` resource |
 
 ## Prerequisites
 
@@ -48,6 +49,11 @@ resource "aikido_repository" "example" {
 
   labels = [ "payments", "production" ]
 }
+
+resource "aikido_autofix_pentest_settings" "example" {
+  enabled      = true
+  autofix_type = "critical_and_high_only"
+}
 ```
 
 Then:
@@ -64,5 +70,6 @@ Prefer env vars for credentials so secrets are not committed. The provider block
 
 - `aikido_repository` configures an **existing** code repository by ID. It does not create the repo in your SCM.
 - `labels` is optional. When set, labels are fully managed from Terraform state. Omitting `labels` leaves Aikido labels untouched; `labels = []` fetches current labels from Aikido and deletes them.
+- `aikido_autofix_pentest_settings` manages the single **workspace-wide** Pentest & AI Code Analysis Autofix settings object; define it at most once. When `enabled` is `false`, other fields are ignored. Destroying the resource disables automatic pentest AutoFix PR creation.
 - After changing provider Go code locally, re-run `make install` before `terraform apply`.
 - Full local/staging setup: [`README.dev.md`](../README.dev.md)

@@ -56,7 +56,14 @@ resource "aikido_repository" "app" {
 
   labels = [ "payments", "production"]
 }
+
+resource "aikido_autofix_pentest_settings" "example" {
+  enabled      = true
+  autofix_type = "critical_and_high_only"
+}
 ```
+
+`aikido_autofix_pentest_settings` manages the workspace-wide Pentest & AI Code Analysis Autofix settings object. Destroying the resource disables automatic pentest AutoFix PR creation.
 
 ## Documentation
 
