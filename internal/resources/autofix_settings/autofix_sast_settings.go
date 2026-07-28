@@ -277,25 +277,33 @@ func applySastPlanOverrides(state *sastModel, planned *sastModel) {
 
 func mergeSastAPIAndPrior(api sastSettingsAPI, prior *sastModel) *sastModel {
 	state := mapSastAPIToModel(api)
-	if prior == nil {
+
+	if !api.Enabled {
+		state.AutofixType = types.StringNull()
+		state.ReposScope = types.StringNull()
+		state.RepoIDs = []int64{}
+
+		if prior != nil {
+			if !prior.AutofixType.IsNull() && !prior.AutofixType.IsUnknown() {
+				state.AutofixType = prior.AutofixType
+			}
+
+			if !prior.ReposScope.IsNull() && !prior.ReposScope.IsUnknown() {
+				state.ReposScope = prior.ReposScope
+			}
+
+			state.RepoIDs = normalizeIDs(prior.RepoIDs)
+		}
+
 		return state
 	}
 
-	if !api.Enabled {
-		if !prior.AutofixType.IsNull() && !prior.AutofixType.IsUnknown() {
-			state.AutofixType = prior.AutofixType
-		}
-
-		if !prior.ReposScope.IsNull() && !prior.ReposScope.IsUnknown() {
-			state.ReposScope = prior.ReposScope
-		}
-
-		state.RepoIDs = normalizeIDs(prior.RepoIDs)
-	} else if api.ReposScope == "all" {
+	if api.ReposScope == "all" && prior != nil {
 		state.RepoIDs = normalizeIDs(prior.RepoIDs)
 	}
 
 	return state
+}
 }
 
 func normalizeIDs(ids []int64) []int64 {
