@@ -59,13 +59,13 @@ func (r *autofixSettingsResource) Metadata(_ context.Context, request resource.M
 func (r *autofixSettingsResource) Schema(_ context.Context, _ resource.SchemaRequest, response *resource.SchemaResponse) {
 	response.Schema = schema.Schema{
 		Description: "Manages workspace Autofix settings for automatic AutoFix PR creation. " +
-			"When enabled is false, the API forces upgrade_type to none and dependency_repo_ids to an empty set. " +
-			"When sast_autofix_type is none, the API may force sast_repos_scope to none and clear sast_repo_ids. " +
+			"When enabled is false, the API forces upgrade_type to none and dependency_repo_ids to an empty set and disables automatic depdendency autofix PR creation. " +
+			"When sast_autofix_type is none, the API may force sast_repos_scope to none and clear sast_repo_ids and disables automatic SAST autofix PR creation. " +
 			"Repo ID sets are ignored when the corresponding scope is all.",
 		Attributes: map[string]schema.Attribute{
 			"enabled": schema.BoolAttribute{
 				Required:    true,
-				Description: "Whether automatic AutoFix PR creation is enabled.",
+				Description: "Whether automatic dependency AutoFix PR creation is enabled.",
 			},
 			"upgrade_type": schema.StringAttribute{
 				Required: true,
@@ -102,7 +102,7 @@ func (r *autofixSettingsResource) Schema(_ context.Context, _ resource.SchemaReq
 			},
 			"pentest_autofix_type": schema.StringAttribute{
 				Required: true,
-				Description: "Severity filter for Pentest & AI Code Analysis autofix. Use none to disable. " +
+				Description: "Severity filter for Pentest & AI Code Analysis autofix. Use none to disable automatic pentest autofix PR creation. " +
 					"One of: all, critical_and_high_only, none.",
 				Validators: []validator.String{
 					stringvalidator.OneOf("all", "critical_and_high_only", "none"),
@@ -110,7 +110,7 @@ func (r *autofixSettingsResource) Schema(_ context.Context, _ resource.SchemaReq
 			},
 			"sast_autofix_type": schema.StringAttribute{
 				Required: true,
-				Description: "Severity filter for SAST & IaC autofix. Use none to disable. " +
+				Description: "Severity filter for SAST & IaC autofix. Use none to disable automatic SAST autofix PR creation. " +
 					"One of: critical_issues_only, critical_and_high_only, all, none.",
 				Validators: []validator.String{
 					stringvalidator.OneOf("critical_issues_only", "critical_and_high_only", "all", "none"),
@@ -180,7 +180,7 @@ func (r *autofixSettingsResource) Read(ctx context.Context, request resource.Rea
 		return
 	}
 
-	response.Diagnostics.Append(response.State.Set(ctx, modelFromAPI(apiSettings))...)
+	response.Diagnostics.Append(response.State.Set(ctx, mapApiResponseToStateModel(apiSettings))...)
 }
 
 func (r *autofixSettingsResource) Update(ctx context.Context, request resource.UpdateRequest, response *resource.UpdateResponse) {
@@ -230,7 +230,7 @@ func (r *autofixSettingsResource) Delete(ctx context.Context, request resource.D
 func (r *autofixSettingsResource) applySettings(ctx context.Context, planned autofixSettingsModel) (autofixSettingsModel, diag.Diagnostics) {
 	var diags diag.Diagnostics
 
-	if err := r.client.Do(ctx, "PUT", basePath, requestBody(planned), nil); err != nil {
+	if err := r.client.Do(ctx, "PUT", basePath, constructBody(planned), nil); err != nil {
 		diags.AddError("Error configuring autofix settings", err.Error())
 		return autofixSettingsModel{}, diags
 	}
@@ -241,14 +241,13 @@ func (r *autofixSettingsResource) applySettings(ctx context.Context, planned aut
 		return autofixSettingsModel{}, diags
 	}
 
-	state := modelFromAPI(apiSettings)
+	state := mapApiResponseToStateModel(apiSettings)
 
-	// Write known planned values to state. This is required because the API
-	// silently REWRITES fields (e.g. enabled=false forces upgrade_type to
-	// "none" and dependency_repo_ids to []; sast_autofix_type=none forces
-	// sast_repos_scope to "none" and clear sast_repo_ids). If we stored those
-	// rewritten values while the plan promised the config values, Terraform
-	// would fail the apply with "provider produced inconsistent result".
+	// Prefer the plan over the GET response for fields the API may rewrite
+	// when they are unused (e.g. enabled=false → upgrade_type "none" and empty
+	// dependency_repo_ids; sast_autofix_type=none → sast_repos_scope "none"
+	// and empty sast_repo_ids). Apply state must match the plan for known
+	// attributes, or Terraform errors with "provider produced inconsistent result".
 	if !planned.UpgradeType.IsUnknown() {
 		state.UpgradeType = planned.UpgradeType
 	}
@@ -267,18 +266,18 @@ func (r *autofixSettingsResource) applySettings(ctx context.Context, planned aut
 
 func (r *autofixSettingsResource) getAutofixSettings(ctx context.Context) (autofixSettingsAPI, error) {
 	// The GET response nests the settings under a "settings" key.
-	var wrapped struct {
+	var settinsApiResponse struct {
 		Settings autofixSettingsAPI `json:"settings"`
 	}
 
-	if err := r.client.Do(ctx, "GET", basePath, nil, &wrapped); err != nil {
+	if err := r.client.Do(ctx, "GET", basePath, nil, &settinsApiResponse); err != nil {
 		return autofixSettingsAPI{}, err
 	}
 
-	return wrapped.Settings, nil
+	return settinsApiResponse.Settings, nil
 }
 
-func requestBody(planned autofixSettingsModel) map[string]any {
+func constructBody(planned autofixSettingsModel) map[string]any {
 	body := map[string]any{
 		"enabled":                      planned.Enabled.ValueBool(),
 		"use_aikido_library_for_major": planned.UseAikidoLibraryForMajor.ValueBool(),
@@ -300,7 +299,7 @@ func requestBody(planned autofixSettingsModel) map[string]any {
 	return body
 }
 
-func modelFromAPI(api autofixSettingsAPI) autofixSettingsModel {
+func mapApiResponseToStateModel(api autofixSettingsAPI) autofixSettingsModel {
 	return autofixSettingsModel{
 		Enabled:                  types.BoolValue(api.Enabled),
 		UpgradeType:              types.StringValue(api.UpgradeType),

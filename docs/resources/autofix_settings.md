@@ -41,9 +41,9 @@ resource "aikido_autofix_settings" "this" {
 
 - `dependency_repo_ids` (Set of Number) Code repository IDs for dependency (libraries) autofix. Ignored when enabled is false (API forces an empty set).
 - `dependency_repos_scope` (String) Scope of the dependency (libraries) autofix. One of: all, selected. Ignored when enabled is false.
-- `enabled` (Boolean) Whether automatic AutoFix PR creation is enabled.
-- `pentest_autofix_type` (String) Severity filter for Pentest & AI Code Analysis autofix. Use none to disable. One of: all, critical_and_high_only, none.
-- `sast_autofix_type` (String) Severity filter for SAST & IaC autofix. Use none to disable. One of: critical_issues_only, critical_and_high_only, all, none.
+- `enabled` (Boolean) Whether automatic dependency AutoFix PR creation is enabled.
+- `pentest_autofix_type` (String) Severity filter for Pentest & AI Code Analysis autofix. Use none to disable automatic pentest autofix PR creation. One of: all, critical_and_high_only, none.
+- `sast_autofix_type` (String) Severity filter for SAST & IaC autofix. Use none to disable automatic SAST autofix PR creation. One of: critical_issues_only, critical_and_high_only, all, none.
 - `sast_repo_ids` (Set of Number) Code repository IDs for SAST & IaC autofix. Ignored when sast_autofix_type is none.
 - `sast_repos_scope` (String) Scope of the SAST & IaC autofix. One of: all, selected. Ignored when sast_autofix_type is none.
 - `upgrade_type` (String) Dependency (libraries) upgrade types to autofix. Use none to disable dependency autofix. Ignored when enabled is false (API forces none). One of: upgrade_all_packages, minor_and_patch_versions_only, critical_issues_only, critical_and_high_only, none.

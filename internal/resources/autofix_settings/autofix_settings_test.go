@@ -90,7 +90,7 @@ func TestGetAutofixSettings_Error(t *testing.T) {
 func TestModelFromAPI(t *testing.T) {
 	// API may still return sast_repos_scope "none" when sast_autofix_type is none,
 	// even though Terraform config only allows all/selected.
-	state := modelFromAPI(autofixSettingsAPI{
+	state := mapApiResponseToStateModel(autofixSettingsAPI{
 		Enabled:                  true,
 		UpgradeType:              "none",
 		DependencyReposScope:     "selected",
@@ -132,7 +132,7 @@ func TestModelFromAPI(t *testing.T) {
 }
 
 func TestModelFromAPI_NilListsBecomeEmpty(t *testing.T) {
-	state := modelFromAPI(autofixSettingsAPI{})
+	state := mapApiResponseToStateModel(autofixSettingsAPI{})
 	if state.DependencyRepoIDs == nil {
 		t.Error("dependency_repo_ids is nil, want empty slice")
 	}
@@ -148,7 +148,7 @@ func TestModelFromAPI_NilListsBecomeEmpty(t *testing.T) {
 }
 
 func TestRequestBody_Full(t *testing.T) {
-	body := requestBody(testPlanned())
+	body := constructBody(testPlanned())
 
 	want := map[string]any{
 		"enabled":                      true,
@@ -171,7 +171,7 @@ func TestRequestBody_OmitsUnknownDependencyFields(t *testing.T) {
 	planned.UpgradeType = types.StringUnknown()
 	planned.DependencyReposScope = types.StringUnknown()
 
-	body := requestBody(planned)
+	body := constructBody(planned)
 
 	for _, key := range []string{"upgrade_type", "dependency_repos_scope"} {
 		if _, ok := body[key]; ok {
@@ -194,7 +194,7 @@ func TestRequestBody_NilIDsBecomeEmpty(t *testing.T) {
 	planned.DependencyRepoIDs = nil
 	planned.SastRepoIDs = nil
 
-	body := requestBody(planned)
+	body := constructBody(planned)
 
 	if !reflect.DeepEqual(body["dependency_repo_ids"], []int64{}) {
 		t.Errorf("dependency_repo_ids = %#v, want empty slice", body["dependency_repo_ids"])
