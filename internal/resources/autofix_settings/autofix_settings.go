@@ -321,7 +321,7 @@ func mapApiResponseToStateModel(api autofixSettingsAPI) autofixSettingsModel {
 
 // mergeAPIAndPriorState merges the API response with the prior state.
 // This resolves the issue where the API response is not always consistent with the plan.
-// Read refresh reintroduces API-rewritten Autofix fields, causing perpetual drift
+// Read refresh reintroduces API-rewritten Autofix fields, causing perpetual drift.
 func mergeAPIAndPriorState(api autofixSettingsAPI, prior autofixSettingsModel) autofixSettingsModel {
 	state := mapApiResponseToStateModel(api)
 
