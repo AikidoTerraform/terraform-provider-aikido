@@ -3,34 +3,41 @@
 page_title: "Aikido Autofix Settings"
 subcategory: ""
 description: |-
-  Manages workspace Autofix settings for automatic AutoFix PR creation. When enabled is false, the API forces upgrade_type to none and dependency_repo_ids to an empty set. When sast_autofix_type is none, the API may force sast_repos_scope to none and clear sast_repo_ids. Repo ID sets are ignored when the corresponding scope is all.
+  Manages workspace Autofix settings for automatic AutoFix PR creation. Configure dependency (SCA), SAST & IaC, and pentest autofix via the dependency, sast, and pentest nested attributes (all required). Each nested attribute maps to its own Autofix settings API endpoint. When a nested attribute's enabled is false, that feature is disabled and its other fields are ignored by the API. Repo ID sets are ignored when the corresponding repos_scope is all.
 ---
 
 # aikido_autofix_settings (Resource)
 
-Manages workspace Autofix settings for automatic AutoFix PR creation. When enabled is false, the API forces upgrade_type to none and dependency_repo_ids to an empty set. When sast_autofix_type is none, the API may force sast_repos_scope to none and clear sast_repo_ids. Repo ID sets are ignored when the corresponding scope is all.
+Manages workspace Autofix settings for automatic AutoFix PR creation. Configure dependency (SCA), SAST & IaC, and pentest autofix via the dependency, sast, and pentest nested attributes (all required). Each nested attribute maps to its own Autofix settings API endpoint. When a nested attribute's enabled is false, that feature is disabled and its other fields are ignored by the API. Repo ID sets are ignored when the corresponding repos_scope is all.
 
-There is exactly one Autofix settings object per workspace, so define this resource at most once. All attributes are required. Use `dependency_repos_scope` / `sast_repos_scope` (`all` or `selected`) with the matching `*_repo_ids` sets. When scope is `all`, the ID set is ignored (use `[]`). When `enabled` is `false`, the API ignores dependency fields. When `sast_autofix_type` is `none`, the API may ignore SAST scope and repo IDs.
+There is exactly one Autofix settings object per workspace, so define this resource at most once. The `dependency`, `sast`, and `pentest` nested attributes are all required (each maps to its own Autofix settings API endpoint). Use `repos_scope` (`all` or `selected`) with the matching `repo_ids` sets. When scope is `all`, the ID set is ignored (use `[]`). When a nested attribute's `enabled` is `false`, that feature is disabled and its other fields are ignored.
 
 ## Example Usage
 
 ```terraform
 # Manages the workspace-wide Autofix settings (automatic AutoFix PR creation).
-# There is exactly one settings object per workspace; destroying this resource
-# disables automatic PR creation.
+# There is exactly one settings object per workspace; 
+# Destroying this resource disables automatic PR creation. All three nested attributes (dependency, sast, pentest) are required.
 resource "aikido_autofix_settings" "test-workspace" {
-  enabled = true
+  dependency = {
+    enabled                      = true
+    upgrade_type                 = "critical_and_high_only"
+    repos_scope                  = "all"
+    repo_ids                     = []
+    use_aikido_library_for_major = true
+  }
 
-  upgrade_type                 = "critical_and_high_only"
-  dependency_repos_scope       = "all"
-  dependency_repo_ids          = []
-  use_aikido_library_for_major = true
+  sast = {
+    enabled      = true
+    autofix_type = "critical_and_high_only"
+    repos_scope  = "selected"
+    repo_ids     = [123, 456]
+  }
 
-  pentest_autofix_type = "critical_and_high_only"
-
-  sast_autofix_type = "critical_and_high_only"
-  sast_repos_scope  = "selected"
-  sast_repo_ids     = [123, 456]
+  pentest = {
+    enabled      = true
+    autofix_type = "critical_and_high_only"
+  }
 }
 ```
 
@@ -39,19 +46,44 @@ resource "aikido_autofix_settings" "test-workspace" {
 
 ### Required
 
-- `dependency_repo_ids` (Set of Number) Code repository IDs for dependency (libraries) autofix. Ignored when enabled is false (API forces an empty set).
-- `dependency_repos_scope` (String) Scope of the dependency (libraries) autofix. One of: all, selected. Ignored when enabled is false.
-- `enabled` (Boolean) Whether automatic dependency AutoFix PR creation is enabled.
-- `pentest_autofix_type` (String) Severity filter for Pentest & AI Code Analysis autofix. Use none to disable automatic pentest autofix PR creation. One of: all, critical_and_high_only, none.
-- `sast_autofix_type` (String) Severity filter for SAST & IaC autofix. Use none to disable automatic SAST autofix PR creation. One of: critical_issues_only, critical_and_high_only, all, none.
-- `sast_repo_ids` (Set of Number) Code repository IDs for SAST & IaC autofix. Ignored when sast_autofix_type is none.
-- `sast_repos_scope` (String) Scope of the SAST & IaC autofix. One of: all, selected. Ignored when sast_autofix_type is none.
-- `upgrade_type` (String) Dependency (libraries) upgrade types to autofix. Use none to disable dependency autofix. Ignored when enabled is false (API forces none). One of: upgrade_all_packages, minor_and_patch_versions_only, critical_issues_only, critical_and_high_only, none.
-- `use_aikido_library_for_major` (Boolean) Use Aikido Libraries to avoid major upgrades when available.
+- `dependency` (Attributes) Dependency (SCA / libraries) Autofix settings. (see [below for nested schema](#nestedatt--dependency))
+- `pentest` (Attributes) Pentest & AI Code Analysis Autofix settings. (see [below for nested schema](#nestedatt--pentest))
+- `sast` (Attributes) SAST & IaC Autofix settings. (see [below for nested schema](#nestedatt--sast))
 
 ### Read-Only
 
-- `id` (String) Workspace-wide Autofix settings identifier.
+- `id` (String) Workspace Autofix settings identifier.
+
+<a id="nestedatt--dependency"></a>
+### Nested Schema for `dependency`
+
+Required:
+
+- `enabled` (Boolean) Whether automatic dependency AutoFix PR creation is enabled.
+- `repo_ids` (Set of Number) Code repository IDs for dependency (libraries) autofix when repos_scope is selected. Ignored when enabled is false or when repos_scope is all (use []).
+- `repos_scope` (String) Scope of the dependency (libraries) autofix. One of: all, selected. Ignored when enabled is false. "all" is paying accounts only.
+- `upgrade_type` (String) Dependency (libraries) upgrade types to autofix. Ignored when enabled is false. One of: upgrade_all_packages, minor_and_patch_versions_only, critical_issues_only, critical_and_high_only.
+- `use_aikido_library_for_major` (Boolean) Use Aikido Libraries to avoid major upgrades when available. Ignored when enabled is false.
+
+
+<a id="nestedatt--pentest"></a>
+### Nested Schema for `pentest`
+
+Required:
+
+- `autofix_type` (String) Severity filter for Pentest & AI Code Analysis autofix. Ignored when enabled is false. One of: all, critical_and_high_only.
+- `enabled` (Boolean) Whether automatic pentest AutoFix PR creation is enabled.
+
+
+<a id="nestedatt--sast"></a>
+### Nested Schema for `sast`
+
+Required:
+
+- `autofix_type` (String) Severity filter for SAST & IaC autofix. Ignored when enabled is false. One of: critical_issues_only, critical_and_high_only, all.
+- `enabled` (Boolean) Whether automatic SAST & IaC AutoFix PR creation is enabled.
+- `repo_ids` (Set of Number) Code repository IDs for SAST & IaC autofix when repos_scope is selected. Ignored when enabled is false or when repos_scope is all (use []).
+- `repos_scope` (String) Scope of the SAST & IaC autofix. One of: all, selected. Ignored when enabled is false. "all" is paying accounts only.
 
 ## Import
 
@@ -60,7 +92,5 @@ Import is supported using the following syntax:
 The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
 
 ```shell
-# There is a single Autofix settings object per workspace.
-# Use the fixed singleton identifier.
-terraform import aikido_autofix_settings.workspace autofix_settings
+terraform import aikido_autofix_settings.test-workspace autofix_settings
 ```

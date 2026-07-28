@@ -135,20 +135,29 @@ resource "aikido_repository" "example" {
 }
 
 resource "aikido_autofix_settings" "test-workspace" {
-  enabled = true
+  dependency = {
+    enabled                      = true
+    upgrade_type                 = "critical_and_high_only"
+    repos_scope                  = "all"
+    repo_ids                     = []
+    use_aikido_library_for_major = true
+  }
 
-  upgrade_type                 = "critical_and_high_only"
-  dependency_repos_scope       = "all"
-  dependency_repo_ids          = []
-  use_aikido_library_for_major = true
+  sast = {
+    enabled      = true
+    autofix_type = "critical_and_high_only"
+    repos_scope  = "selected"
+    repo_ids     = [123, 456]
+  }
 
-  pentest_autofix_type = "critical_and_high_only"
-
-  sast_autofix_type = "critical_and_high_only"
-  sast_repos_scope  = "selected"
-  sast_repo_ids     = [123, 456]
+  pentest = {
+    enabled      = true
+    autofix_type = "critical_and_high_only"
+  }
 }
 ```
+
+`aikido_autofix_settings` is workspace-wide and should be declared once. The `dependency`, `sast`, and `pentest` nested attributes are all required.
 
 You can also start from [`examples/`](examples/) (`provider/` + `resources/aikido_repository/`), but wire credentials via env vars rather than committing them.
 

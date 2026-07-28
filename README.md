@@ -31,6 +31,7 @@ Optionally override the API base URL (defaults to `https://app.aikido.dev/api`):
 provider "aikido" {
   client_id     = var.aikido_client_id
   client_secret = var.aikido_client_secret
+  base_url      = "https://app.aikido.dev/api"
 }
 ```
 
@@ -58,22 +59,31 @@ resource "aikido_repository" "app" {
 }
 
 resource "aikido_autofix_settings" "test-workspace" {
-  enabled = true
+  dependency = {
+    enabled                      = true
+    upgrade_type                 = "critical_and_high_only"
+    repos_scope                  = "all"
+    repo_ids                     = []
+    use_aikido_library_for_major = true
+  }
 
-  upgrade_type                 = "critical_and_high_only"
-  dependency_repos_scope       = "all"
-  dependency_repo_ids          = []
-  use_aikido_library_for_major = true
+  sast = {
+    enabled      = true
+    autofix_type = "critical_and_high_only"
+    repos_scope  = "selected"
+    repo_ids     = [123, 456]
+  }
 
-  pentest_autofix_type = "critical_and_high_only"
-
-  sast_autofix_type = "critical_and_high_only"
-  sast_repos_scope  = "selected"
-  sast_repo_ids     = [123, 456]
+  pentest = {
+    enabled      = true
+    autofix_type = "critical_and_high_only"
+  }
 }
 ```
 
+`aikido_autofix_settings` manages the single workspace-wide Autofix object. The `dependency`, `sast`, and `pentest` nested attributes are all required, and disabling the resource disables automatic AutoFix PR creation for all three features.
+
 ## Documentation
 
-Generated provider documentation lives in the [`docs/`](docs/) directory or via the [Aikido docs](). Usage examples live under [`examples/`](examples/).
+Generated provider documentation lives in the [`docs/`](docs/) directory or on the [Terraform Registry docs](https://registry.terraform.io/providers/aikido/aikido/latest/docs). Usage examples live under [`examples/`](examples/).
 

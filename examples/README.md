@@ -50,20 +50,26 @@ resource "aikido_repository" "example" {
   labels = ["payments", "production"]
 }
 
-# Optional: workspace-wide Autofix settings (at most one per workspace).
 resource "aikido_autofix_settings" "test-workspace" {
-  enabled = true
+  dependency = {
+    enabled                      = true
+    upgrade_type                 = "critical_and_high_only"
+    repos_scope                  = "all"
+    repo_ids                     = []
+    use_aikido_library_for_major = true
+  }
 
-  upgrade_type                 = "critical_and_high_only"
-  dependency_repos_scope       = "all"
-  dependency_repo_ids          = []
-  use_aikido_library_for_major = true
+  sast = {
+    enabled      = true
+    autofix_type = "critical_and_high_only"
+    repos_scope  = "selected"
+    repo_ids     = [123, 456]
+  }
 
-  pentest_autofix_type = "critical_and_high_only"
-
-  sast_autofix_type = "critical_and_high_only"
-  sast_repos_scope  = "selected"
-  sast_repo_ids     = [123, 456]
+  pentest = {
+    enabled      = true
+    autofix_type = "critical_and_high_only"
+  }
 }
 ```
 
@@ -81,6 +87,6 @@ Prefer env vars for credentials so secrets are not committed. The provider block
 
 - `aikido_repository` configures an **existing** code repository by ID. It does not create the repo in your SCM.
 - `labels` is optional. When set, labels are fully managed from Terraform state. Omitting `labels` leaves Aikido labels untouched; `labels = []` fetches current labels from Aikido and deletes them.
-- `aikido_autofix_settings` manages the single **workspace-wide** Autofix settings object; define it at most once. All attributes are required. Set `dependency_repos_scope` / `sast_repos_scope` to `all` or `selected`, and pass matching `dependency_repo_ids` / `sast_repo_ids` sets (ignored when scope is `all`). When `enabled` is `false`, the API ignores dependency fields (`upgrade_type` → `none`, `dependency_repo_ids` → `[]`). When `sast_autofix_type` is `none`, the API may ignore SAST scope and repo IDs. Destroying the resource disables automatic AutoFix PR creation.
+- `aikido_autofix_settings` manages the single **workspace-wide** Autofix settings object; define it at most once. The `dependency`, `sast`, and `pentest` nested attributes are all required (each maps to its own Autofix settings API endpoint). Set `repos_scope` to `all` or `selected`, and pass matching `repo_ids` sets (ignored when scope is `all`). When a nested attribute's `enabled` is `false`, that feature is disabled and its other fields are ignored. Destroying the resource disables automatic AutoFix PR creation for all three features.
 - After changing provider Go code locally, re-run `make install` before `terraform apply`.
 - Full local/staging setup: [`README.dev.md`](../README.dev.md)

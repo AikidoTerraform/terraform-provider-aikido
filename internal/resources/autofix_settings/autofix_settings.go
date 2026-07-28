@@ -5,16 +5,13 @@ import (
 	"fmt"
 
 	"github.com/aikido/terraform-provider-aikido/internal/client"
-	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
-const basePath = "/public/v1/repositories/autofix/settings"
 const autofixSettingsResourceID = "autofix_settings"
 
 var (
@@ -32,28 +29,10 @@ type autofixSettingsResource struct {
 }
 
 type autofixSettingsModel struct {
-	ID                       types.String `tfsdk:"id"`
-	Enabled                  types.Bool   `tfsdk:"enabled"`
-	UpgradeType              types.String `tfsdk:"upgrade_type"`
-	DependencyReposScope     types.String `tfsdk:"dependency_repos_scope"`
-	DependencyRepoIDs        []int64      `tfsdk:"dependency_repo_ids"`
-	UseAikidoLibraryForMajor types.Bool   `tfsdk:"use_aikido_library_for_major"`
-	PentestAutofixType       types.String `tfsdk:"pentest_autofix_type"`
-	SastAutofixType          types.String `tfsdk:"sast_autofix_type"`
-	SastReposScope           types.String `tfsdk:"sast_repos_scope"`
-	SastRepoIDs              []int64      `tfsdk:"sast_repo_ids"`
-}
-
-type autofixSettingsAPI struct {
-	Enabled                  bool    `json:"enabled"`
-	UpgradeType              string  `json:"upgrade_type"`
-	DependencyReposScope     string  `json:"dependency_repos_scope"`
-	DependencyRepoIDs        []int64 `json:"dependency_repo_ids"`
-	UseAikidoLibraryForMajor bool    `json:"use_aikido_library_for_major"`
-	PentestAutofixType       string  `json:"pentest_autofix_type"`
-	SastAutofixType          string  `json:"sast_autofix_type"`
-	SastReposScope           string  `json:"sast_repos_scope"`
-	SastRepoIDs              []int64 `json:"sast_repo_ids"`
+	ID         types.String     `tfsdk:"id"`
+	Dependency *dependencyModel `tfsdk:"dependency"`
+	Sast       *sastModel       `tfsdk:"sast"`
+	Pentest    *pentestModel    `tfsdk:"pentest"`
 }
 
 func (r *autofixSettingsResource) Metadata(_ context.Context, request resource.MetadataRequest, response *resource.MetadataResponse) {
@@ -63,81 +42,18 @@ func (r *autofixSettingsResource) Metadata(_ context.Context, request resource.M
 func (r *autofixSettingsResource) Schema(_ context.Context, _ resource.SchemaRequest, response *resource.SchemaResponse) {
 	response.Schema = schema.Schema{
 		Description: "Manages workspace Autofix settings for automatic AutoFix PR creation. " +
-			"When enabled is false, the API forces upgrade_type to none and dependency_repo_ids to an empty set and disables automatic depdendency autofix PR creation. " +
-			"When sast_autofix_type is none, the API may force sast_repos_scope to none and clear sast_repo_ids and disables automatic SAST autofix PR creation. " +
-			"Repo ID sets are ignored when the corresponding scope is all.",
+			"Configure dependency (SCA), SAST & IaC, and pentest autofix via the dependency, sast, and pentest nested attributes (all required). " +
+			"Each nested attribute maps to its own Autofix settings API endpoint. " +
+			"When a nested attribute's enabled is false, that feature is disabled and its other fields are ignored by the API. " +
+			"Repo ID sets are ignored when the corresponding repos_scope is all.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Computed:    true,
-				Description: "Workspace name Autofix settings identifier.",
+				Description: "Workspace Autofix settings identifier.",
 			},
-			"enabled": schema.BoolAttribute{
-				Required:    true,
-				Description: "Whether automatic dependency AutoFix PR creation is enabled.",
-			},
-			"upgrade_type": schema.StringAttribute{
-				Required: true,
-				Description: "Dependency (libraries) upgrade types to autofix. Use none to disable dependency autofix. " +
-					"Ignored when enabled is false (API forces none). " +
-					"One of: upgrade_all_packages, minor_and_patch_versions_only, critical_issues_only, critical_and_high_only, none.",
-				Validators: []validator.String{
-					stringvalidator.OneOf(
-						"upgrade_all_packages",
-						"minor_and_patch_versions_only",
-						"critical_issues_only",
-						"critical_and_high_only",
-						"none",
-					),
-				},
-			},
-			"dependency_repos_scope": schema.StringAttribute{
-				Required: true,
-				Description: "Scope of the dependency (libraries) autofix. One of: all, selected. " +
-					"Ignored when enabled is false.",
-				Validators: []validator.String{
-					stringvalidator.OneOf("all", "selected"),
-				},
-			},
-			"dependency_repo_ids": schema.SetAttribute{
-				Required:    true,
-				ElementType: types.Int64Type,
-				Description: "Code repository IDs for dependency (libraries) autofix. " +
-					"Ignored when enabled is false (API forces an empty set).",
-			},
-			"use_aikido_library_for_major": schema.BoolAttribute{
-				Required:    true,
-				Description: "Use Aikido Libraries to avoid major upgrades when available.",
-			},
-			"pentest_autofix_type": schema.StringAttribute{
-				Required: true,
-				Description: "Severity filter for Pentest & AI Code Analysis autofix. Use none to disable automatic pentest autofix PR creation. " +
-					"One of: all, critical_and_high_only, none.",
-				Validators: []validator.String{
-					stringvalidator.OneOf("all", "critical_and_high_only", "none"),
-				},
-			},
-			"sast_autofix_type": schema.StringAttribute{
-				Required: true,
-				Description: "Severity filter for SAST & IaC autofix. Use none to disable automatic SAST autofix PR creation. " +
-					"One of: critical_issues_only, critical_and_high_only, all, none.",
-				Validators: []validator.String{
-					stringvalidator.OneOf("critical_issues_only", "critical_and_high_only", "all", "none"),
-				},
-			},
-			"sast_repos_scope": schema.StringAttribute{
-				Required: true,
-				Description: "Scope of the SAST & IaC autofix. One of: all, selected. " +
-					"Ignored when sast_autofix_type is none.",
-				Validators: []validator.String{
-					stringvalidator.OneOf("all", "selected"),
-				},
-			},
-			"sast_repo_ids": schema.SetAttribute{
-				Required:    true,
-				ElementType: types.Int64Type,
-				Description: "Code repository IDs for SAST & IaC autofix. " +
-					"Ignored when sast_autofix_type is none.",
-			},
+			"dependency": dependencySchemaAttribute(),
+			"sast":       sastSchemaAttribute(),
+			"pentest":    pentestSchemaAttribute(),
 		},
 	}
 }
@@ -183,18 +99,18 @@ func (r *autofixSettingsResource) Read(ctx context.Context, request resource.Rea
 		return
 	}
 
-	apiSettings, err := r.getAutofixSettings(ctx)
-	if err != nil {
-		if client.NotFound(err) {
-			response.State.RemoveResource(ctx)
-			return
-		}
-
-		response.Diagnostics.AddError("Error reading autofix settings", err.Error())
+	state, diags := r.readSettings(ctx, &priorState)
+	response.Diagnostics.Append(diags...)
+	if response.Diagnostics.HasError() {
 		return
 	}
 
-	response.Diagnostics.Append(response.State.Set(ctx, mergeAPIAndPriorState(apiSettings, priorState))...)
+	if state == nil {
+		response.State.RemoveResource(ctx)
+		return
+	}
+
+	response.Diagnostics.Append(response.State.Set(ctx, state)...)
 }
 
 func (r *autofixSettingsResource) Update(ctx context.Context, request resource.UpdateRequest, response *resource.UpdateResponse) {
@@ -222,21 +138,23 @@ func (r *autofixSettingsResource) Delete(ctx context.Context, request resource.D
 		return
 	}
 
-	// Destroy disables automatic PR creation. Other required fields stay known.
-	body := map[string]any{
-		"enabled":                      false,
-		"use_aikido_library_for_major": priorState.UseAikidoLibraryForMajor.ValueBool(),
-		"pentest_autofix_type":         priorState.PentestAutofixType.ValueString(),
-		"sast_autofix_type":            priorState.SastAutofixType.ValueString(),
-		"sast_repos_scope":             priorState.SastReposScope.ValueString(),
-		"sast_repo_ids":                normalizeIDs(priorState.SastRepoIDs),
-		"dependency_repo_ids":          normalizeIDs(priorState.DependencyRepoIDs),
-		"dependency_repos_scope":       priorState.DependencyReposScope.ValueString(),
-		"upgrade_type":                 priorState.UpgradeType.ValueString(),
+	// Destroy disables automatic PR creation for each Autofix feature.
+	disabledDependency := &dependencyModel{Enabled: types.BoolValue(false)}
+	disabledSast := &sastModel{Enabled: types.BoolValue(false)}
+	disabledPentest := &pentestModel{Enabled: types.BoolValue(false)}
+
+	if err := upsertScaSettings(ctx, r.client, disabledDependency); err != nil && !client.NotFound(err) {
+		response.Diagnostics.AddError("Error disabling dependency autofix settings", err.Error())
+		return
 	}
 
-	if err := r.client.Do(ctx, "PUT", basePath, body, nil); err != nil && !client.NotFound(err) {
-		response.Diagnostics.AddError("Error disabling autofix settings", err.Error())
+	if err := upsertSastSettings(ctx, r.client, disabledSast); err != nil && !client.NotFound(err) {
+		response.Diagnostics.AddError("Error disabling SAST autofix settings", err.Error())
+		return
+	}
+
+	if err := upsertPentestSettings(ctx, r.client, disabledPentest); err != nil && !client.NotFound(err) {
+		response.Diagnostics.AddError("Error disabling pentest autofix settings", err.Error())
 	}
 }
 
@@ -245,123 +163,90 @@ func (r *autofixSettingsResource) ImportState(ctx context.Context, request resou
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), request, response)
 }
 
-// applySettings upserts the planned config and updates state.
+// applySettings upserts each feature endpoint, then refreshes state from GET.
 func (r *autofixSettingsResource) applySettings(ctx context.Context, planned autofixSettingsModel) (autofixSettingsModel, diag.Diagnostics) {
 	var diags diag.Diagnostics
 
-	if err := r.client.Do(ctx, "PUT", basePath, constructBody(planned), nil); err != nil {
-		diags.AddError("Error configuring autofix settings", err.Error())
+	if err := upsertScaSettings(ctx, r.client, planned.Dependency); err != nil {
+		diags.AddError("Error configuring dependency autofix settings", err.Error())
 		return autofixSettingsModel{}, diags
 	}
 
-	apiSettings, err := r.getAutofixSettings(ctx)
+	if err := upsertSastSettings(ctx, r.client, planned.Sast); err != nil {
+		diags.AddError("Error configuring SAST autofix settings", err.Error())
+		return autofixSettingsModel{}, diags
+	}
+
+	if err := upsertPentestSettings(ctx, r.client, planned.Pentest); err != nil {
+		diags.AddError("Error configuring pentest autofix settings", err.Error())
+		return autofixSettingsModel{}, diags
+	}
+
+	state, readDiags := r.readSettings(ctx, &planned)
+	diags.Append(readDiags...)
+	if diags.HasError() || state == nil {
+		return autofixSettingsModel{}, diags
+	}
+
+	// Prefer the plan over GET for fields the API may rewrite when unused
+	// (enabled=false, or repos_scope=all). Otherwise Terraform reports an
+	// inconsistent result after apply.
+	applyScaPlanOverrides(state.Dependency, planned.Dependency)
+	applySastPlanOverrides(state.Sast, planned.Sast)
+	applyPentestPlanOverrides(state.Pentest, planned.Pentest)
+
+	return *state, diags
+}
+
+func (r *autofixSettingsResource) readSettings(ctx context.Context, prior *autofixSettingsModel) (*autofixSettingsModel, diag.Diagnostics) {
+	var diags diag.Diagnostics
+
+	scaAPI, err := getScaSettings(ctx, r.client)
 	if err != nil {
-		diags.AddError("Error reading autofix settings after update", err.Error())
-		return autofixSettingsModel{}, diags
-	}
-
-	state := mapApiResponseToStateModel(apiSettings)
-	state.ID = types.StringValue(autofixSettingsResourceID)
-
-	// Prefer the plan over the GET response for fields the API may rewrite
-	// when they are unused (e.g. enabled=false → upgrade_type "none" and empty
-	// dependency_repo_ids; sast_autofix_type=none → sast_repos_scope "none"
-	// and empty sast_repo_ids). Apply state must match the plan for known
-	// attributes, or Terraform errors with "provider produced inconsistent result".
-	if !planned.UpgradeType.IsUnknown() {
-		state.UpgradeType = planned.UpgradeType
-	}
-	if !planned.DependencyReposScope.IsUnknown() {
-		state.DependencyReposScope = planned.DependencyReposScope
-	}
-	if !planned.SastReposScope.IsUnknown() {
-		state.SastReposScope = planned.SastReposScope
-	}
-
-	state.DependencyRepoIDs = normalizeIDs(planned.DependencyRepoIDs)
-	state.SastRepoIDs = normalizeIDs(planned.SastRepoIDs)
-
-	return state, diags
-}
-
-func (r *autofixSettingsResource) getAutofixSettings(ctx context.Context) (autofixSettingsAPI, error) {
-	// The GET response nests the settings under a "settings" key.
-	var settinsApiResponse struct {
-		Settings autofixSettingsAPI `json:"settings"`
-	}
-
-	if err := r.client.Do(ctx, "GET", basePath, nil, &settinsApiResponse); err != nil {
-		return autofixSettingsAPI{}, err
-	}
-
-	return settinsApiResponse.Settings, nil
-}
-
-func constructBody(planned autofixSettingsModel) map[string]any {
-	body := map[string]any{
-		"enabled":                      planned.Enabled.ValueBool(),
-		"use_aikido_library_for_major": planned.UseAikidoLibraryForMajor.ValueBool(),
-		"pentest_autofix_type":         planned.PentestAutofixType.ValueString(),
-		"sast_autofix_type":            planned.SastAutofixType.ValueString(),
-		"sast_repos_scope":             planned.SastReposScope.ValueString(),
-		"sast_repo_ids":                normalizeIDs(planned.SastRepoIDs),
-		"dependency_repo_ids":          normalizeIDs(planned.DependencyRepoIDs),
-	}
-
-	if !planned.UpgradeType.IsNull() && !planned.UpgradeType.IsUnknown() {
-		body["upgrade_type"] = planned.UpgradeType.ValueString()
-	}
-
-	if !planned.DependencyReposScope.IsNull() && !planned.DependencyReposScope.IsUnknown() {
-		body["dependency_repos_scope"] = planned.DependencyReposScope.ValueString()
-	}
-
-	return body
-}
-
-func mapApiResponseToStateModel(api autofixSettingsAPI) autofixSettingsModel {
-	return autofixSettingsModel{
-		ID:                       types.StringValue(autofixSettingsResourceID),
-		Enabled:                  types.BoolValue(api.Enabled),
-		UpgradeType:              types.StringValue(api.UpgradeType),
-		DependencyReposScope:     types.StringValue(api.DependencyReposScope),
-		DependencyRepoIDs:        normalizeIDs(api.DependencyRepoIDs),
-		UseAikidoLibraryForMajor: types.BoolValue(api.UseAikidoLibraryForMajor),
-		PentestAutofixType:       types.StringValue(api.PentestAutofixType),
-		SastAutofixType:          types.StringValue(api.SastAutofixType),
-		SastReposScope:           types.StringValue(api.SastReposScope),
-		SastRepoIDs:              normalizeIDs(api.SastRepoIDs),
-	}
-}
-
-// mergeAPIAndPriorState merges the API response with the prior state.
-// This resolves the issue where the API response is not always consistent with the plan.
-// Read refresh reintroduces API-rewritten Autofix fields, causing perpetual drift.
-func mergeAPIAndPriorState(api autofixSettingsAPI, prior autofixSettingsModel) autofixSettingsModel {
-	state := mapApiResponseToStateModel(api)
-
-	if !api.Enabled {
-		if !prior.UpgradeType.IsNull() && !prior.UpgradeType.IsUnknown() {
-			state.UpgradeType = prior.UpgradeType
+		if client.NotFound(err) {
+			return nil, diags
 		}
-		if !prior.DependencyReposScope.IsNull() && !prior.DependencyReposScope.IsUnknown() {
-			state.DependencyReposScope = prior.DependencyReposScope
-		}
-		state.DependencyRepoIDs = normalizeIDs(prior.DependencyRepoIDs)
-	} else if api.DependencyReposScope == "all" {
-		state.DependencyRepoIDs = normalizeIDs(prior.DependencyRepoIDs)
+
+		diags.AddError("Error reading dependency autofix settings", err.Error())
+		return nil, diags
 	}
 
-	if api.SastAutofixType == "none" {
-		if !prior.SastReposScope.IsNull() && !prior.SastReposScope.IsUnknown() {
-			state.SastReposScope = prior.SastReposScope
+	sastAPI, err := getSastSettings(ctx, r.client)
+	if err != nil {
+		if client.NotFound(err) {
+			return nil, diags
 		}
-		state.SastRepoIDs = normalizeIDs(prior.SastRepoIDs)
-	} else if api.SastReposScope == "all" {
-		state.SastRepoIDs = normalizeIDs(prior.SastRepoIDs)
+
+		diags.AddError("Error reading SAST autofix settings", err.Error())
+		return nil, diags
 	}
 
-	return state
+	pentestAPI, err := getPentestSettings(ctx, r.client)
+	if err != nil {
+		if client.NotFound(err) {
+			return nil, diags
+		}
+
+		diags.AddError("Error reading pentest autofix settings", err.Error())
+		return nil, diags
+	}
+
+	var priorDependency *dependencyModel
+	var priorSast *sastModel
+	var priorPentest *pentestModel
+
+	if prior != nil {
+		priorDependency = prior.Dependency
+		priorSast = prior.Sast
+		priorPentest = prior.Pentest
+	}
+
+	return &autofixSettingsModel{
+		ID:         types.StringValue(autofixSettingsResourceID),
+		Dependency: mergeScaAPIAndPrior(scaAPI, priorDependency),
+		Sast:       mergeSastAPIAndPrior(sastAPI, priorSast),
+		Pentest:    mergePentestAPIAndPrior(pentestAPI, priorPentest),
+	}, diags
 }
 
 func normalizeIDs(ids []int64) []int64 {

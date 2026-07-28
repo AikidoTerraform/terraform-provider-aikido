@@ -1,17 +1,24 @@
 # Manages the workspace-wide Autofix settings (automatic AutoFix PR creation).
-# There is exactly one settings object per workspace; destroying this resource
-# disables automatic PR creation.
+# There is exactly one settings object per workspace; 
+# Destroying this resource disables automatic PR creation. All three nested attributes (dependency, sast, pentest) are required.
 resource "aikido_autofix_settings" "test-workspace" {
-  enabled = true
+  dependency = {
+    enabled                      = true
+    upgrade_type                 = "critical_and_high_only"
+    repos_scope                  = "all"
+    repo_ids                     = []
+    use_aikido_library_for_major = true
+  }
 
-  upgrade_type                 = "critical_and_high_only"
-  dependency_repos_scope       = "all"
-  dependency_repo_ids          = []
-  use_aikido_library_for_major = true
+  sast = {
+    enabled      = true
+    autofix_type = "critical_and_high_only"
+    repos_scope  = "selected"
+    repo_ids     = [123, 456]
+  }
 
-  pentest_autofix_type = "critical_and_high_only"
-
-  sast_autofix_type = "critical_and_high_only"
-  sast_repos_scope  = "selected"
-  sast_repo_ids     = [123, 456]
+  pentest = {
+    enabled      = true
+    autofix_type = "critical_and_high_only"
+  }
 }

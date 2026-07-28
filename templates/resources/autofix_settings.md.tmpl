@@ -10,7 +10,7 @@ description: |-
 
 {{ .Description | trimspace }}
 
-There is exactly one Autofix settings object per workspace, so define this resource at most once. All attributes are required. Use `dependency_repos_scope` / `sast_repos_scope` (`all` or `selected`) with the matching `*_repo_ids` sets. When scope is `all`, the ID set is ignored (use `[]`). When `enabled` is `false`, the API ignores dependency fields. When `sast_autofix_type` is `none`, the API may ignore SAST scope and repo IDs.
+There is exactly one Autofix settings object per workspace, so define this resource at most once. The `dependency`, `sast`, and `pentest` nested attributes are all required (each maps to its own Autofix settings API endpoint). Use `repos_scope` (`all` or `selected`) with the matching `repo_ids` sets. When scope is `all`, the ID set is ignored (use `[]`). When a nested attribute's `enabled` is `false`, that feature is disabled and its other fields are ignored.
 
 {{ if .HasExamples -}}
 ## Example Usage
