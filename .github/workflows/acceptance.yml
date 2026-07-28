@@ -1,0 +1,39 @@
+name: acceptance-tests
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "**.go"
+      - "!tools/**.go"
+
+permissions:
+  contents: read
+
+jobs:
+  acceptance:
+    name: Terraform Provider Acceptance Tests
+    runs-on: standard-runner-no-rights-public-ip
+    timeout-minutes: 30
+    env:
+      TF_ACC: "1"
+      AIKIDO_CLIENT_ID: ${{ secrets.AIKIDO_CLIENT_ID }}
+      AIKIDO_CLIENT_SECRET: ${{ secrets.AIKIDO_CLIENT_SECRET }}
+      AIKIDO_BASE_URL: ${{ secrets.AIKIDO_BASE_URL }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
+        with:
+          terraform_version: "1.11.*"
+          terraform_wrapper: false
+      - name: Validate required credentials
+        run: |
+          test -n "${AIKIDO_CLIENT_ID}" || (echo "Missing AIKIDO_CLIENT_ID secret" && exit 1)
+          test -n "${AIKIDO_CLIENT_SECRET}" || (echo "Missing AIKIDO_CLIENT_SECRET secret" && exit 1)
+      - name: Run acceptance tests
+        run: go test -v -cover -timeout=120m ./...
