@@ -169,6 +169,12 @@ func (r *autofixSettingsResource) Create(ctx context.Context, request resource.C
 }
 
 func (r *autofixSettingsResource) Read(ctx context.Context, request resource.ReadRequest, response *resource.ReadResponse) {
+	var priorState autofixSettingsModel
+	response.Diagnostics.Append(request.State.Get(ctx, &priorState)...)
+	if response.Diagnostics.HasError() {
+		return
+	}
+
 	apiSettings, err := r.getAutofixSettings(ctx)
 	if err != nil {
 		if client.NotFound(err) {
@@ -180,7 +186,7 @@ func (r *autofixSettingsResource) Read(ctx context.Context, request resource.Rea
 		return
 	}
 
-	response.Diagnostics.Append(response.State.Set(ctx, mapApiResponseToStateModel(apiSettings))...)
+	response.Diagnostics.Append(response.State.Set(ctx, mergeAPIAndPriorState(apiSettings, priorState))...)
 }
 
 func (r *autofixSettingsResource) Update(ctx context.Context, request resource.UpdateRequest, response *resource.UpdateResponse) {
@@ -311,6 +317,36 @@ func mapApiResponseToStateModel(api autofixSettingsAPI) autofixSettingsModel {
 		SastReposScope:           types.StringValue(api.SastReposScope),
 		SastRepoIDs:              normalizeIDs(api.SastRepoIDs),
 	}
+}
+
+// mergeAPIAndPriorState merges the API response with the prior state.
+// This resolves the issue where the API response is not always consistent with the plan.
+// Read refresh reintroduces API-rewritten Autofix fields, causing perpetual drift
+func mergeAPIAndPriorState(api autofixSettingsAPI, prior autofixSettingsModel) autofixSettingsModel {
+	state := mapApiResponseToStateModel(api)
+
+	if !api.Enabled {
+		if !prior.UpgradeType.IsNull() && !prior.UpgradeType.IsUnknown() {
+			state.UpgradeType = prior.UpgradeType
+		}
+		if !prior.DependencyReposScope.IsNull() && !prior.DependencyReposScope.IsUnknown() {
+			state.DependencyReposScope = prior.DependencyReposScope
+		}
+		state.DependencyRepoIDs = normalizeIDs(prior.DependencyRepoIDs)
+	} else if api.DependencyReposScope == "all" {
+		state.DependencyRepoIDs = normalizeIDs(prior.DependencyRepoIDs)
+	}
+
+	if api.SastAutofixType == "none" {
+		if !prior.SastReposScope.IsNull() && !prior.SastReposScope.IsUnknown() {
+			state.SastReposScope = prior.SastReposScope
+		}
+		state.SastRepoIDs = normalizeIDs(prior.SastRepoIDs)
+	} else if api.SastReposScope == "all" {
+		state.SastRepoIDs = normalizeIDs(prior.SastRepoIDs)
+	}
+
+	return state
 }
 
 func normalizeIDs(ids []int64) []int64 {

@@ -348,6 +348,51 @@ func TestApplySettings_UsesAPIWhenPlannedUnknown(t *testing.T) {
 	}
 }
 
+func TestMergeAPIAndPriorState_PreservesIgnoredFieldsFromPriorState(t *testing.T) {
+	prior := testPlanned()
+	prior.Enabled = types.BoolValue(false)
+	prior.UpgradeType = types.StringValue("critical_and_high_only")
+	prior.DependencyReposScope = types.StringValue("selected")
+	prior.DependencyRepoIDs = []int64{10, 20}
+	prior.SastAutofixType = types.StringValue("none")
+	prior.SastReposScope = types.StringValue("selected")
+	prior.SastRepoIDs = []int64{30, 40}
+
+	got := mergeAPIAndPriorState(autofixSettingsAPI{
+		Enabled:                  false,
+		UpgradeType:              "none",
+		DependencyReposScope:     "all",
+		DependencyRepoIDs:        []int64{},
+		UseAikidoLibraryForMajor: true,
+		PentestAutofixType:       "all",
+		SastAutofixType:          "none",
+		SastReposScope:           "none",
+		SastRepoIDs:              []int64{},
+	}, prior)
+
+	if got.Enabled.ValueBool() {
+		t.Error("enabled = true, want false from API")
+	}
+	if got.UpgradeType.ValueString() != "critical_and_high_only" {
+		t.Errorf("upgrade_type = %s, want prior value", got.UpgradeType.ValueString())
+	}
+	if got.DependencyReposScope.ValueString() != "selected" {
+		t.Errorf("dependency_repos_scope = %s, want prior value", got.DependencyReposScope.ValueString())
+	}
+	if !reflect.DeepEqual(got.DependencyRepoIDs, []int64{10, 20}) {
+		t.Errorf("dependency_repo_ids = %#v, want prior [10 20]", got.DependencyRepoIDs)
+	}
+	if got.SastAutofixType.ValueString() != "none" {
+		t.Errorf("sast_autofix_type = %s, want API value", got.SastAutofixType.ValueString())
+	}
+	if got.SastReposScope.ValueString() != "selected" {
+		t.Errorf("sast_repos_scope = %s, want prior value", got.SastReposScope.ValueString())
+	}
+	if !reflect.DeepEqual(got.SastRepoIDs, []int64{30, 40}) {
+		t.Errorf("sast_repo_ids = %#v, want prior [30 40]", got.SastRepoIDs)
+	}
+}
+
 func TestApplySettings_PUTError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPut {
