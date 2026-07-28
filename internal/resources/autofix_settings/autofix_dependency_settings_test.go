@@ -31,8 +31,8 @@ func TestConstructDependencyBody_Enabled(t *testing.T) {
 	want := map[string]any{
 		"enabled":                      true,
 		"upgrade_type":                 "critical_and_high_only",
-		"repos_scope":       "selected",
-		"repo_ids":          []int64{10, 20},
+		"repos_scope":                  "selected",
+		"repo_ids":                     []int64{10, 20},
 		"use_aikido_library_for_major": true,
 	}
 	if !reflect.DeepEqual(body, want) {
