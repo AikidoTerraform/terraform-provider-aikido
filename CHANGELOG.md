@@ -8,4 +8,5 @@ NOTES:
 FEATURES:
 
 * **New Resource:** `aikido_repository` — manages an existing Aikido code repository by ID. Apply activates/deactivates and optionally sets `sensitivity` and `connectivity`; destroy deactivates the repo (it is never created or deleted in Aikido/SCM).
+* **New Resource:** `aikido_autofix_dependency_settings` — manages workspace-wide dependency (libraries) Autofix settings.
 * **New Resource:** `aikido_autofix_sast_settings` — manages workspace-wide SAST & IaC Autofix settings.

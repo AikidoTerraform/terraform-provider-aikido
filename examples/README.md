@@ -10,6 +10,7 @@ These are **fragments**, not a complete root module by themselves. Combine the p
 |------|---------|
 | [`provider/provider.tf`](provider/provider.tf) | `required_providers` + `provider "aikido"` block |
 | [`resources/aikido_repository/resource.tf`](resources/aikido_repository/resource.tf) | `aikido_repository` resource |
+| [`resources/aikido_autofix_dependency_settings/resource.tf`](resources/aikido_autofix_dependency_settings/resource.tf) | `aikido_autofix_dependency_settings` resource |
 | [`resources/aikido_autofix_sast_settings/resource.tf`](resources/aikido_autofix_sast_settings/resource.tf) | `aikido_autofix_sast_settings` resource |
 
 ## Prerequisites
@@ -50,6 +51,14 @@ resource "aikido_repository" "example" {
   labels = [ "payments", "production" ]
 }
 
+resource "aikido_autofix_dependency_settings" "example" {
+  enabled                      = true
+  severity_filter                 = "critical_and_high_only"
+  repos_scope                  = "all"
+  repo_ids                     = []
+  use_aikido_library_for_major = true
+}
+
 resource "aikido_autofix_sast_settings" "example" {
   enabled         = true
   severity_filter = "critical_and_high_only"
@@ -72,6 +81,7 @@ Prefer env vars for credentials so secrets are not committed. The provider block
 
 - `aikido_repository` configures an **existing** code repository by ID. It does not create the repo in your SCM.
 - `labels` is optional. When set, labels are fully managed from Terraform state. Omitting `labels` leaves Aikido labels untouched; `labels = []` fetches current labels from Aikido and deletes them.
+- `aikido_autofix_dependency_settings` manages the single **workspace-wide** dependency Autofix settings object; define it at most once. Set `repos_scope` to `all` or `selected`, and pass matching `repo_ids` (ignored when scope is `all`). When `enabled` is `false`, other fields are ignored. Destroying the resource disables automatic dependency AutoFix PR creation.
 - `aikido_autofix_sast_settings` manages the single **workspace-wide** SAST & IaC Autofix settings object; define it at most once. Set `repos_scope` to `all` or `selected`, and pass matching `repo_ids` (ignored when scope is `all`). When `enabled` is `false`, other fields are ignored. Destroying the resource disables automatic SAST AutoFix PR creation.
 - After changing provider Go code locally, re-run `make install` before `terraform apply`.
 - Full local/staging setup: [`DEVELOPMENT.md`](../DEVELOPMENT.md)

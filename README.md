@@ -58,6 +58,14 @@ resource "aikido_repository" "app" {
   labels = [ "payments", "production"]
 }
 
+resource "aikido_autofix_dependency_settings" "example" {
+  enabled                      = true
+  severity_filter              = "critical_and_high_only"
+  repos_scope                  = "all"
+  repo_ids                     = []
+  use_aikido_library_for_major = true
+}
+
 resource "aikido_autofix_sast_settings" "example" {
   enabled         = true
   severity_filter = "critical_and_high_only"
@@ -65,8 +73,6 @@ resource "aikido_autofix_sast_settings" "example" {
   repo_ids        = [123, 456]
 }
 ```
-
-`aikido_autofix_sast_settings` manages the workspace-wide SAST & IaC Autofix settings object. Destroying the resource disables automatic SAST AutoFix PR creation.
 
 ## Documentation
 
