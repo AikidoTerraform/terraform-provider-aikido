@@ -10,7 +10,7 @@ description: |-
 
 Manages workspace dependency (libraries) Autofix settings for automatic AutoFix PR creation. There is exactly one dependency Autofix settings object per workspace. When enabled is false, the other fields are ignored by the API and may be omitted. When enabled is true, severity_filter, repos_scope, and use_aikido_library_for_major are required. Repo ID sets are ignored when repos_scope is all. Destroying this resource disables automatic dependency AutoFix PR creation.
 
-There is exactly one dependency Autofix settings object per workspace, so define this resource at most once. Use `repos_scope` (`all` or `selected`) with the matching `repo_ids` set. When scope is `all`, the ID set is ignored (use `[]`). When `enabled` is `false`, other fields are ignored.
+There is exactly one dependency Autofix settings object per workspace, so define this resource at most once. Use `repos_scope` (`all` or `selected`) with the matching `repo_ids` set. When scope is `all`, `repo_ids` is ignored and may be omitted. When `enabled` is `false`, other fields are ignored and may be omitted.
 
 ## Example Usage
 
@@ -21,8 +21,8 @@ There is exactly one dependency Autofix settings object per workspace, so define
 resource "aikido_autofix_dependency_settings" "my-workspace" {
   enabled                      = true
   severity_filter              = "critical_and_high_only"
-  repos_scope                  = "all"
-  repo_ids                     = []
+  repos_scope                  = "selected"
+  repo_ids                     = [123, 456]
   use_aikido_library_for_major = true
 }
 ```
