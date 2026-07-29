@@ -1,5 +1,4 @@
-// Package repository implements the aikido_repository resource.
-package repository
+package resources
 
 import (
 	"context"
@@ -25,7 +24,7 @@ var (
 	_ resource.ResourceWithConfigure   = &repositoryResource{}
 )
 
-func NewResource() resource.Resource {
+func NewRepositoryResource() resource.Resource {
 	return &repositoryResource{}
 }
 
