@@ -3,17 +3,21 @@
 page_title: "Aikido Autofix SAST Settings"
 subcategory: ""
 description: |-
-  Manages workspace SAST & IaC Autofix settings for automatic AutoFix PR creation.
+  Manages workspace SAST & IaC Autofix settings for automatic AutoFix PR creation. There is exactly one SAST Autofix settings object per workspace. When enabled is false, other fields are ignored by the API. Repo ID sets are ignored when repos_scope is all. Destroying this resource disables automatic SAST & IaC AutoFix PR creation.
 ---
 
 # aikido_autofix_sast_settings (Resource)
 
 Manages workspace SAST & IaC Autofix settings for automatic AutoFix PR creation. There is exactly one SAST Autofix settings object per workspace. When enabled is false, other fields are ignored by the API. Repo ID sets are ignored when repos_scope is all. Destroying this resource disables automatic SAST & IaC AutoFix PR creation.
-Use `repos_scope` (`all` or `selected`) with the matching `repo_ids` set. When scope is `all`, the ID set is ignored.
+
+There is exactly one SAST Autofix settings object per workspace, so define this resource at most once. Use `repos_scope` (`all` or `selected`) with the matching `repo_ids` set. When scope is `all`, the ID set is ignored (use `[]`). When `enabled` is `false`, other fields are ignored.
 
 ## Example Usage
 
 ```terraform
+# Manages workspace-wide SAST & IaC Autofix settings.
+# There is exactly one SAST settings object per workspace.
+# Destroying this resource disables automatic SAST & IaC AutoFix PR creation.
 resource "aikido_autofix_sast_settings" "my-workspace" {
   enabled      = true
   autofix_type = "critical_and_high_only"
@@ -27,8 +31,8 @@ resource "aikido_autofix_sast_settings" "my-workspace" {
 
 ### Required
 
-- `enabled` (Boolean) Whether automatic SAST & IaC AutoFix PR creation is enabled.
 - `autofix_type` (String) Severity filter for SAST & IaC autofix. Ignored when enabled is false. One of: critical_issues_only, critical_and_high_only, all.
+- `enabled` (Boolean) Whether automatic SAST & IaC AutoFix PR creation is enabled.
 - `repo_ids` (Set of Number) Code repository IDs for SAST & IaC autofix when repos_scope is selected. Ignored when enabled is false or when repos_scope is all.
 - `repos_scope` (String) Scope of the SAST & IaC autofix. One of: all, selected. Ignored when enabled is false.
 
