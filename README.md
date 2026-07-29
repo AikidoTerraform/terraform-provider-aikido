@@ -72,6 +72,11 @@ resource "aikido_autofix_sast_settings" "example" {
   repos_scope     = "selected"
   repo_ids        = [123, 456]
 }
+
+resource "aikido_autofix_pentest_settings" "example" {
+  enabled         = true
+  severity_filter = "critical_and_high_only"
+}
 ```
 
 ## Documentation

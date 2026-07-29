@@ -148,9 +148,12 @@ resource "aikido_autofix_sast_settings" "example" {
   repos_scope     = "selected"
   repo_ids        = [123, 456]
 }
-```
 
-`aikido_autofix_dependency_settings` is workspace-wide and should be declared at most once.
+resource "aikido_autofix_pentest_settings" "example" {
+  enabled         = true
+  severity_filter = "critical_and_high_only"
+}
+```
 
 You can also start from [`examples/`](examples/) (`provider/` + `resources/aikido_repository/`), but wire credentials via env vars rather than committing them.
 
