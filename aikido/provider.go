@@ -101,6 +101,7 @@ func (p *aikidoProvider) Configure(ctx context.Context, req provider.ConfigureRe
 func (p *aikidoProvider) Resources(_ context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
 		resources.NewRepositoryResource,
+		resources.NewAutofixDependencySettingsResource,
 		resources.NewAutofixPentestSettingsResource,
 	}
 }
