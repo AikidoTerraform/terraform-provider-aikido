@@ -1,4 +1,4 @@
-package autofix_settings
+package resources
 
 import (
 	"context"
@@ -15,21 +15,21 @@ import (
 )
 
 const (
-	sastSettingsPath       = "/public/v1/repositories/autofix/sast/settings"
-	sastSettingsResourceID = "autofix_sast_settings"
+	sastSettingsPath              = "/public/v1/repositories/autofix/sast/settings"
+	autofixSastSettingsResourceID = "autofix_sast_settings"
 )
 
 var (
-	_ resource.Resource                = &sastSettingsResource{}
-	_ resource.ResourceWithImportState = &sastSettingsResource{}
-	_ resource.ResourceWithConfigure   = &sastSettingsResource{}
+	_ resource.Resource                = &autofixSastSettingsResource{}
+	_ resource.ResourceWithImportState = &autofixSastSettingsResource{}
+	_ resource.ResourceWithConfigure   = &autofixSastSettingsResource{}
 )
 
-func NewSastResource() resource.Resource {
-	return &sastSettingsResource{}
+func NewAutofixSastSettingsResource() resource.Resource {
+	return &autofixSastSettingsResource{}
 }
 
-type sastSettingsResource struct {
+type autofixSastSettingsResource struct {
 	client *client.Client
 }
 
@@ -48,11 +48,11 @@ type sastSettingsAPI struct {
 	RepoIDs     []int64 `json:"repo_ids"`
 }
 
-func (r *sastSettingsResource) Metadata(_ context.Context, request resource.MetadataRequest, response *resource.MetadataResponse) {
+func (r *autofixSastSettingsResource) Metadata(_ context.Context, request resource.MetadataRequest, response *resource.MetadataResponse) {
 	response.TypeName = request.ProviderTypeName + "_autofix_sast_settings"
 }
 
-func (r *sastSettingsResource) Schema(_ context.Context, _ resource.SchemaRequest, response *resource.SchemaResponse) {
+func (r *autofixSastSettingsResource) Schema(_ context.Context, _ resource.SchemaRequest, response *resource.SchemaResponse) {
 	response.Schema = schema.Schema{
 		Description: "Manages workspace SAST & IaC Autofix settings for automatic AutoFix PR creation. " +
 			"There is exactly one SAST Autofix settings object per workspace. " +
@@ -95,7 +95,7 @@ func (r *sastSettingsResource) Schema(_ context.Context, _ resource.SchemaReques
 	}
 }
 
-func (r *sastSettingsResource) Configure(_ context.Context, request resource.ConfigureRequest, response *resource.ConfigureResponse) {
+func (r *autofixSastSettingsResource) Configure(_ context.Context, request resource.ConfigureRequest, response *resource.ConfigureResponse) {
 	if request.ProviderData == nil {
 		return
 	}
@@ -112,7 +112,7 @@ func (r *sastSettingsResource) Configure(_ context.Context, request resource.Con
 	r.client = apiClient
 }
 
-func (r *sastSettingsResource) Create(ctx context.Context, request resource.CreateRequest, response *resource.CreateResponse) {
+func (r *autofixSastSettingsResource) Create(ctx context.Context, request resource.CreateRequest, response *resource.CreateResponse) {
 	var planned sastModel
 
 	response.Diagnostics.Append(request.Plan.Get(ctx, &planned)...)
@@ -129,7 +129,7 @@ func (r *sastSettingsResource) Create(ctx context.Context, request resource.Crea
 	response.Diagnostics.Append(response.State.Set(ctx, state)...)
 }
 
-func (r *sastSettingsResource) Read(ctx context.Context, request resource.ReadRequest, response *resource.ReadResponse) {
+func (r *autofixSastSettingsResource) Read(ctx context.Context, request resource.ReadRequest, response *resource.ReadResponse) {
 	var priorState sastModel
 	response.Diagnostics.Append(request.State.Get(ctx, &priorState)...)
 	if response.Diagnostics.HasError() {
@@ -150,7 +150,7 @@ func (r *sastSettingsResource) Read(ctx context.Context, request resource.ReadRe
 	response.Diagnostics.Append(response.State.Set(ctx, state)...)
 }
 
-func (r *sastSettingsResource) Update(ctx context.Context, request resource.UpdateRequest, response *resource.UpdateResponse) {
+func (r *autofixSastSettingsResource) Update(ctx context.Context, request resource.UpdateRequest, response *resource.UpdateResponse) {
 	var planned sastModel
 
 	response.Diagnostics.Append(request.Plan.Get(ctx, &planned)...)
@@ -167,7 +167,7 @@ func (r *sastSettingsResource) Update(ctx context.Context, request resource.Upda
 	response.Diagnostics.Append(response.State.Set(ctx, state)...)
 }
 
-func (r *sastSettingsResource) Delete(ctx context.Context, request resource.DeleteRequest, response *resource.DeleteResponse) {
+func (r *autofixSastSettingsResource) Delete(ctx context.Context, request resource.DeleteRequest, response *resource.DeleteResponse) {
 	var priorState sastModel
 
 	response.Diagnostics.Append(request.State.Get(ctx, &priorState)...)
@@ -181,11 +181,11 @@ func (r *sastSettingsResource) Delete(ctx context.Context, request resource.Dele
 	}
 }
 
-func (r *sastSettingsResource) ImportState(ctx context.Context, request resource.ImportStateRequest, response *resource.ImportStateResponse) {
+func (r *autofixSastSettingsResource) ImportState(ctx context.Context, request resource.ImportStateRequest, response *resource.ImportStateResponse) {
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), request, response)
 }
 
-func (r *sastSettingsResource) applySettings(ctx context.Context, planned sastModel) (sastModel, diag.Diagnostics) {
+func (r *autofixSastSettingsResource) applySettings(ctx context.Context, planned sastModel) (sastModel, diag.Diagnostics) {
 	var diags diag.Diagnostics
 
 	if err := upsertSastSettings(ctx, r.client, &planned); err != nil {
@@ -203,7 +203,7 @@ func (r *sastSettingsResource) applySettings(ctx context.Context, planned sastMo
 	return *state, diags
 }
 
-func (r *sastSettingsResource) readSettings(ctx context.Context, prior *sastModel) (*sastModel, diag.Diagnostics) {
+func (r *autofixSastSettingsResource) readSettings(ctx context.Context, prior *sastModel) (*sastModel, diag.Diagnostics) {
 	var diags diag.Diagnostics
 
 	api, err := getSastSettings(ctx, r.client)
@@ -217,7 +217,7 @@ func (r *sastSettingsResource) readSettings(ctx context.Context, prior *sastMode
 	}
 
 	state := mergeSastAPIAndPrior(api, prior)
-	state.ID = types.StringValue(sastSettingsResourceID)
+	state.ID = types.StringValue(autofixSastSettingsResourceID)
 	return state, diags
 }
 

@@ -1,4 +1,4 @@
-package autofix_settings
+package resources
 
 import (
 	"context"
@@ -128,7 +128,7 @@ func TestSastApplySettings_EchoesPlannedWhenAPIRewrites(t *testing.T) {
 	planned := testPlannedSast()
 	planned.Enabled = types.BoolValue(false)
 
-	res := &sastSettingsResource{client: client.New(srv.Client(), srv.URL)}
+	res := &autofixSastSettingsResource{client: client.New(srv.Client(), srv.URL)}
 	state, diags := res.applySettings(context.Background(), planned)
 	if diags.HasError() {
 		t.Fatalf("applySettings: %v", diags)
@@ -137,8 +137,8 @@ func TestSastApplySettings_EchoesPlannedWhenAPIRewrites(t *testing.T) {
 	if state.ReposScope.ValueString() != "selected" {
 		t.Errorf("repos_scope = %s", state.ReposScope.ValueString())
 	}
-	if state.ID.ValueString() != sastSettingsResourceID {
-		t.Errorf("id = %s, want %s", state.ID.ValueString(), sastSettingsResourceID)
+	if state.ID.ValueString() != autofixSastSettingsResourceID {
+		t.Errorf("id = %s, want %s", state.ID.ValueString(), autofixSastSettingsResourceID)
 	}
 }
 
@@ -159,7 +159,7 @@ func TestSastDelete_DisablesFeature(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	ctx := context.Background()
-	res := &sastSettingsResource{client: client.New(srv.Client(), srv.URL)}
+	res := &autofixSastSettingsResource{client: client.New(srv.Client(), srv.URL)}
 
 	var schemaResp resource.SchemaResponse
 	res.Schema(ctx, resource.SchemaRequest{}, &schemaResp)
