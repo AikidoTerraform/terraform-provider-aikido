@@ -36,7 +36,7 @@ type autofixDependencySettingsResource struct {
 type dependencyModel struct {
 	ID                       types.String `tfsdk:"id"`
 	Enabled                  types.Bool   `tfsdk:"enabled"`
-	UpgradeType              types.String `tfsdk:"upgrade_type"`
+	SeverityFilter           types.String `tfsdk:"severity_filter"`
 	ReposScope               types.String `tfsdk:"repos_scope"`
 	RepoIDs                  []int64      `tfsdk:"repo_ids"`
 	UseAikidoLibraryForMajor types.Bool   `tfsdk:"use_aikido_library_for_major"`
@@ -44,7 +44,7 @@ type dependencyModel struct {
 
 type dependencySettingsAPI struct {
 	Enabled                  bool    `json:"enabled"`
-	UpgradeType              string  `json:"upgrade_type"`
+	SeverityFilter           string  `json:"severity_filter"`
 	ReposScope               string  `json:"repos_scope"`
 	RepoIDs                  []int64 `json:"repo_ids"`
 	UseAikidoLibraryForMajor bool    `json:"use_aikido_library_for_major"`
@@ -70,9 +70,9 @@ func (r *autofixDependencySettingsResource) Schema(_ context.Context, _ resource
 				Required:    true,
 				Description: "Whether automatic dependency AutoFix PR creation is enabled.",
 			},
-			"upgrade_type": schema.StringAttribute{
+			"severity_filter": schema.StringAttribute{
 				Required: true,
-				Description: "Dependency (libraries) upgrade types to autofix. " +
+				Description: "Dependency (libraries) severity types to autofix. " +
 					"Ignored when enabled is false. " +
 					"One of: upgrade_all_packages, minor_and_patch_versions_only, critical_issues_only, critical_and_high_only.",
 				Validators: []validator.String{
@@ -253,7 +253,7 @@ func constructDependencyBody(planned *dependencyModel) map[string]any {
 
 	return map[string]any{
 		"enabled":                      true,
-		"upgrade_type":                 planned.UpgradeType.ValueString(),
+		"severity_filter":              planned.SeverityFilter.ValueString(),
 		"repos_scope":                  planned.ReposScope.ValueString(),
 		"repo_ids":                     normalizeIDs(planned.RepoIDs),
 		"use_aikido_library_for_major": planned.UseAikidoLibraryForMajor.ValueBool(),
@@ -263,7 +263,7 @@ func constructDependencyBody(planned *dependencyModel) map[string]any {
 func mapDependencyAPIToModel(api dependencySettingsAPI) *dependencyModel {
 	return &dependencyModel{
 		Enabled:                  types.BoolValue(api.Enabled),
-		UpgradeType:              types.StringValue(api.UpgradeType),
+		SeverityFilter:           types.StringValue(api.SeverityFilter),
 		ReposScope:               types.StringValue(api.ReposScope),
 		RepoIDs:                  normalizeIDs(api.RepoIDs),
 		UseAikidoLibraryForMajor: types.BoolValue(api.UseAikidoLibraryForMajor),
@@ -277,8 +277,8 @@ func applyDependencyPlanOverrides(state *dependencyModel, planned *dependencyMod
 		return
 	}
 
-	if !planned.UpgradeType.IsUnknown() {
-		state.UpgradeType = planned.UpgradeType
+	if !planned.SeverityFilter.IsUnknown() {
+		state.SeverityFilter = planned.SeverityFilter
 	}
 
 	if !planned.ReposScope.IsUnknown() {
@@ -298,8 +298,8 @@ func mergeDependencyAPIAndPrior(api dependencySettingsAPI, prior *dependencyMode
 	}
 
 	if !api.Enabled {
-		if !prior.UpgradeType.IsNull() && !prior.UpgradeType.IsUnknown() {
-			state.UpgradeType = prior.UpgradeType
+		if !prior.SeverityFilter.IsNull() && !prior.SeverityFilter.IsUnknown() {
+			state.SeverityFilter = prior.SeverityFilter
 		}
 
 		if !prior.ReposScope.IsNull() && !prior.ReposScope.IsUnknown() {

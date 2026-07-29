@@ -18,7 +18,7 @@ import (
 func testPlannedDependency() dependencyModel {
 	return dependencyModel{
 		Enabled:                  types.BoolValue(true),
-		UpgradeType:              types.StringValue("critical_and_high_only"),
+		SeverityFilter:           types.StringValue("critical_and_high_only"),
 		ReposScope:               types.StringValue("selected"),
 		RepoIDs:                  []int64{10, 20},
 		UseAikidoLibraryForMajor: types.BoolValue(true),
@@ -30,7 +30,7 @@ func TestConstructDependencyBody_Enabled(t *testing.T) {
 	body := constructDependencyBody(&planned)
 	want := map[string]any{
 		"enabled":                      true,
-		"upgrade_type":                 "critical_and_high_only",
+		"severity_filter":              "critical_and_high_only",
 		"repos_scope":                  "selected",
 		"repo_ids":                     []int64{10, 20},
 		"use_aikido_library_for_major": true,
@@ -60,7 +60,7 @@ func TestGetDependencySettings(t *testing.T) {
 		_, _ = io.WriteString(w, `{
 			"settings": {
 				"enabled": true,
-				"upgrade_type": "upgrade_all_packages",
+				"severity_filter": "upgrade_all_packages",
 				"repos_scope": "all",
 				"repo_ids": [],
 				"use_aikido_library_for_major": false
@@ -73,7 +73,7 @@ func TestGetDependencySettings(t *testing.T) {
 	if err != nil {
 		t.Fatalf("getDependencySettings: %v", err)
 	}
-	if !dep.Enabled || dep.UpgradeType != "upgrade_all_packages" || dep.ReposScope != "all" {
+	if !dep.Enabled || dep.SeverityFilter != "upgrade_all_packages" || dep.ReposScope != "all" {
 		t.Errorf("unexpected dependency %#v", dep)
 	}
 }
@@ -81,12 +81,12 @@ func TestGetDependencySettings(t *testing.T) {
 func TestMapDependencyAPIToModel(t *testing.T) {
 	dep := mapDependencyAPIToModel(dependencySettingsAPI{
 		Enabled:                  true,
-		UpgradeType:              "critical_and_high_only",
+		SeverityFilter:           "critical_and_high_only",
 		ReposScope:               "selected",
 		RepoIDs:                  []int64{7},
 		UseAikidoLibraryForMajor: true,
 	})
-	if !dep.Enabled.ValueBool() || dep.UpgradeType.ValueString() != "critical_and_high_only" {
+	if !dep.Enabled.ValueBool() || dep.SeverityFilter.ValueString() != "critical_and_high_only" {
 		t.Errorf("unexpected dependency %#v", dep)
 	}
 }
@@ -97,13 +97,13 @@ func TestMergeDependencyPreservesIgnoredFields(t *testing.T) {
 
 	dep := mergeDependencyAPIAndPrior(dependencySettingsAPI{
 		Enabled:                  false,
-		UpgradeType:              "none",
+		SeverityFilter:           "none",
 		ReposScope:               "all",
 		RepoIDs:                  []int64{},
 		UseAikidoLibraryForMajor: false,
 	}, &prior)
-	if dep.UpgradeType.ValueString() != "critical_and_high_only" {
-		t.Errorf("dependency.upgrade_type = %s", dep.UpgradeType.ValueString())
+	if dep.SeverityFilter.ValueString() != "critical_and_high_only" {
+		t.Errorf("dependency.severity_filter = %s", dep.SeverityFilter.ValueString())
 	}
 	if !reflect.DeepEqual(dep.RepoIDs, []int64{10, 20}) {
 		t.Errorf("dependency.repo_ids = %#v", dep.RepoIDs)
@@ -124,7 +124,7 @@ func TestDependencyApplySettings_EchoesPlannedWhenAPIRewrites(t *testing.T) {
 			_, _ = io.WriteString(w, `{
 				"settings": {
 					"enabled": false,
-					"upgrade_type": "none",
+					"severity_filter": "none",
 					"repos_scope": "all",
 					"repo_ids": [],
 					"use_aikido_library_for_major": false
@@ -152,8 +152,8 @@ func TestDependencyApplySettings_EchoesPlannedWhenAPIRewrites(t *testing.T) {
 	if state.Enabled.ValueBool() {
 		t.Error("enabled = true, want false")
 	}
-	if state.UpgradeType.ValueString() != "critical_and_high_only" {
-		t.Errorf("upgrade_type = %s", state.UpgradeType.ValueString())
+	if state.SeverityFilter.ValueString() != "critical_and_high_only" {
+		t.Errorf("severity_filter = %s", state.SeverityFilter.ValueString())
 	}
 	if state.ID.ValueString() != autofixDependencySettingsResourceID {
 		t.Errorf("id = %s, want %s", state.ID.ValueString(), autofixDependencySettingsResourceID)

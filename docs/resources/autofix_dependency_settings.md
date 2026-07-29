@@ -20,7 +20,7 @@ There is exactly one dependency Autofix settings object per workspace, so define
 # Destroying this resource disables automatic dependency AutoFix PR creation.
 resource "aikido_autofix_dependency_settings" "my-workspace" {
   enabled                      = true
-  upgrade_type                 = "critical_and_high_only"
+  severity_filter                 = "critical_and_high_only"
   repos_scope                  = "all"
   repo_ids                     = []
   use_aikido_library_for_major = true
@@ -35,7 +35,7 @@ resource "aikido_autofix_dependency_settings" "my-workspace" {
 - `enabled` (Boolean) Whether automatic dependency AutoFix PR creation is enabled.
 - `repo_ids` (Set of Number) Code repository IDs for dependency (libraries) autofix when repos_scope is selected. Ignored when enabled is false or when repos_scope is all.
 - `repos_scope` (String) Scope of the dependency (libraries) autofix. One of: all, selected. Ignored when enabled is false.
-- `upgrade_type` (String) Dependency (libraries) upgrade types to autofix. Ignored when enabled is false. One of: upgrade_all_packages, minor_and_patch_versions_only, critical_issues_only, critical_and_high_only.
+- `severity_filter` (String) Dependency (libraries) severity types to autofix. Ignored when enabled is false. One of: upgrade_all_packages, minor_and_patch_versions_only, critical_issues_only, critical_and_high_only.
 - `use_aikido_library_for_major` (Boolean) Use Aikido Libraries to avoid major upgrades when available. Ignored when enabled is false.
 
 ### Read-Only
