@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/aikido/terraform-provider-aikido/internal/client"
+	"github.com/aikido/terraform-provider-aikido/internal/helpers"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
@@ -392,9 +393,9 @@ func TestDroppedRepoIDs(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := droppedRepoIDs(tc.planned, tc.actual)
+			got := helpers.DroppedRepoIDs(tc.planned, tc.actual)
 			if !reflect.DeepEqual(got, tc.want) {
-				t.Errorf("droppedRepoIDs = %#v, want %#v", got, tc.want)
+				t.Errorf("DroppedRepoIDs = %#v, want %#v", got, tc.want)
 			}
 		})
 	}
@@ -484,7 +485,7 @@ func TestDependencyApplySettings_ErrorsOnDroppedRepoIDs(t *testing.T) {
 }
 
 func TestNormalizeIDs_NilIsEmpty(t *testing.T) {
-	ids := normalizeIDs(nil)
+	ids := helpers.NormalizeIDs(nil)
 	if ids == nil {
 		t.Fatal("want non-nil empty slice")
 	}
