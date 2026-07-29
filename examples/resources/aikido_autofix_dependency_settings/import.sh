@@ -1,0 +1,1 @@
+terraform import aikido_autofix_dependency_settings.my-workspace autofix_dependency_settings
