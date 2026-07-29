@@ -1,0 +1,1 @@
+terraform import aikido_autofix_sast_settings.my-workspace autofix_sast_settings

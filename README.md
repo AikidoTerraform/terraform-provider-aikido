@@ -65,9 +65,14 @@ resource "aikido_autofix_dependency_settings" "example" {
   repo_ids                     = []
   use_aikido_library_for_major = true
 }
-```
 
-`aikido_autofix_dependency_settings` manages the workspace-wide dependency Autofix settings object. Destroying the resource disables automatic dependency AutoFix PR creation.
+resource "aikido_autofix_sast_settings" "example" {
+  enabled         = true
+  severity_filter = "critical_and_high_only"
+  repos_scope     = "selected"
+  repo_ids        = [123, 456]
+}
+```
 
 ## Documentation
 
