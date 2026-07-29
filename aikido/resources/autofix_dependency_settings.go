@@ -285,7 +285,9 @@ func applyDependencyPlanOverrides(state *dependencyModel, planned *dependencyMod
 		state.ReposScope = planned.ReposScope
 	}
 
-	state.RepoIDs = normalizeIDs(planned.RepoIDs)
+	if !state.Enabled.ValueBool() || state.ReposScope.ValueString() == "all" {
+		state.RepoIDs = normalizeIDs(planned.RepoIDs)
+	}
 	if !planned.UseAikidoLibraryForMajor.IsUnknown() {
 		state.UseAikidoLibraryForMajor = planned.UseAikidoLibraryForMajor
 	}
