@@ -19,10 +19,10 @@ There is exactly one SAST Autofix settings object per workspace, so define this 
 # There is exactly one SAST settings object per workspace.
 # Destroying this resource disables automatic SAST & IaC AutoFix PR creation.
 resource "aikido_autofix_sast_settings" "my-workspace" {
-  enabled      = true
-  autofix_type = "critical_and_high_only"
-  repos_scope  = "selected"
-  repo_ids     = [123, 456]
+  enabled         = true
+  severity_filter = "critical_and_high_only"
+  repos_scope     = "selected"
+  repo_ids        = [123, 456]
 }
 ```
 
@@ -31,10 +31,10 @@ resource "aikido_autofix_sast_settings" "my-workspace" {
 
 ### Required
 
-- `autofix_type` (String) Severity filter for SAST & IaC autofix. Ignored when enabled is false. One of: critical_issues_only, critical_and_high_only, all.
 - `enabled` (Boolean) Whether automatic SAST & IaC AutoFix PR creation is enabled.
 - `repo_ids` (Set of Number) Code repository IDs for SAST & IaC autofix when repos_scope is selected. Ignored when enabled is false or when repos_scope is all.
 - `repos_scope` (String) Scope of the SAST & IaC autofix. One of: all, selected. Ignored when enabled is false.
+- `severity_filter` (String) Severity filter for SAST & IaC autofix. Ignored when enabled is false. One of: critical_issues_only, critical_and_high_only, all.
 
 ### Read-Only
 

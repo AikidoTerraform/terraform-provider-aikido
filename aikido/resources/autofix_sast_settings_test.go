@@ -17,10 +17,10 @@ import (
 
 func testPlannedSast() sastModel {
 	return sastModel{
-		Enabled:     types.BoolValue(true),
-		AutofixType: types.StringValue("critical_issues_only"),
-		ReposScope:  types.StringValue("selected"),
-		RepoIDs:     []int64{30, 40},
+		Enabled:        types.BoolValue(true),
+		SeverityFilter: types.StringValue("critical_issues_only"),
+		ReposScope:     types.StringValue("selected"),
+		RepoIDs:        []int64{30, 40},
 	}
 }
 
@@ -28,10 +28,10 @@ func TestConstructSastBody_Enabled(t *testing.T) {
 	planned := testPlannedSast()
 	body := constructSastBody(&planned)
 	want := map[string]any{
-		"enabled":      true,
-		"autofix_type": "critical_issues_only",
-		"repos_scope":  "selected",
-		"repo_ids":     []int64{30, 40},
+		"enabled":         true,
+		"severity_filter": "critical_issues_only",
+		"repos_scope":     "selected",
+		"repo_ids":        []int64{30, 40},
 	}
 	if !reflect.DeepEqual(body, want) {
 		t.Errorf("body = %#v, want %#v", body, want)
@@ -58,7 +58,7 @@ func TestGetSastSettings(t *testing.T) {
 		_, _ = io.WriteString(w, `{
 			"settings": {
 				"enabled": true,
-				"autofix_type": "all",
+				"severity_filter": "all",
 				"repos_scope": "selected",
 				"repo_ids": [9]
 			}
@@ -70,19 +70,19 @@ func TestGetSastSettings(t *testing.T) {
 	if err != nil {
 		t.Fatalf("getSastSettings: %v", err)
 	}
-	if !sast.Enabled || sast.AutofixType != "all" || !reflect.DeepEqual(sast.RepoIDs, []int64{9}) {
+	if !sast.Enabled || sast.SeverityFilter != "all" || !reflect.DeepEqual(sast.RepoIDs, []int64{9}) {
 		t.Errorf("unexpected sast %#v", sast)
 	}
 }
 
 func TestMapSastAPIToModel(t *testing.T) {
 	sast := mapSastAPIToModel(sastSettingsAPI{
-		Enabled:     false,
-		AutofixType: "none",
-		ReposScope:  "none",
-		RepoIDs:     []int64{},
+		Enabled:        false,
+		SeverityFilter: "none",
+		ReposScope:     "none",
+		RepoIDs:        []int64{},
 	})
-	if sast.Enabled.ValueBool() || sast.AutofixType.ValueString() != "none" {
+	if sast.Enabled.ValueBool() || sast.SeverityFilter.ValueString() != "none" {
 		t.Errorf("unexpected sast %#v", sast)
 	}
 }
@@ -92,13 +92,13 @@ func TestMergeSastPreservesIgnoredFields(t *testing.T) {
 	prior.Enabled = types.BoolValue(false)
 
 	sast := mergeSastAPIAndPrior(sastSettingsAPI{
-		Enabled:     false,
-		AutofixType: "none",
-		ReposScope:  "none",
-		RepoIDs:     []int64{},
+		Enabled:        false,
+		SeverityFilter: "none",
+		ReposScope:     "none",
+		RepoIDs:        []int64{},
 	}, &prior)
-	if sast.AutofixType.ValueString() != "critical_issues_only" {
-		t.Errorf("sast.autofix_type = %s", sast.AutofixType.ValueString())
+	if sast.SeverityFilter.ValueString() != "critical_issues_only" {
+		t.Errorf("sast.severity_filter = %s", sast.SeverityFilter.ValueString())
 	}
 	if !reflect.DeepEqual(sast.RepoIDs, []int64{30, 40}) {
 		t.Errorf("sast.repo_ids = %#v", sast.RepoIDs)
@@ -114,7 +114,7 @@ func TestSastApplySettings_EchoesPlannedWhenAPIRewrites(t *testing.T) {
 			_, _ = io.WriteString(w, `{
 				"settings": {
 					"enabled": false,
-					"autofix_type": "none",
+					"severity_filter": "none",
 					"repos_scope": "none",
 					"repo_ids": []
 				}

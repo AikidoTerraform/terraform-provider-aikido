@@ -34,18 +34,18 @@ type autofixSastSettingsResource struct {
 }
 
 type sastModel struct {
-	ID          types.String `tfsdk:"id"`
-	Enabled     types.Bool   `tfsdk:"enabled"`
-	AutofixType types.String `tfsdk:"autofix_type"`
-	ReposScope  types.String `tfsdk:"repos_scope"`
-	RepoIDs     []int64      `tfsdk:"repo_ids"`
+	ID             types.String `tfsdk:"id"`
+	Enabled        types.Bool   `tfsdk:"enabled"`
+	SeverityFilter types.String `tfsdk:"severity_filter"`
+	ReposScope     types.String `tfsdk:"repos_scope"`
+	RepoIDs        []int64      `tfsdk:"repo_ids"`
 }
 
 type sastSettingsAPI struct {
-	Enabled     bool    `json:"enabled"`
-	AutofixType string  `json:"autofix_type"`
-	ReposScope  string  `json:"repos_scope"`
-	RepoIDs     []int64 `json:"repo_ids"`
+	Enabled        bool    `json:"enabled"`
+	SeverityFilter string  `json:"severity_filter"`
+	ReposScope     string  `json:"repos_scope"`
+	RepoIDs        []int64 `json:"repo_ids"`
 }
 
 func (r *autofixSastSettingsResource) Metadata(_ context.Context, request resource.MetadataRequest, response *resource.MetadataResponse) {
@@ -68,7 +68,7 @@ func (r *autofixSastSettingsResource) Schema(_ context.Context, _ resource.Schem
 				Required:    true,
 				Description: "Whether automatic SAST & IaC AutoFix PR creation is enabled.",
 			},
-			"autofix_type": schema.StringAttribute{
+			"severity_filter": schema.StringAttribute{
 				Required: true,
 				Description: "Severity filter for SAST & IaC autofix. " +
 					"Ignored when enabled is false. " +
@@ -243,19 +243,19 @@ func constructSastBody(planned *sastModel) map[string]any {
 	}
 
 	return map[string]any{
-		"enabled":      true,
-		"autofix_type": planned.AutofixType.ValueString(),
-		"repos_scope":  planned.ReposScope.ValueString(),
-		"repo_ids":     normalizeIDs(planned.RepoIDs),
+		"enabled":         true,
+		"severity_filter": planned.SeverityFilter.ValueString(),
+		"repos_scope":     planned.ReposScope.ValueString(),
+		"repo_ids":        normalizeIDs(planned.RepoIDs),
 	}
 }
 
 func mapSastAPIToModel(api sastSettingsAPI) *sastModel {
 	return &sastModel{
-		Enabled:     types.BoolValue(api.Enabled),
-		AutofixType: types.StringValue(api.AutofixType),
-		ReposScope:  types.StringValue(api.ReposScope),
-		RepoIDs:     normalizeIDs(api.RepoIDs),
+		Enabled:        types.BoolValue(api.Enabled),
+		SeverityFilter: types.StringValue(api.SeverityFilter),
+		ReposScope:     types.StringValue(api.ReposScope),
+		RepoIDs:        normalizeIDs(api.RepoIDs),
 	}
 }
 
@@ -264,8 +264,8 @@ func applySastPlanOverrides(state *sastModel, planned *sastModel) {
 		return
 	}
 
-	if !planned.AutofixType.IsUnknown() {
-		state.AutofixType = planned.AutofixType
+	if !planned.SeverityFilter.IsUnknown() {
+		state.SeverityFilter = planned.SeverityFilter
 	}
 
 	if !planned.ReposScope.IsUnknown() {
@@ -279,13 +279,13 @@ func mergeSastAPIAndPrior(api sastSettingsAPI, prior *sastModel) *sastModel {
 	state := mapSastAPIToModel(api)
 
 	if !api.Enabled {
-		state.AutofixType = types.StringNull()
+		state.SeverityFilter = types.StringNull()
 		state.ReposScope = types.StringNull()
 		state.RepoIDs = []int64{}
 
 		if prior != nil {
-			if !prior.AutofixType.IsNull() && !prior.AutofixType.IsUnknown() {
-				state.AutofixType = prior.AutofixType
+			if !prior.SeverityFilter.IsNull() && !prior.SeverityFilter.IsUnknown() {
+				state.SeverityFilter = prior.SeverityFilter
 			}
 
 			if !prior.ReposScope.IsNull() && !prior.ReposScope.IsUnknown() {
