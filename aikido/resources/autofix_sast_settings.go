@@ -3,9 +3,9 @@ package resources
 import (
 	"context"
 	"fmt"
-	"slices"
 
 	"github.com/aikido/terraform-provider-aikido/internal/client"
+	"github.com/aikido/terraform-provider-aikido/internal/helpers"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -254,7 +254,7 @@ func (r *autofixSastSettingsResource) applySettings(ctx context.Context, planned
 	}
 
 	if planned.Enabled.ValueBool() && planned.ReposScope.ValueString() == "selected" {
-		if dropped := droppedRepoIDs(planned.RepoIDs, state.RepoIDs); len(dropped) > 0 {
+		if dropped := helpers.DroppedRepoIDs(planned.RepoIDs, state.RepoIDs); len(dropped) > 0 {
 			diags.AddError(
 				"Error configuring SAST & IaC autofix settings",
 				fmt.Sprintf(
@@ -312,7 +312,7 @@ func constructSastBody(planned *sastModel) map[string]any {
 		"enabled":         true,
 		"severity_filter": planned.SeverityFilter.ValueString(),
 		"repos_scope":     planned.ReposScope.ValueString(),
-		"repo_ids":        normalizeIDs(planned.RepoIDs),
+		"repo_ids":        helpers.NormalizeIDs(planned.RepoIDs),
 	}
 }
 
@@ -321,7 +321,7 @@ func mapSastAPIToModel(api sastSettingsAPI) *sastModel {
 		Enabled:        types.BoolValue(api.Enabled),
 		SeverityFilter: types.StringValue(api.SeverityFilter),
 		ReposScope:     types.StringValue(api.ReposScope),
-		RepoIDs:        normalizeIDs(api.RepoIDs),
+		RepoIDs:        helpers.NormalizeIDs(api.RepoIDs),
 	}
 }
 
@@ -346,35 +346,4 @@ func mergeSastAPIAndPrior(api sastSettingsAPI, prior *sastModel) *sastModel {
 	}
 
 	return state
-}
-
-func normalizeIDs(ids []int64) []int64 {
-	if ids == nil {
-		return []int64{}
-	}
-
-	return ids
-}
-
-func droppedRepoIDs(planned []int64, actual []int64) []int64 {
-	actualSet := make(map[int64]struct{}, len(actual))
-	for _, id := range actual {
-		actualSet[id] = struct{}{}
-	}
-
-	var dropped []int64
-	seen := make(map[int64]struct{}, len(planned))
-	for _, id := range planned {
-		if _, ok := seen[id]; ok {
-			continue
-		}
-		seen[id] = struct{}{}
-
-		if _, ok := actualSet[id]; !ok {
-			dropped = append(dropped, id)
-		}
-	}
-
-	slices.Sort(dropped)
-	return dropped
 }

@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	"github.com/aikido/terraform-provider-aikido/internal/client"
-	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/aikido/terraform-provider-aikido/internal/helpers"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -183,24 +183,6 @@ func TestSastDelete_DisablesFeature(t *testing.T) {
 	}
 }
 
-func TestNormalizeIDs_NilIsEmpty(t *testing.T) {
-	ids := normalizeIDs(nil)
-	if ids == nil {
-		t.Fatal("want non-nil empty slice")
-	}
-	if len(ids) != 0 {
-		t.Errorf("ids = %#v, want empty", ids)
-	}
-}
-
-func intSet(ids ...int64) types.Set {
-	elems := make([]attr.Value, 0, len(ids))
-	for _, id := range ids {
-		elems = append(elems, types.Int64Value(id))
-	}
-	return types.SetValueMust(types.Int64Type, elems)
-}
-
 func TestValidateSastConfig(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -315,9 +297,9 @@ func TestDroppedSastRepoIDs(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := droppedRepoIDs(tc.planned, tc.actual)
+			got := helpers.DroppedRepoIDs(tc.planned, tc.actual)
 			if !reflect.DeepEqual(got, tc.want) {
-				t.Errorf("droppedRepoIDs = %#v, want %#v", got, tc.want)
+				t.Errorf("DroppedRepoIDs = %#v, want %#v", got, tc.want)
 			}
 		})
 	}
