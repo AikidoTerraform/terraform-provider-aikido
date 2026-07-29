@@ -15,7 +15,7 @@ These are **fragments**, not a complete root module by themselves. Combine the p
 
 - Terraform >= 1.0
 - Aikido API credentials (`AIKIDO_CLIENT_ID` / `AIKIDO_CLIENT_SECRET`)
-- For a **local** provider build: install the binary and set a `dev_overrides` entry — see [`README.dev.md`](../README.dev.md)
+- For a **local** provider build: install the binary and set a `dev_overrides` entry — see [`DEVELOPMENT.md`](../DEVELOPMENT.md)
 
 ## Quick start
 
@@ -65,4 +65,4 @@ Prefer env vars for credentials so secrets are not committed. The provider block
 - `aikido_repository` configures an **existing** code repository by ID. It does not create the repo in your SCM.
 - `labels` is optional. When set, labels are fully managed from Terraform state. Omitting `labels` leaves Aikido labels untouched; `labels = []` fetches current labels from Aikido and deletes them.
 - After changing provider Go code locally, re-run `make install` before `terraform apply`.
-- Full local/staging setup: [`README.dev.md`](../README.dev.md)
+- Full local/staging setup: [`DEVELOPMENT.md`](../DEVELOPMENT.md)
