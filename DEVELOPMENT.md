@@ -182,7 +182,7 @@ To attach a debugger (Delve), run the provider with `-debug` and follow Terrafor
 
 ## 5. Acceptance tests (`TF_ACC`)
 
-Framework acceptance tests (`resource.Test`) are planned but not fully wired yet (see [`TODO.md`](TODO.md)). When they exist:
+Framework acceptance tests (`resource.Test`) are planned but not fully wired yet. When they exist:
 
 ```shell
 export AIKIDO_CLIENT_ID="..."

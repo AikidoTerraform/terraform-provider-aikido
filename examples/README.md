@@ -16,7 +16,7 @@ These are **fragments**, not a complete root module by themselves. Combine the p
 
 - Terraform >= 1.0
 - Aikido API credentials (`AIKIDO_CLIENT_ID` / `AIKIDO_CLIENT_SECRET`)
-- For a **local** provider build: install the binary and set a `dev_overrides` entry — see [`README.dev.md`](../README.dev.md)
+- For a **local** provider build: install the binary and set a `dev_overrides` entry — see [`DEVELOPMENT.md`](../DEVELOPMENT.md)
 
 ## Quick start
 
@@ -74,4 +74,4 @@ Prefer env vars for credentials so secrets are not committed. The provider block
 - `labels` is optional. When set, labels are fully managed from Terraform state. Omitting `labels` leaves Aikido labels untouched; `labels = []` fetches current labels from Aikido and deletes them.
 - `aikido_autofix_sast_settings` manages the single **workspace-wide** SAST & IaC Autofix settings object; define it at most once. Set `repos_scope` to `all` or `selected`, and pass matching `repo_ids` (ignored when scope is `all`). When `enabled` is `false`, other fields are ignored. Destroying the resource disables automatic SAST AutoFix PR creation.
 - After changing provider Go code locally, re-run `make install` before `terraform apply`.
-- Full local/staging setup: [`README.dev.md`](../README.dev.md)
+- Full local/staging setup: [`DEVELOPMENT.md`](../DEVELOPMENT.md)
