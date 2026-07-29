@@ -3,17 +3,21 @@
 page_title: "Aikido Autofix Dependency Settings"
 subcategory: ""
 description: |-
-  Manages workspace dependency (libraries) Autofix settings for automatic AutoFix PR creation.
+  Manages workspace dependency (libraries) Autofix settings for automatic AutoFix PR creation. There is exactly one dependency Autofix settings object per workspace. When enabled is false, other fields are ignored by the API. Repo ID sets are ignored when repos_scope is all. Destroying this resource disables automatic dependency AutoFix PR creation.
 ---
 
 # aikido_autofix_dependency_settings (Resource)
 
 Manages workspace dependency (libraries) Autofix settings for automatic AutoFix PR creation. There is exactly one dependency Autofix settings object per workspace. When enabled is false, other fields are ignored by the API. Repo ID sets are ignored when repos_scope is all. Destroying this resource disables automatic dependency AutoFix PR creation.
-Use `repos_scope` (`all` or `selected`) with the matching `repo_ids` set. When scope is `all`, the ID set is ignored (use `[]`).
+
+There is exactly one dependency Autofix settings object per workspace, so define this resource at most once. Use `repos_scope` (`all` or `selected`) with the matching `repo_ids` set. When scope is `all`, the ID set is ignored (use `[]`). When `enabled` is `false`, other fields are ignored.
 
 ## Example Usage
 
 ```terraform
+# Manages workspace-wide dependency (libraries) Autofix settings.
+# There is exactly one dependency settings object per workspace.
+# Destroying this resource disables automatic dependency AutoFix PR creation.
 resource "aikido_autofix_dependency_settings" "my-workspace" {
   enabled                      = true
   upgrade_type                 = "critical_and_high_only"
