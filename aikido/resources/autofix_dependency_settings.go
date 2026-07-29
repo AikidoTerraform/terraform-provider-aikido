@@ -21,9 +21,10 @@ const (
 )
 
 var (
-	_ resource.Resource                = &autofixDependencySettingsResource{}
-	_ resource.ResourceWithImportState = &autofixDependencySettingsResource{}
-	_ resource.ResourceWithConfigure   = &autofixDependencySettingsResource{}
+	_ resource.Resource                   = &autofixDependencySettingsResource{}
+	_ resource.ResourceWithImportState    = &autofixDependencySettingsResource{}
+	_ resource.ResourceWithConfigure      = &autofixDependencySettingsResource{}
+	_ resource.ResourceWithValidateConfig = &autofixDependencySettingsResource{}
 )
 
 func NewAutofixDependencySettingsResource() resource.Resource {
@@ -59,7 +60,8 @@ func (r *autofixDependencySettingsResource) Schema(_ context.Context, _ resource
 	response.Schema = schema.Schema{
 		Description: "Manages workspace dependency (libraries) Autofix settings for automatic AutoFix PR creation. " +
 			"There is exactly one dependency Autofix settings object per workspace. " +
-			"When enabled is false, other fields are ignored by the API. " +
+			"When enabled is false, the other fields are ignored by the API and may be omitted. " +
+			"When enabled is true, severity_filter, repos_scope, and use_aikido_library_for_major are required. " +
 			"Repo ID sets are ignored when repos_scope is all. " +
 			"Destroying this resource disables automatic dependency AutoFix PR creation.",
 		Attributes: map[string]schema.Attribute{
@@ -72,9 +74,9 @@ func (r *autofixDependencySettingsResource) Schema(_ context.Context, _ resource
 				Description: "Whether automatic dependency AutoFix PR creation is enabled.",
 			},
 			"severity_filter": schema.StringAttribute{
-				Required: true,
+				Optional: true,
 				Description: "Dependency (libraries) severity types to autofix. " +
-					"Ignored when enabled is false. " +
+					"Required when enabled is true; may be omitted when enabled is false. " +
 					"One of: upgrade_all_packages, minor_and_patch_versions_only, critical_issues_only, critical_and_high_only.",
 				Validators: []validator.String{
 					stringvalidator.OneOf(
@@ -86,22 +88,25 @@ func (r *autofixDependencySettingsResource) Schema(_ context.Context, _ resource
 				},
 			},
 			"repos_scope": schema.StringAttribute{
-				Required: true,
+				Optional: true,
 				Description: "Scope of the dependency (libraries) autofix. One of: all, selected. " +
-					"Ignored when enabled is false.",
+					"Required when enabled is true; may be omitted when enabled is false.",
 				Validators: []validator.String{
 					stringvalidator.OneOf("all", "selected"),
 				},
 			},
 			"repo_ids": schema.SetAttribute{
-				Required:    true,
+				Optional:    true,
 				ElementType: types.Int64Type,
-				Description: "Code repository IDs for dependency (libraries) autofix when repos_scope is selected. " +
-					"Ignored when enabled is false or when repos_scope is all.",
+				Description: "Code repository IDs for dependency (libraries) autofix. " +
+					"Required (non-empty) when repos_scope is selected. " +
+					"Ignored when enabled is false or when repos_scope is all. " +
+					"The API may drop invalid or inactive IDs, which fails the apply with an actionable error.",
 			},
 			"use_aikido_library_for_major": schema.BoolAttribute{
-				Required:    true,
-				Description: "Use Aikido Libraries to avoid major upgrades when available. Ignored when enabled is false.",
+				Optional: true,
+				Description: "Use Aikido Libraries to avoid major upgrades when available. " +
+					"Required when enabled is true; may be omitted when enabled is false.",
 			},
 		},
 	}
@@ -122,6 +127,60 @@ func (r *autofixDependencySettingsResource) Configure(_ context.Context, request
 	}
 
 	r.client = apiClient
+}
+
+// ValidateConfig enforces the "required when enabled" rules at plan time.
+func (r *autofixDependencySettingsResource) ValidateConfig(ctx context.Context, request resource.ValidateConfigRequest, response *resource.ValidateConfigResponse) {
+	var (
+		enabled  types.Bool
+		useMajor types.Bool
+		severity types.String
+		scope    types.String
+		repoIDs  types.Set
+	)
+
+	response.Diagnostics.Append(request.Config.GetAttribute(ctx, path.Root("enabled"), &enabled)...)
+	response.Diagnostics.Append(request.Config.GetAttribute(ctx, path.Root("severity_filter"), &severity)...)
+	response.Diagnostics.Append(request.Config.GetAttribute(ctx, path.Root("repos_scope"), &scope)...)
+	response.Diagnostics.Append(request.Config.GetAttribute(ctx, path.Root("repo_ids"), &repoIDs)...)
+	response.Diagnostics.Append(request.Config.GetAttribute(ctx, path.Root("use_aikido_library_for_major"), &useMajor)...)
+	if response.Diagnostics.HasError() {
+		return
+	}
+
+	response.Diagnostics.Append(validateDependencyConfig(enabled, useMajor, severity, scope, repoIDs)...)
+}
+
+// validateDependencyConfig is split out so it is unit-testable without a tfsdk.Config.
+func validateDependencyConfig(enabled, useMajor types.Bool, severity, scope types.String, repoIDs types.Set) diag.Diagnostics {
+	var diags diag.Diagnostics
+
+	// Only enabled=true has cross-field requirements; skip when null/unknown.
+	if enabled.IsNull() || enabled.IsUnknown() || !enabled.ValueBool() {
+		return diags
+	}
+
+	if severity.IsNull() {
+		diags.AddAttributeError(path.Root("severity_filter"), "Missing severity_filter",
+			`"severity_filter" is required when "enabled" is true.`)
+	}
+	if scope.IsNull() {
+		diags.AddAttributeError(path.Root("repos_scope"), "Missing repos_scope",
+			`"repos_scope" is required when "enabled" is true.`)
+	}
+	if useMajor.IsNull() {
+		diags.AddAttributeError(path.Root("use_aikido_library_for_major"), "Missing use_aikido_library_for_major",
+			`"use_aikido_library_for_major" is required when "enabled" is true.`)
+	}
+
+	if !scope.IsNull() && !scope.IsUnknown() && scope.ValueString() == "selected" {
+		if repoIDs.IsNull() || (!repoIDs.IsUnknown() && len(repoIDs.Elements()) == 0) {
+			diags.AddAttributeError(path.Root("repo_ids"), "Missing repo_ids",
+				`"repo_ids" must contain at least one repository ID when "repos_scope" is "selected".`)
+		}
+	}
+
+	return diags
 }
 
 func (r *autofixDependencySettingsResource) Create(ctx context.Context, request resource.CreateRequest, response *resource.CreateResponse) {
@@ -224,7 +283,6 @@ func (r *autofixDependencySettingsResource) applySettings(ctx context.Context, p
 		}
 	}
 
-	applyDependencyPlanOverrides(state, &planned)
 	return *state, diags
 }
 
@@ -284,29 +342,9 @@ func mapDependencyAPIToModel(api dependencySettingsAPI) *dependencyModel {
 	}
 }
 
-// Prefer planned values for fields the API may rewrite when dependency autofix is
-// disabled or when repos_scope is all.
-func applyDependencyPlanOverrides(state *dependencyModel, planned *dependencyModel) {
-	if planned == nil || state == nil {
-		return
-	}
-
-	if !planned.SeverityFilter.IsUnknown() {
-		state.SeverityFilter = planned.SeverityFilter
-	}
-
-	if !planned.ReposScope.IsUnknown() {
-		state.ReposScope = planned.ReposScope
-	}
-
-	if !state.Enabled.ValueBool() || state.ReposScope.ValueString() == "all" {
-		state.RepoIDs = normalizeIDs(planned.RepoIDs)
-	}
-	if !planned.UseAikidoLibraryForMajor.IsUnknown() {
-		state.UseAikidoLibraryForMajor = planned.UseAikidoLibraryForMajor
-	}
-}
-
+// mergeDependencyAPIAndPrior returns state from the API, but mirrors prior state
+// verbatim for fields the API ignores (all fields when disabled; repo_ids when
+// scope is all) so omitted/null values don't produce spurious diffs.
 func mergeDependencyAPIAndPrior(api dependencySettingsAPI, prior *dependencyModel) *dependencyModel {
 	state := mapDependencyAPIToModel(api)
 	if prior == nil {
@@ -314,20 +352,15 @@ func mergeDependencyAPIAndPrior(api dependencySettingsAPI, prior *dependencyMode
 	}
 
 	if !api.Enabled {
-		if !prior.SeverityFilter.IsNull() && !prior.SeverityFilter.IsUnknown() {
-			state.SeverityFilter = prior.SeverityFilter
-		}
+		state.SeverityFilter = prior.SeverityFilter
+		state.ReposScope = prior.ReposScope
+		state.RepoIDs = prior.RepoIDs
+		state.UseAikidoLibraryForMajor = prior.UseAikidoLibraryForMajor
+		return state
+	}
 
-		if !prior.ReposScope.IsNull() && !prior.ReposScope.IsUnknown() {
-			state.ReposScope = prior.ReposScope
-		}
-
-		state.RepoIDs = normalizeIDs(prior.RepoIDs)
-		if !prior.UseAikidoLibraryForMajor.IsNull() && !prior.UseAikidoLibraryForMajor.IsUnknown() {
-			state.UseAikidoLibraryForMajor = prior.UseAikidoLibraryForMajor
-		}
-	} else if api.ReposScope == "all" {
-		state.RepoIDs = normalizeIDs(prior.RepoIDs)
+	if api.ReposScope == "all" {
+		state.RepoIDs = prior.RepoIDs
 	}
 
 	return state

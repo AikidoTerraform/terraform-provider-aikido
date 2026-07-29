@@ -3,12 +3,12 @@
 page_title: "Aikido Autofix Dependency Settings"
 subcategory: ""
 description: |-
-  Manages workspace dependency (libraries) Autofix settings for automatic AutoFix PR creation. There is exactly one dependency Autofix settings object per workspace. When enabled is false, other fields are ignored by the API. Repo ID sets are ignored when repos_scope is all. Destroying this resource disables automatic dependency AutoFix PR creation.
+  Manages workspace dependency (libraries) Autofix settings for automatic AutoFix PR creation. There is exactly one dependency Autofix settings object per workspace. When enabled is false, the other fields are ignored by the API and may be omitted. When enabled is true, severity_filter, repos_scope, and use_aikido_library_for_major are required. Repo ID sets are ignored when repos_scope is all. Destroying this resource disables automatic dependency AutoFix PR creation.
 ---
 
 # aikido_autofix_dependency_settings (Resource)
 
-Manages workspace dependency (libraries) Autofix settings for automatic AutoFix PR creation. There is exactly one dependency Autofix settings object per workspace. When enabled is false, other fields are ignored by the API. Repo ID sets are ignored when repos_scope is all. Destroying this resource disables automatic dependency AutoFix PR creation.
+Manages workspace dependency (libraries) Autofix settings for automatic AutoFix PR creation. There is exactly one dependency Autofix settings object per workspace. When enabled is false, the other fields are ignored by the API and may be omitted. When enabled is true, severity_filter, repos_scope, and use_aikido_library_for_major are required. Repo ID sets are ignored when repos_scope is all. Destroying this resource disables automatic dependency AutoFix PR creation.
 
 There is exactly one dependency Autofix settings object per workspace, so define this resource at most once. Use `repos_scope` (`all` or `selected`) with the matching `repo_ids` set. When scope is `all`, the ID set is ignored (use `[]`). When `enabled` is `false`, other fields are ignored.
 
@@ -33,10 +33,13 @@ resource "aikido_autofix_dependency_settings" "my-workspace" {
 ### Required
 
 - `enabled` (Boolean) Whether automatic dependency AutoFix PR creation is enabled.
-- `repo_ids` (Set of Number) Code repository IDs for dependency (libraries) autofix when repos_scope is selected. Ignored when enabled is false or when repos_scope is all.
-- `repos_scope` (String) Scope of the dependency (libraries) autofix. One of: all, selected. Ignored when enabled is false.
-- `severity_filter` (String) Dependency (libraries) severity types to autofix. Ignored when enabled is false. One of: upgrade_all_packages, minor_and_patch_versions_only, critical_issues_only, critical_and_high_only.
-- `use_aikido_library_for_major` (Boolean) Use Aikido Libraries to avoid major upgrades when available. Ignored when enabled is false.
+
+### Optional
+
+- `repo_ids` (Set of Number) Code repository IDs for dependency (libraries) autofix. Required (non-empty) when repos_scope is selected. Ignored when enabled is false or when repos_scope is all. The API may drop invalid or inactive IDs, which fails the apply with an actionable error.
+- `repos_scope` (String) Scope of the dependency (libraries) autofix. One of: all, selected. Required when enabled is true; may be omitted when enabled is false.
+- `severity_filter` (String) Dependency (libraries) severity types to autofix. Required when enabled is true; may be omitted when enabled is false. One of: upgrade_all_packages, minor_and_patch_versions_only, critical_issues_only, critical_and_high_only.
+- `use_aikido_library_for_major` (Boolean) Use Aikido Libraries to avoid major upgrades when available. Required when enabled is true; may be omitted when enabled is false.
 
 ### Read-Only
 
