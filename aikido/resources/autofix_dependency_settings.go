@@ -1,4 +1,4 @@
-package autofix_settings
+package resources
 
 import (
 	"context"
@@ -15,21 +15,21 @@ import (
 )
 
 const (
-	dependencySettingsPath       = "/public/v1/repositories/autofix/dependency/settings"
-	dependencySettingsResourceID = "autofix_dependency_settings"
+	dependencySettingsPath              = "/public/v1/repositories/autofix/dependency/settings"
+	autofixDependencySettingsResourceID = "autofix_dependency_settings"
 )
 
 var (
-	_ resource.Resource                = &dependencySettingsResource{}
-	_ resource.ResourceWithImportState = &dependencySettingsResource{}
-	_ resource.ResourceWithConfigure   = &dependencySettingsResource{}
+	_ resource.Resource                = &autofixDependencySettingsResource{}
+	_ resource.ResourceWithImportState = &autofixDependencySettingsResource{}
+	_ resource.ResourceWithConfigure   = &autofixDependencySettingsResource{}
 )
 
-func NewDependencyResource() resource.Resource {
-	return &dependencySettingsResource{}
+func NewAutofixDependencySettingsResource() resource.Resource {
+	return &autofixDependencySettingsResource{}
 }
 
-type dependencySettingsResource struct {
+type autofixDependencySettingsResource struct {
 	client *client.Client
 }
 
@@ -50,11 +50,11 @@ type dependencySettingsAPI struct {
 	UseAikidoLibraryForMajor bool    `json:"use_aikido_library_for_major"`
 }
 
-func (r *dependencySettingsResource) Metadata(_ context.Context, request resource.MetadataRequest, response *resource.MetadataResponse) {
+func (r *autofixDependencySettingsResource) Metadata(_ context.Context, request resource.MetadataRequest, response *resource.MetadataResponse) {
 	response.TypeName = request.ProviderTypeName + "_autofix_dependency_settings"
 }
 
-func (r *dependencySettingsResource) Schema(_ context.Context, _ resource.SchemaRequest, response *resource.SchemaResponse) {
+func (r *autofixDependencySettingsResource) Schema(_ context.Context, _ resource.SchemaRequest, response *resource.SchemaResponse) {
 	response.Schema = schema.Schema{
 		Description: "Manages workspace dependency (libraries) Autofix settings for automatic AutoFix PR creation. " +
 			"There is exactly one dependency Autofix settings object per workspace. " +
@@ -106,7 +106,7 @@ func (r *dependencySettingsResource) Schema(_ context.Context, _ resource.Schema
 	}
 }
 
-func (r *dependencySettingsResource) Configure(_ context.Context, request resource.ConfigureRequest, response *resource.ConfigureResponse) {
+func (r *autofixDependencySettingsResource) Configure(_ context.Context, request resource.ConfigureRequest, response *resource.ConfigureResponse) {
 	if request.ProviderData == nil {
 		return
 	}
@@ -123,7 +123,7 @@ func (r *dependencySettingsResource) Configure(_ context.Context, request resour
 	r.client = apiClient
 }
 
-func (r *dependencySettingsResource) Create(ctx context.Context, request resource.CreateRequest, response *resource.CreateResponse) {
+func (r *autofixDependencySettingsResource) Create(ctx context.Context, request resource.CreateRequest, response *resource.CreateResponse) {
 	var planned dependencyModel
 
 	response.Diagnostics.Append(request.Plan.Get(ctx, &planned)...)
@@ -140,7 +140,7 @@ func (r *dependencySettingsResource) Create(ctx context.Context, request resourc
 	response.Diagnostics.Append(response.State.Set(ctx, state)...)
 }
 
-func (r *dependencySettingsResource) Read(ctx context.Context, request resource.ReadRequest, response *resource.ReadResponse) {
+func (r *autofixDependencySettingsResource) Read(ctx context.Context, request resource.ReadRequest, response *resource.ReadResponse) {
 	var priorState dependencyModel
 	response.Diagnostics.Append(request.State.Get(ctx, &priorState)...)
 	if response.Diagnostics.HasError() {
@@ -161,7 +161,7 @@ func (r *dependencySettingsResource) Read(ctx context.Context, request resource.
 	response.Diagnostics.Append(response.State.Set(ctx, state)...)
 }
 
-func (r *dependencySettingsResource) Update(ctx context.Context, request resource.UpdateRequest, response *resource.UpdateResponse) {
+func (r *autofixDependencySettingsResource) Update(ctx context.Context, request resource.UpdateRequest, response *resource.UpdateResponse) {
 	var planned dependencyModel
 
 	response.Diagnostics.Append(request.Plan.Get(ctx, &planned)...)
@@ -178,7 +178,7 @@ func (r *dependencySettingsResource) Update(ctx context.Context, request resourc
 	response.Diagnostics.Append(response.State.Set(ctx, state)...)
 }
 
-func (r *dependencySettingsResource) Delete(ctx context.Context, request resource.DeleteRequest, response *resource.DeleteResponse) {
+func (r *autofixDependencySettingsResource) Delete(ctx context.Context, request resource.DeleteRequest, response *resource.DeleteResponse) {
 	var priorState dependencyModel
 
 	response.Diagnostics.Append(request.State.Get(ctx, &priorState)...)
@@ -192,11 +192,11 @@ func (r *dependencySettingsResource) Delete(ctx context.Context, request resourc
 	}
 }
 
-func (r *dependencySettingsResource) ImportState(ctx context.Context, request resource.ImportStateRequest, response *resource.ImportStateResponse) {
+func (r *autofixDependencySettingsResource) ImportState(ctx context.Context, request resource.ImportStateRequest, response *resource.ImportStateResponse) {
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), request, response)
 }
 
-func (r *dependencySettingsResource) applySettings(ctx context.Context, planned dependencyModel) (dependencyModel, diag.Diagnostics) {
+func (r *autofixDependencySettingsResource) applySettings(ctx context.Context, planned dependencyModel) (dependencyModel, diag.Diagnostics) {
 	var diags diag.Diagnostics
 
 	if err := upsertDependencySettings(ctx, r.client, &planned); err != nil {
@@ -214,7 +214,7 @@ func (r *dependencySettingsResource) applySettings(ctx context.Context, planned 
 	return *state, diags
 }
 
-func (r *dependencySettingsResource) readSettings(ctx context.Context, prior *dependencyModel) (*dependencyModel, diag.Diagnostics) {
+func (r *autofixDependencySettingsResource) readSettings(ctx context.Context, prior *dependencyModel) (*dependencyModel, diag.Diagnostics) {
 	var diags diag.Diagnostics
 
 	api, err := getDependencySettings(ctx, r.client)
@@ -228,7 +228,7 @@ func (r *dependencySettingsResource) readSettings(ctx context.Context, prior *de
 	}
 
 	state := mergeDependencyAPIAndPrior(api, prior)
-	state.ID = types.StringValue(dependencySettingsResourceID)
+	state.ID = types.StringValue(autofixDependencySettingsResourceID)
 	return state, diags
 }
 

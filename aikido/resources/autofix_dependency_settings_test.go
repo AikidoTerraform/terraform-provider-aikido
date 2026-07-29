@@ -1,4 +1,4 @@
-package autofix_settings
+package resources
 
 import (
 	"context"
@@ -140,7 +140,7 @@ func TestDependencyApplySettings_EchoesPlannedWhenAPIRewrites(t *testing.T) {
 	planned := testPlannedDependency()
 	planned.Enabled = types.BoolValue(false)
 
-	res := &dependencySettingsResource{client: client.New(srv.Client(), srv.URL)}
+	res := &autofixDependencySettingsResource{client: client.New(srv.Client(), srv.URL)}
 	state, diags := res.applySettings(context.Background(), planned)
 	if diags.HasError() {
 		t.Fatalf("applySettings: %v", diags)
@@ -155,8 +155,8 @@ func TestDependencyApplySettings_EchoesPlannedWhenAPIRewrites(t *testing.T) {
 	if state.UpgradeType.ValueString() != "critical_and_high_only" {
 		t.Errorf("upgrade_type = %s", state.UpgradeType.ValueString())
 	}
-	if state.ID.ValueString() != dependencySettingsResourceID {
-		t.Errorf("id = %s, want %s", state.ID.ValueString(), dependencySettingsResourceID)
+	if state.ID.ValueString() != autofixDependencySettingsResourceID {
+		t.Errorf("id = %s, want %s", state.ID.ValueString(), autofixDependencySettingsResourceID)
 	}
 }
 
@@ -171,7 +171,7 @@ func TestDependencyApplySettings_PUTError(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	res := &dependencySettingsResource{client: client.New(srv.Client(), srv.URL)}
+	res := &autofixDependencySettingsResource{client: client.New(srv.Client(), srv.URL)}
 	_, diags := res.applySettings(context.Background(), testPlannedDependency())
 	if !diags.HasError() {
 		t.Fatal("expected diagnostics error on PUT failure")
@@ -195,7 +195,7 @@ func TestDependencyDelete_DisablesFeature(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	ctx := context.Background()
-	res := &dependencySettingsResource{client: client.New(srv.Client(), srv.URL)}
+	res := &autofixDependencySettingsResource{client: client.New(srv.Client(), srv.URL)}
 
 	var schemaResp resource.SchemaResponse
 	res.Schema(ctx, resource.SchemaRequest{}, &schemaResp)
@@ -228,7 +228,7 @@ func TestDependencyDelete_IgnoresNotFound(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	ctx := context.Background()
-	res := &dependencySettingsResource{client: client.New(srv.Client(), srv.URL)}
+	res := &autofixDependencySettingsResource{client: client.New(srv.Client(), srv.URL)}
 
 	var schemaResp resource.SchemaResponse
 	res.Schema(ctx, resource.SchemaRequest{}, &schemaResp)
