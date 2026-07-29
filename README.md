@@ -25,12 +25,13 @@ Credentials can also be provided via environment variables:
 - `AIKIDO_CLIENT_ID`
 - `AIKIDO_CLIENT_SECRET`
 
-Optionally override the API base URL (defaults to `https://app.aikido.dev/api`):
+Optionally override the API base URL to target a non-default region (e.g. AU, ME, US) or the GovCloud instance. It defaults to `https://app.aikido.dev/api` and can also be set via the `AIKIDO_BASE_URL` environment variable:
 
 ```hcl
 provider "aikido" {
   client_id     = var.aikido_client_id
   client_secret = var.aikido_client_secret
+  base_url      = "https://app.aikidogov.us/api"
 }
 ```
 
@@ -70,5 +71,17 @@ resource "aikido_autofix_dependency_settings" "example" {
 
 ## Documentation
 
-Generated provider documentation lives in the [`docs/`](docs/) directory or via the [Aikido docs](). Usage examples live under [`examples/`](examples/).
+Generated provider documentation lives in the [`docs/`](docs/) directory and, once published, on the [Terraform Registry](https://registry.terraform.io/providers/aikido/aikido/latest/docs). Usage examples live under [`examples/`](examples/).
+
+## Contributing
+
+Contributions are welcome. Please read our [Contributing Guide](CONTRIBUTING.md) — including the AI Use Policy — before opening a pull request.
+
+## Security
+
+To report a security vulnerability, see our [Security Policy](SECURITY.md). Please do not open public issues for security reports.
+
+## Code of Conduct
+
+This project follows a [Code of Conduct](CODE_OF_CONDUCT.md). By participating, you are expected to uphold it.
 

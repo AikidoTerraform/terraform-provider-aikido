@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 📖 Documentation
+    url: https://apidocs.aikido.dev/
+    about: Aikido management API and provider documentation.
+  - name: 🔒 Report a Security Vulnerability
+    url: https://github.com/AikidoSec/terraform-provider-aikido/blob/main/SECURITY.md
+    about: Please report security issues privately, not as public GitHub issues.
+  - name: 💬 Aikido Support
+    url: https://help.aikido.dev/
+    about: Questions about using Aikido Security itself (not the Terraform provider).
