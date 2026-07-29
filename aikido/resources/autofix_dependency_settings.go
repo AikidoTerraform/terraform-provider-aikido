@@ -3,6 +3,7 @@ package resources
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	"github.com/aikido/terraform-provider-aikido/internal/client"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
@@ -210,6 +211,19 @@ func (r *autofixDependencySettingsResource) applySettings(ctx context.Context, p
 		return dependencyModel{}, diags
 	}
 
+	if planned.Enabled.ValueBool() && planned.ReposScope.ValueString() == "selected" {
+		if dropped := droppedRepoIDs(planned.RepoIDs, state.RepoIDs); len(dropped) > 0 {
+			diags.AddError(
+				"Error configuring dependency autofix settings",
+				fmt.Sprintf(
+					"Aikido ignored invalid or inactive repository IDs: %v. Remove those IDs from repo_ids and apply again.",
+					dropped,
+				),
+			)
+			return dependencyModel{}, diags
+		}
+	}
+
 	applyDependencyPlanOverrides(state, &planned)
 	return *state, diags
 }
@@ -325,4 +339,27 @@ func normalizeIDs(ids []int64) []int64 {
 	}
 
 	return ids
+}
+
+func droppedRepoIDs(planned []int64, actual []int64) []int64 {
+	actualSet := make(map[int64]struct{}, len(actual))
+	for _, id := range actual {
+		actualSet[id] = struct{}{}
+	}
+
+	var dropped []int64
+	seen := make(map[int64]struct{}, len(planned))
+	for _, id := range planned {
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+
+		if _, ok := actualSet[id]; !ok {
+			dropped = append(dropped, id)
+		}
+	}
+
+	slices.Sort(dropped)
+	return dropped
 }
