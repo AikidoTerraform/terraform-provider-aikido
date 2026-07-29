@@ -5,7 +5,7 @@ import (
 	"flag"
 	"log"
 
-	"github.com/aikido/terraform-provider-aikido/internal/provider"
+	"github.com/aikido/terraform-provider-aikido/aikido"
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 )
 
@@ -22,7 +22,7 @@ func main() {
 		Debug:   debug,
 	}
 
-	if err := providerserver.Serve(context.Background(), provider.New(version), opts); err != nil {
+	if err := providerserver.Serve(context.Background(), aikido.New(version), opts); err != nil {
 		log.Fatal(err.Error())
 	}
 }

@@ -1,12 +1,12 @@
-package provider
+package aikido
 
 import (
 	"context"
 	"os"
 
+	"github.com/aikido/terraform-provider-aikido/aikido/resources"
 	"github.com/aikido/terraform-provider-aikido/internal/auth"
 	"github.com/aikido/terraform-provider-aikido/internal/client"
-	"github.com/aikido/terraform-provider-aikido/internal/resources/repository"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/provider"
@@ -100,7 +100,7 @@ func (p *aikidoProvider) Configure(ctx context.Context, req provider.ConfigureRe
 
 func (p *aikidoProvider) Resources(_ context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
-		repository.NewResource,
+		resources.NewRepositoryResource,
 	}
 }
 
