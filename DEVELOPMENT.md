@@ -150,8 +150,8 @@ resource "aikido_autofix_sast_settings" "example" {
 }
 
 resource "aikido_autofix_pentest_settings" "example" {
-  enabled      = true
-  autofix_type = "critical_and_high_only"
+  enabled         = true
+  severity_filter = "critical_and_high_only"
 }
 ```
 
