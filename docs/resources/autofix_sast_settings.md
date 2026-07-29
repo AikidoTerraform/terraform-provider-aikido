@@ -3,14 +3,14 @@
 page_title: "Aikido Autofix SAST Settings"
 subcategory: ""
 description: |-
-  Manages workspace SAST & IaC Autofix settings for automatic AutoFix PR creation. There is exactly one SAST Autofix settings object per workspace. When enabled is false, other fields are ignored by the API. Repo ID sets are ignored when repos_scope is all. Destroying this resource disables automatic SAST & IaC AutoFix PR creation.
+  Manages workspace SAST & IaC Autofix settings for automatic AutoFix PR creation. There is exactly one SAST Autofix settings object per workspace. When enabled is false, the other fields are ignored by the API and may be omitted. When enabled is true, severity_filter, repos_scope, and repo_ids are required. Repo ID sets are ignored when repos_scope is all. Destroying this resource disables automatic SAST & IaC AutoFix PR creation.
 ---
 
 # aikido_autofix_sast_settings (Resource)
 
-Manages workspace SAST & IaC Autofix settings for automatic AutoFix PR creation. There is exactly one SAST Autofix settings object per workspace. When enabled is false, other fields are ignored by the API. Repo ID sets are ignored when repos_scope is all. Destroying this resource disables automatic SAST & IaC AutoFix PR creation.
+Manages workspace SAST & IaC Autofix settings for automatic AutoFix PR creation. There is exactly one SAST Autofix settings object per workspace. When enabled is false, the other fields are ignored by the API and may be omitted. When enabled is true, severity_filter, repos_scope, and repo_ids are required. Repo ID sets are ignored when repos_scope is all. Destroying this resource disables automatic SAST & IaC AutoFix PR creation.
 
-There is exactly one SAST Autofix settings object per workspace, so define this resource at most once. Use `repos_scope` (`all` or `selected`) with the matching `repo_ids` set. When scope is `all`, the ID set is ignored (use `[]`). When `enabled` is `false`, other fields are ignored.
+There is exactly one SAST Autofix settings object per workspace, so define this resource at most once. Use `repos_scope` (`all` or `selected`) with the matching `repo_ids` set. When scope is `all`, `repo_ids` is ignored and may be omitted. When `enabled` is `false`, other fields are ignored and may be omitted.
 
 ## Example Usage
 
@@ -32,9 +32,12 @@ resource "aikido_autofix_sast_settings" "my-workspace" {
 ### Required
 
 - `enabled` (Boolean) Whether automatic SAST & IaC AutoFix PR creation is enabled.
-- `repo_ids` (Set of Number) Code repository IDs for SAST & IaC autofix when repos_scope is selected. Ignored when enabled is false or when repos_scope is all.
-- `repos_scope` (String) Scope of the SAST & IaC autofix. One of: all, selected. Ignored when enabled is false.
-- `severity_filter` (String) Severity filter for SAST & IaC autofix. Ignored when enabled is false. One of: critical_issues_only, critical_and_high_only, all.
+
+### Optional
+
+- `repo_ids` (Set of Number) Code repository IDs for SAST & IaC autofix. Required (non-empty) when repos_scope is selected. Ignored when enabled is false or when repos_scope is all. The API may drop invalid or inactive IDs, which fails the apply with an actionable error.
+- `repos_scope` (String) Scope of the SAST & IaC autofix. One of: all, selected. Required when enabled is true; may be omitted when enabled is false. One of: all, selected.
+- `severity_filter` (String) Severity filter for SAST & IaC autofix. Required when enabled is true; may be omitted when enabled is false. One of: critical_issues_only, critical_and_high_only, all.
 
 ### Read-Only
 

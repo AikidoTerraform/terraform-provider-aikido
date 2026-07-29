@@ -10,7 +10,7 @@ description: |-
 
 {{ .Description | trimspace }}
 
-There is exactly one SAST Autofix settings object per workspace, so define this resource at most once. Use `repos_scope` (`all` or `selected`) with the matching `repo_ids` set. When scope is `all`, the ID set is ignored (use `[]`). When `enabled` is `false`, other fields are ignored.
+There is exactly one SAST Autofix settings object per workspace, so define this resource at most once. Use `repos_scope` (`all` or `selected`) with the matching `repo_ids` set. When scope is `all`, `repo_ids` is ignored and may be omitted. When `enabled` is `false`, other fields are ignored and may be omitted.
 
 {{ if .HasExamples -}}
 ## Example Usage
