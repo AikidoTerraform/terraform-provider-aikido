@@ -25,13 +25,13 @@ Credentials can also be provided via environment variables:
 - `AIKIDO_CLIENT_ID`
 - `AIKIDO_CLIENT_SECRET`
 
-Optionally override the API base URL to target a non-default region (e.g. AU, ME, US) or the GovCloud instance. It defaults to `https://app.aikido.dev/api` and can also be set via the `AIKIDO_BASE_URL` environment variable:
+Optionally override the API base URL to target a non-default region (e.g. AU, ME, US). It defaults to `https://app.aikido.dev/api` and can also be set via the `AIKIDO_BASE_URL` environment variable:
 
 ```hcl
 provider "aikido" {
   client_id     = var.aikido_client_id
   client_secret = var.aikido_client_secret
-  base_url      = "https://app.aikidogov.us/api"
+  base_url      = "https://app.us.aikido.dev/api"
 }
 ```
 
@@ -94,4 +94,3 @@ To report a security vulnerability, see our [Security Policy](SECURITY.md). Plea
 ## Code of Conduct
 
 This project follows a [Code of Conduct](CODE_OF_CONDUCT.md). By participating, you are expected to uphold it.
-
