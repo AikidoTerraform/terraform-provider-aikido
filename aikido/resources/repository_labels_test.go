@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/aikido/terraform-provider-aikido/internal/client"
+	"github.com/AikidoSec/terraform-provider-aikido/internal/client"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 

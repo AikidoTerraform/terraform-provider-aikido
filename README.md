@@ -41,7 +41,7 @@ provider "aikido" {
 terraform {
   required_providers {
     aikido = {
-      source = "aikido/aikido"
+      source = "AikidoSec/aikido"
     }
   }
 }
@@ -81,7 +81,7 @@ resource "aikido_autofix_pentest_settings" "example" {
 
 ## Documentation
 
-Generated provider documentation lives in the [`docs/`](docs/) directory and, once published, on the [Terraform Registry](https://registry.terraform.io/providers/aikido/aikido/latest/docs). Usage examples live under [`examples/`](examples/).
+Generated provider documentation lives in the [`docs/`](docs/) directory and, once published, on the [Terraform Registry](https://registry.terraform.io/providers/AikidoSec/aikido/latest/docs). Usage examples live under [`examples/`](examples/).
 
 ## Contributing
 

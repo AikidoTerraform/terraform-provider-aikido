@@ -35,7 +35,7 @@ Create `main.tf` by combining the examples (replace the repository `id` with a r
 terraform {
   required_providers {
     aikido = {
-      source = "aikido/aikido"
+      source = "AikidoSec/aikido"
     }
   }
 }
