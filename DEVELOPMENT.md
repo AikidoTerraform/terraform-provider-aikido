@@ -67,7 +67,7 @@ Optional lint:
 make lint
 ```
 
-## 4. Local Terraform e2e (against production API)
+## 4. Local Terraform e2e (against the live API)
 
 This is the main way to manually exercise create/read/update/destroy with a real workspace.
 
@@ -198,13 +198,13 @@ Framework acceptance tests (`resource.Test`) are planned but not fully wired yet
 ```shell
 export AIKIDO_CLIENT_ID="..."
 export AIKIDO_CLIENT_SECRET="..."
-# Optional once supported: AIKIDO_BASE_URL / staging overrides
+# Optional: AIKIDO_BASE_URL for non-default regions or environments
 
 make testacc
 # or: TF_ACC=1 go test -v -cover -timeout 120m ./...
 ```
 
-These hit a **real** Aikido workspace and can create/update/delete resources. Prefer a disposable workspace and never run them against a customer production account casually.
+These hit a **real** Aikido workspace and can create/update/delete resources. Prefer a disposable workspace and avoid running them against a production workspace unless that is intentional and appropriately controlled.
 
 ## 6. Useful Make targets
 
