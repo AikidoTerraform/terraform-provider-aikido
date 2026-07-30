@@ -55,7 +55,7 @@ func (p *aikidoProvider) Schema(_ context.Context, _ provider.SchemaRequest, res
 			},
 			"base_url": schema.StringAttribute{
 				Optional:    true,
-				Description: "Aikido API base URL. Set this to target a non-default region (e.g. AU, ME, US) or the GovCloud instance (app.aikidogov.us). Falls back to the AIKIDO_BASE_URL environment variable, then the default public API.",
+				Description: "Aikido API base URL. Set this to target a non-default region (e.g. AU, ME, US). Falls back to the AIKIDO_BASE_URL environment variable, then the default public API.",
 			},
 		},
 	}

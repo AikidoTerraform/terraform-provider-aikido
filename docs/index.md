@@ -27,9 +27,9 @@ provider "aikido" {
   client_secret = var.aikido_client_secret
 
   # Optional: override the API base URL to target a non-default region (e.g. AU,
-  # ME, US) or the GovCloud instance (app.aikidogov.us). Falls back to
+  # ME, US). Falls back to
   # AIKIDO_BASE_URL, then the default public API.
-  # base_url = "https://app.aikido.dev/api"
+  # base_url = "https://app.us.aikido.dev/api"
 }
 ```
 
@@ -38,6 +38,6 @@ provider "aikido" {
 
 ### Optional
 
-- `base_url` (String) Aikido API base URL. Set this to target a non-default region (e.g. AU, ME, US) or the GovCloud instance (app.aikidogov.us). Falls back to the AIKIDO_BASE_URL environment variable, then the default public API.
+- `base_url` (String) Aikido API base URL. Set this to target a non-default region (e.g. AU, ME, US). Falls back to the AIKIDO_BASE_URL environment variable, then the default public API.
 - `client_id` (String) Aikido API client ID. Falls back to the AIKIDO_CLIENT_ID environment variable.
 - `client_secret` (String, Sensitive) Aikido API client secret. Falls back to the AIKIDO_CLIENT_SECRET environment variable.
