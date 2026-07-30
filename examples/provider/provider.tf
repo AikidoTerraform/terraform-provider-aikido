@@ -1,7 +1,7 @@
 terraform {
   required_providers {
     aikido = {
-      source = "aikido/aikido"
+      source = "AikidoSec/aikido"
     }
   }
 }

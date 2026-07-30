@@ -15,7 +15,7 @@ Manage [Aikido Security](https://www.aikido.dev/) resources via the [management 
 terraform {
   required_providers {
     aikido = {
-      source = "aikido/aikido"
+      source = "AikidoSec/aikido"
     }
   }
 }

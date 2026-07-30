@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/aikido/terraform-provider-aikido/internal/client"
-	"github.com/aikido/terraform-provider-aikido/internal/helpers"
+	"github.com/AikidoSec/terraform-provider-aikido/internal/client"
+	"github.com/AikidoSec/terraform-provider-aikido/internal/helpers"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"

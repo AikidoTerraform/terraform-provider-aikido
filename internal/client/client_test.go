@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/aikido/terraform-provider-aikido/internal/client"
+	"github.com/AikidoSec/terraform-provider-aikido/internal/client"
 	"golang.org/x/time/rate"
 )
 
