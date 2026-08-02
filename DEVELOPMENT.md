@@ -80,7 +80,7 @@ Create or edit `~/.terraformrc` (Windows: `%APPDATA%\terraform.rc`):
 ```hcl
 provider_installation {
   dev_overrides {
-    "AikidoSec/aikido" = "/Users/YOU/go/bin"
+    "AikidoTerraform/aikido" = "/Users/YOU/go/bin"
     # Must be the directory that contains terraform-provider-aikido
     # Use: echo "$(go env GOPATH)/bin"
   }
@@ -91,7 +91,7 @@ provider_installation {
 
 Replace the path with the output of `go env GOPATH` + `/bin`. After changing Go code, re-run `make install` so Terraform picks up the new binary.
 
-With `dev_overrides` enabled, `terraform init` will warn that it is skipping registry installation for `AikidoSec/aikido` — that is expected.
+With `dev_overrides` enabled, `terraform init` will warn that it is skipping registry installation for `AikidoTerraform/aikido` — that is expected.
 
 ### 4.2 Credentials
 
@@ -116,7 +116,7 @@ mkdir -p /tmp/aikido-tf-e2e && cd /tmp/aikido-tf-e2e
 terraform {
   required_providers {
     aikido = {
-      source = "AikidoSec/aikido"
+      source = "AikidoTerraform/aikido"
     }
   }
 }
@@ -227,7 +227,7 @@ go mod tidy
 make install
 
 # Terraform override (~/.terraformrc) — once
-# provider_installation { dev_overrides { "AikidoSec/aikido" = "$(go env GOPATH)/bin" } direct {} }
+# provider_installation { dev_overrides { "AikidoTerraform/aikido" = "$(go env GOPATH)/bin" } direct {} }
 
 export AIKIDO_CLIENT_ID="..."
 export AIKIDO_CLIENT_SECRET="..."

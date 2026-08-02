@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/AikidoSec/terraform-provider-aikido/internal/client"
-	"github.com/AikidoSec/terraform-provider-aikido/internal/helpers"
+	"github.com/AikidoTerraform/terraform-provider-aikido/internal/client"
+	"github.com/AikidoTerraform/terraform-provider-aikido/internal/helpers"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"

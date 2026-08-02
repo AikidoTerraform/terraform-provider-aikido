@@ -1,7 +1,7 @@
 terraform {
   required_providers {
     aikido = {
-      source = "AikidoSec/aikido"
+      source = "AikidoTerraform/aikido"
     }
   }
 }
@@ -13,7 +13,6 @@ provider "aikido" {
   client_secret = var.aikido_client_secret
 
   # Optional: override the API base URL to target a non-default region (e.g. AU,
-  # ME, US). Falls back to
-  # AIKIDO_BASE_URL, then the default public API.
+  # ME, US). Falls back to AIKIDO_BASE_URL.
   # base_url = "https://app.us.aikido.dev/api"
 }

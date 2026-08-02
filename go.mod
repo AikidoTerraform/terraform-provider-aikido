@@ -1,4 +1,4 @@
-module github.com/AikidoSec/terraform-provider-aikido
+module github.com/AikidoTerraform/terraform-provider-aikido
 
 go 1.26
 

@@ -5,7 +5,7 @@ import (
 	"flag"
 	"log"
 
-	"github.com/AikidoSec/terraform-provider-aikido/aikido"
+	"github.com/AikidoTerraform/terraform-provider-aikido/aikido"
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 )
 
@@ -18,7 +18,7 @@ func main() {
 	flag.Parse()
 
 	opts := providerserver.ServeOpts{
-		Address: "registry.terraform.io/AikidoSec/aikido",
+		Address: "registry.terraform.io/AikidoTerraform/aikido",
 		Debug:   debug,
 	}
 

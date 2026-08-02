@@ -12,7 +12,7 @@ Do not report security vulnerabilities through public GitHub issues. See our [Se
 
 ## Reporting Bugs
 
-Use the [bug report issue template](https://github.com/AikidoSec/terraform-provider-aikido/issues/new?template=bug-report.md) and include:
+Use the [bug report issue template](https://github.com/AikidoTerraform/terraform-provider-aikido/issues/new?template=bug-report.md) and include:
 
 - Terraform and provider versions
 - A minimal reproducible configuration

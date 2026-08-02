@@ -4,9 +4,9 @@ import (
 	"context"
 	"os"
 
-	"github.com/AikidoSec/terraform-provider-aikido/aikido/resources"
-	"github.com/AikidoSec/terraform-provider-aikido/internal/auth"
-	"github.com/AikidoSec/terraform-provider-aikido/internal/client"
+	"github.com/AikidoTerraform/terraform-provider-aikido/aikido/resources"
+	"github.com/AikidoTerraform/terraform-provider-aikido/internal/auth"
+	"github.com/AikidoTerraform/terraform-provider-aikido/internal/client"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/provider"
