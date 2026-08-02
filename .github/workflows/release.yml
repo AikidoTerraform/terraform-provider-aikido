@@ -12,7 +12,7 @@ permissions: {}
 jobs:
   goreleaser:
     name: Release
-    runs-on: standard-runner-no-rights-public-ip
+    runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:

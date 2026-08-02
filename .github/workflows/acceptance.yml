@@ -15,7 +15,7 @@ permissions:
 jobs:
   acceptance:
     name: Terraform Provider Acceptance Tests
-    runs-on: standard-runner-no-rights-public-ip
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
       TF_ACC: "1"
