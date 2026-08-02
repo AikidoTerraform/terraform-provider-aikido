@@ -17,11 +17,6 @@ jobs:
     name: Terraform Provider Acceptance Tests
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    env:
-      TF_ACC: "1"
-      AIKIDO_CLIENT_ID: ${{ secrets.AIKIDO_CLIENT_ID }}
-      AIKIDO_CLIENT_SECRET: ${{ secrets.AIKIDO_CLIENT_SECRET }}
-      AIKIDO_BASE_URL: ${{ secrets.AIKIDO_BASE_URL }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -33,9 +28,5 @@ jobs:
         with:
           terraform_version: "1.11.*"
           terraform_wrapper: false
-      - name: Validate required credentials
-        run: |
-          test -n "${AIKIDO_CLIENT_ID}" || (echo "Missing AIKIDO_CLIENT_ID secret" && exit 1)
-          test -n "${AIKIDO_CLIENT_SECRET}" || (echo "Missing AIKIDO_CLIENT_SECRET secret" && exit 1)
       - name: Run acceptance tests
         run: go test -v -cover -timeout=120m ./...
