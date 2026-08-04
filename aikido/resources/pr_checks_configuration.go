@@ -79,7 +79,9 @@ func (r *prChecksConfigurationResource) Metadata(_ context.Context, request reso
 
 func (r *prChecksConfigurationResource) Schema(_ context.Context, _ resource.SchemaRequest, response *resource.SchemaResponse) {
 	response.Schema = schema.Schema{
-		Description: "Manages pull request checks configuration for one Aikido code repository.",
+		Description: "Manages pull request checks configuration for one Aikido code repository. " +
+			"The Aikido API has no delete endpoint for PR checks configuration, so destroying this resource " +
+			"only removes it from Terraform state and leaves the remote configuration unchanged.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Computed:    true,
@@ -342,7 +344,8 @@ func (r *prChecksConfigurationResource) Update(ctx context.Context, request reso
 	response.Diagnostics.Append(response.State.Set(ctx, state)...)
 }
 
-// the API has no delete endpoint for PR checks configuration but is required by the resource interface.
+// Delete is a no-op: the Aikido API has no delete endpoint for PR checks configuration.
+// Destroy only removes the resource from Terraform state; remote settings are left unchanged.
 func (r *prChecksConfigurationResource) Delete(context.Context, resource.DeleteRequest, *resource.DeleteResponse) {
 }
 
