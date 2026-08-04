@@ -20,24 +20,24 @@ Deep Review (`run_deep_audit_pr_scan`) requires at least one vulnerability scan 
 # Manages pull request checks configuration for one Aikido code repository.
 # Import by code_repo_id.
 resource "aikido_pr_checks_configuration" "example" {
-  code_repo_id                                    = 12345
-  
-  minimum_severity                                = "high"
-  fail_on_dependency_scan                         = true
-  fail_on_sast_scan                               = true
-  fail_on_iac_scan                                = true
-  fail_on_secrets_scan                            = true
-  fail_on_malware_scan                            = true
-  post_inline_comments_min_severity               = "critical"
+  code_repo_id = 12345
 
-  minimum_license_severity                        = "high"
+  minimum_severity                  = "high"
+  fail_on_dependency_scan           = true
+  fail_on_sast_scan                 = true
+  fail_on_iac_scan                  = true
+  fail_on_secrets_scan              = true
+  fail_on_malware_scan              = true
+  post_inline_comments_min_severity = "critical"
 
-  fail_on_code_quality_scan                       = true
-  enable_code_quality_scan                        = true
-  post_code_quality_inline_comments_min_severity  = "medium"
+  minimum_license_severity = "high"
 
-  run_deep_audit_pr_scan                          = true
-  post_deep_audit_inline_comments_min_severity    = "high"
+  fail_on_code_quality_scan                      = true
+  enable_code_quality_scan                       = true
+  post_code_quality_inline_comments_min_severity = "medium"
+
+  run_deep_audit_pr_scan                       = true
+  post_deep_audit_inline_comments_min_severity = "high"
 }
 ```
 
@@ -47,22 +47,22 @@ resource "aikido_pr_checks_configuration" "example" {
 ### Required
 
 - `code_repo_id` (Number) Aikido code repository ID.
+- `enable_code_quality_scan` (Boolean) Whether code quality scanning is enabled.
 - `fail_on_code_quality_scan` (Boolean) Whether CI checks fail for new code quality issues. Must be false when enable_code_quality_scan is false.
 - `fail_on_dependency_scan` (Boolean) Whether CI checks fail for new dependency issues.
 - `fail_on_iac_scan` (Boolean) Whether CI checks fail for new IaC issues.
 - `fail_on_malware_scan` (Boolean) Whether CI checks fail for new malware issues.
 - `fail_on_sast_scan` (Boolean) Whether CI checks fail for new SAST issues.
 - `fail_on_secrets_scan` (Boolean) Whether CI checks fail for new secrets issues.
-- `minimum_severity` (String) Minimum severity of new issues for when the CI check fails. One of: low, medium, high, critical.
 - `minimum_license_severity` (String) Minimum license severity for failing CI checks. One of: none, high, critical. Set to none to disable license scanning.
-- `enable_code_quality_scan` (Boolean) Whether code quality scanning is enabled.
+- `minimum_severity` (String) Minimum severity of new issues for when the CI check fails. One of: low, medium, high, critical.
 
 ### Optional
 
 - `post_code_quality_inline_comments_min_severity` (String) Minimum severity for code quality inline comments. Required when enable_code_quality_scan is true (one of: low, medium, high, critical). Ignored when enable_code_quality_scan is false and may be omitted.
+- `post_deep_audit_inline_comments_min_severity` (String) Minimum severity for Deep Review inline comments. One of: none, low, medium, high, critical. Ignored when run_deep_audit_pr_scan is false and may be omitted.
 - `post_inline_comments_min_severity` (String) Minimum severity for inline comments. Defaults to none when omitted. One of: none, low, medium, high, critical.
 - `run_deep_audit_pr_scan` (Boolean) Whether Deep Review is run on pull requests. Requires at least one vulnerability scan type to be enabled (fail_on_dependency_scan, fail_on_sast_scan, fail_on_iac_scan, fail_on_secrets_scan, fail_on_malware_scan, or minimum_license_severity other than none). For bitbucket and azure_devops repositories this is currently only available in the EU region.
-- `post_deep_audit_inline_comments_min_severity` (String) Minimum severity for Deep Review inline comments. One of: none, low, medium, high, critical. Ignored when run_deep_audit_pr_scan is false and may be omitted.
 
 ### Read-Only
 
