@@ -378,20 +378,18 @@ func (r *prChecksConfigurationResource) setPRChecksConfiguration(ctx context.Con
 }
 
 func getPRChecksConfiguration(ctx context.Context, apiClient *client.Client, codeRepoID int64) (*prChecksConfigurationAPI, error) {
-	url := prChecksConfigurationsPath + "?per_page=100&filter_code_repo_id=" + url.QueryEscape(strconv.FormatInt(codeRepoID, 10))
+	url := prChecksConfigurationsPath + "?filter_code_repo_id=" + url.QueryEscape(strconv.FormatInt(codeRepoID, 10))
 
 	var configs []prChecksConfigurationAPI
 	if err := apiClient.Do(ctx, "GET", url, nil, &configs); err != nil {
 		return nil, err
 	}
 
-	for i := range configs {
-		if configs[i].CodeRepoID == codeRepoID {
-			return &configs[i], nil
-		}
+	if len(configs) == 0 {
+		return nil, nil
 	}
 
-	return nil, nil
+	return &configs[0], nil
 }
 
 func constructPRChecksBody(planned prChecksConfigurationModel) map[string]any {
@@ -468,7 +466,7 @@ func mapPRChecksAPIToModel(api prChecksConfigurationAPI) prChecksConfigurationMo
 }
 
 // mergePRChecksAPIAndPrior returns state from the API, but mirrors prior values for
-// fields the API ignores when the related feature is disabled, matching the autofix resources.
+// fields the API ignores when the related feature is disabled.
 func mergePRChecksAPIAndPrior(api prChecksConfigurationAPI, prior *prChecksConfigurationModel) prChecksConfigurationModel {
 	state := mapPRChecksAPIToModel(api)
 	if prior == nil {
