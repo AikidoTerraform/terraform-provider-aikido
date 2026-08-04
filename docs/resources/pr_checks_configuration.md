@@ -3,12 +3,12 @@
 page_title: "Aikido PR Checks Configuration"
 subcategory: ""
 description: |-
-  Manages pull request checks configuration for one Aikido code repository.
+  Manages pull request checks configuration for one Aikido code repository. The Aikido API has no delete endpoint for PR checks configuration, so destroying this resource only removes it from Terraform state and leaves the remote configuration unchanged.
 ---
 
 # aikido_pr_checks_configuration (Resource)
 
-Manages pull request checks configuration for one Aikido code repository.
+Manages pull request checks configuration for one Aikido code repository. The Aikido API has no delete endpoint for PR checks configuration, so destroying this resource only removes it from Terraform state and leaves the remote configuration unchanged.
 
 When `enable_code_quality_scan` is `true`, `post_code_quality_inline_comments_min_severity` is required.
 When `enable_code_quality_scan` is `false`, `fail_on_code_quality_scan` must be `false`.
