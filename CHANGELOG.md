@@ -1,3 +1,9 @@
+## 1.1.0
+
+FEATURES:
+
+- **New Resource:** `aikido_repo_pr_checks_settings` — manages pull request checks settings for one Aikido code repository (severity thresholds, fail-on scan types, code quality, Deep Review, and inline comments).
+
 ## 1.0.1
 
 NOTES:

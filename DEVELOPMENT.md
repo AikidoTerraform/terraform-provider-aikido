@@ -153,6 +153,27 @@ resource "aikido_autofix_pentest_settings" "example" {
   enabled         = true
   severity_filter = "critical_and_high_only"
 }
+
+resource "aikido_repo_pr_checks_settings" "example" {
+  code_repo_id                                    = 12345
+  
+  minimum_severity                                = "high"
+  fail_on_dependency_scan                         = true
+  fail_on_sast_scan                               = true
+  fail_on_iac_scan                                = true
+  fail_on_secrets_scan                            = true
+  fail_on_malware_scan                            = true
+  post_inline_comments_min_severity               = "critical"
+
+  minimum_license_severity                        = "high"
+
+  fail_on_code_quality_scan                       = true
+  enable_code_quality_scan                        = true
+  post_code_quality_inline_comments_min_severity  = "medium"
+
+  run_deep_audit_pr_scan                          = true
+  post_deep_audit_inline_comments_min_severity    = "high"
+}
 ```
 
 You can also start from [`examples/`](examples/) (`provider/` + `resources/aikido_repository/`), but wire credentials via env vars rather than committing them.
