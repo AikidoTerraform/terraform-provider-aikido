@@ -104,7 +104,7 @@ func (p *aikidoProvider) Resources(_ context.Context) []func() resource.Resource
 		resources.NewAutofixDependencySettingsResource,
 		resources.NewAutofixSastSettingsResource,
 		resources.NewAutofixPentestSettingsResource,
-		resources.NewPRChecksConfigurationResource,
+		resources.NewRepoPRChecksSettingsResource,
 	}
 }
 

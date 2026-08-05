@@ -20,24 +20,24 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
-const prChecksConfigurationsPath = "/public/v1/repositories/code/continuous_integration/checks"
+const prChecksSettingsPath = "/public/v1/repositories/code/continuous_integration/checks"
 
 var (
-	_ resource.Resource                   = &prChecksConfigurationResource{}
-	_ resource.ResourceWithImportState    = &prChecksConfigurationResource{}
-	_ resource.ResourceWithConfigure      = &prChecksConfigurationResource{}
-	_ resource.ResourceWithValidateConfig = &prChecksConfigurationResource{}
+	_ resource.Resource                   = &prChecksSettingsResource{}
+	_ resource.ResourceWithImportState    = &prChecksSettingsResource{}
+	_ resource.ResourceWithConfigure      = &prChecksSettingsResource{}
+	_ resource.ResourceWithValidateConfig = &prChecksSettingsResource{}
 )
 
-func NewPRChecksConfigurationResource() resource.Resource {
-	return &prChecksConfigurationResource{}
+func NewRepoPRChecksSettingsResource() resource.Resource {
+	return &prChecksSettingsResource{}
 }
 
-type prChecksConfigurationResource struct {
+type prChecksSettingsResource struct {
 	client *client.Client
 }
 
-type prChecksConfigurationModel struct {
+type prChecksSettingsModel struct {
 	ID                                       types.String `tfsdk:"id"`
 	CodeRepoID                               types.Int64  `tfsdk:"code_repo_id"`
 	MinimumSeverity                          types.String `tfsdk:"minimum_severity"`
@@ -55,7 +55,7 @@ type prChecksConfigurationModel struct {
 	PostDeepAuditInlineCommentsMinSeverity   types.String `tfsdk:"post_deep_audit_inline_comments_min_severity"`
 }
 
-type prChecksConfigurationAPI struct {
+type prChecksSettingsAPI struct {
 	ID                                       int64   `json:"id"`
 	CodeRepoID                               int64   `json:"code_repo_id"`
 	MinimumSeverity                          string  `json:"minimum_severity"`
@@ -73,19 +73,19 @@ type prChecksConfigurationAPI struct {
 	PostDeepAuditInlineCommentsMinSeverity   string  `json:"post_deep_audit_inline_comments_min_severity"`
 }
 
-func (r *prChecksConfigurationResource) Metadata(_ context.Context, request resource.MetadataRequest, response *resource.MetadataResponse) {
-	response.TypeName = request.ProviderTypeName + "_pr_checks_configuration"
+func (r *prChecksSettingsResource) Metadata(_ context.Context, request resource.MetadataRequest, response *resource.MetadataResponse) {
+	response.TypeName = request.ProviderTypeName + "_repo_pr_checks_settings"
 }
 
-func (r *prChecksConfigurationResource) Schema(_ context.Context, _ resource.SchemaRequest, response *resource.SchemaResponse) {
+func (r *prChecksSettingsResource) Schema(_ context.Context, _ resource.SchemaRequest, response *resource.SchemaResponse) {
 	response.Schema = schema.Schema{
-		Description: "Manages pull request checks configuration for one Aikido code repository. " +
-			"The Aikido API has no delete endpoint for PR checks configuration, so destroying this resource " +
-			"only removes it from Terraform state and leaves the remote configuration unchanged.",
+		Description: "Manages pull request checks settings for one Aikido code repository. " +
+			"The Aikido API has no delete endpoint for PR checks settings, so destroying this resource " +
+			"only removes it from Terraform state and leaves the remote settings unchanged.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Computed:    true,
-				Description: "Aikido PR checks configuration ID.",
+				Description: "Aikido PR checks settings ID.",
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},
@@ -185,26 +185,26 @@ func (r *prChecksConfigurationResource) Schema(_ context.Context, _ resource.Sch
 	}
 }
 
-func (r *prChecksConfigurationResource) ValidateConfig(ctx context.Context, request resource.ValidateConfigRequest, response *resource.ValidateConfigResponse) {
-	var config prChecksConfigurationModel
-	response.Diagnostics.Append(request.Config.Get(ctx, &config)...)
+func (r *prChecksSettingsResource) ValidateConfig(ctx context.Context, request resource.ValidateConfigRequest, response *resource.ValidateConfigResponse) {
+	var settings prChecksSettingsModel
+	response.Diagnostics.Append(request.Config.Get(ctx, &settings)...)
 
 	if response.Diagnostics.HasError() {
 		return
 	}
 
-	response.Diagnostics.Append(validatePRChecksCodeQuality(config)...)
-	response.Diagnostics.Append(validatePRChecksDeepAudit(config)...)
+	response.Diagnostics.Append(validatePRChecksSettingsCodeQuality(settings)...)
+	response.Diagnostics.Append(validatePRChecksSettingsDeepAudit(settings)...)
 }
 
-func validatePRChecksCodeQuality(config prChecksConfigurationModel) diag.Diagnostics {
+func validatePRChecksSettingsCodeQuality(settings prChecksSettingsModel) diag.Diagnostics {
 	var diags diag.Diagnostics
-	if config.EnableCodeQualityScan.IsNull() || config.EnableCodeQualityScan.IsUnknown() {
+	if settings.EnableCodeQualityScan.IsNull() || settings.EnableCodeQualityScan.IsUnknown() {
 		return diags
 	}
 
-	if config.EnableCodeQualityScan.ValueBool() {
-		if config.PostCodeQualityInlineCommentsMinSeverity.IsNull() {
+	if settings.EnableCodeQualityScan.ValueBool() {
+		if settings.PostCodeQualityInlineCommentsMinSeverity.IsNull() {
 			diags.AddAttributeError(
 				path.Root("post_code_quality_inline_comments_min_severity"),
 				"Missing post_code_quality_inline_comments_min_severity",
@@ -215,7 +215,7 @@ func validatePRChecksCodeQuality(config prChecksConfigurationModel) diag.Diagnos
 		return diags
 	}
 
-	if !config.FailOnCodeQualityScan.IsNull() && !config.FailOnCodeQualityScan.IsUnknown() && config.FailOnCodeQualityScan.ValueBool() {
+	if !settings.FailOnCodeQualityScan.IsNull() && !settings.FailOnCodeQualityScan.IsUnknown() && settings.FailOnCodeQualityScan.ValueBool() {
 		diags.AddAttributeError(
 			path.Root("fail_on_code_quality_scan"),
 			"Invalid fail_on_code_quality_scan",
@@ -226,19 +226,19 @@ func validatePRChecksCodeQuality(config prChecksConfigurationModel) diag.Diagnos
 	return diags
 }
 
-func validatePRChecksDeepAudit(config prChecksConfigurationModel) diag.Diagnostics {
+func validatePRChecksSettingsDeepAudit(settings prChecksSettingsModel) diag.Diagnostics {
 	var diags diag.Diagnostics
 
-	if config.RunDeepAuditPRScan.IsNull() || config.RunDeepAuditPRScan.IsUnknown() || !config.RunDeepAuditPRScan.ValueBool() {
+	if settings.RunDeepAuditPRScan.IsNull() || settings.RunDeepAuditPRScan.IsUnknown() || !settings.RunDeepAuditPRScan.ValueBool() {
 		return diags
 	}
 
 	scanFlags := []types.Bool{
-		config.FailOnDependencyScan,
-		config.FailOnSastScan,
-		config.FailOnIacScan,
-		config.FailOnSecretsScan,
-		config.FailOnMalwareScan,
+		settings.FailOnDependencyScan,
+		settings.FailOnSastScan,
+		settings.FailOnIacScan,
+		settings.FailOnSecretsScan,
+		settings.FailOnMalwareScan,
 	}
 
 	enabled := false
@@ -253,7 +253,7 @@ func validatePRChecksDeepAudit(config prChecksConfigurationModel) diag.Diagnosti
 		}
 	}
 
-	if !config.MinimumLicenseSeverity.IsUnknown() && !config.MinimumLicenseSeverity.IsNull() && config.MinimumLicenseSeverity.ValueString() != "none" {
+	if !settings.MinimumLicenseSeverity.IsUnknown() && !settings.MinimumLicenseSeverity.IsNull() && settings.MinimumLicenseSeverity.ValueString() != "none" {
 		enabled = true
 	}
 
@@ -270,7 +270,7 @@ func validatePRChecksDeepAudit(config prChecksConfigurationModel) diag.Diagnosti
 	return diags
 }
 
-func (r *prChecksConfigurationResource) Configure(_ context.Context, request resource.ConfigureRequest, response *resource.ConfigureResponse) {
+func (r *prChecksSettingsResource) Configure(_ context.Context, request resource.ConfigureRequest, response *resource.ConfigureResponse) {
 	if request.ProviderData == nil {
 		return
 	}
@@ -288,68 +288,68 @@ func (r *prChecksConfigurationResource) Configure(_ context.Context, request res
 	r.client = apiClient
 }
 
-func (r *prChecksConfigurationResource) Create(ctx context.Context, request resource.CreateRequest, response *resource.CreateResponse) {
-	var planned prChecksConfigurationModel
+func (r *prChecksSettingsResource) Create(ctx context.Context, request resource.CreateRequest, response *resource.CreateResponse) {
+	var planned prChecksSettingsModel
 	response.Diagnostics.Append(request.Plan.Get(ctx, &planned)...)
 
 	if response.Diagnostics.HasError() {
 		return
 	}
 
-	state, err := r.setPRChecksConfiguration(ctx, planned)
+	state, err := r.setPRChecksSettings(ctx, planned)
 	if err != nil {
-		response.Diagnostics.AddError("Error configuring PR checks", err.Error())
+		response.Diagnostics.AddError("Error configuring PR checks settings for repository "+strconv.FormatInt(planned.CodeRepoID.ValueInt64(), 10), err.Error())
 		return
 	}
 
 	response.Diagnostics.Append(response.State.Set(ctx, state)...)
 }
 
-func (r *prChecksConfigurationResource) Read(ctx context.Context, request resource.ReadRequest, response *resource.ReadResponse) {
-	var prior prChecksConfigurationModel
+func (r *prChecksSettingsResource) Read(ctx context.Context, request resource.ReadRequest, response *resource.ReadResponse) {
+	var prior prChecksSettingsModel
 	response.Diagnostics.Append(request.State.Get(ctx, &prior)...)
 
 	if response.Diagnostics.HasError() {
 		return
 	}
 
-	apiConfig, err := getPRChecksConfiguration(ctx, r.client, prior.CodeRepoID.ValueInt64())
+	apiSettings, err := getPRChecksSettings(ctx, r.client, prior.CodeRepoID.ValueInt64())
 	if err != nil {
-		response.Diagnostics.AddError("Error reading PR checks configuration", err.Error())
+		response.Diagnostics.AddError("Error reading PR checks settings for repository "+strconv.FormatInt(prior.CodeRepoID.ValueInt64(), 10), err.Error())
 		return
 	}
 
-	if apiConfig == nil {
+	if apiSettings == nil {
 		response.State.RemoveResource(ctx)
 		return
 	}
 
-	response.Diagnostics.Append(response.State.Set(ctx, mergePRChecksAPIAndPrior(*apiConfig, &prior))...)
+	response.Diagnostics.Append(response.State.Set(ctx, mergePRChecksSettingsAPIAndPrior(*apiSettings, &prior))...)
 }
 
-func (r *prChecksConfigurationResource) Update(ctx context.Context, request resource.UpdateRequest, response *resource.UpdateResponse) {
-	var planned prChecksConfigurationModel
+func (r *prChecksSettingsResource) Update(ctx context.Context, request resource.UpdateRequest, response *resource.UpdateResponse) {
+	var planned prChecksSettingsModel
 	response.Diagnostics.Append(request.Plan.Get(ctx, &planned)...)
 
 	if response.Diagnostics.HasError() {
 		return
 	}
 
-	state, err := r.setPRChecksConfiguration(ctx, planned)
+	state, err := r.setPRChecksSettings(ctx, planned)
 	if err != nil {
-		response.Diagnostics.AddError("Error configuring PR checks", err.Error())
+		response.Diagnostics.AddError("Error configuring PR checks settings for repository "+strconv.FormatInt(planned.CodeRepoID.ValueInt64(), 10), err.Error())
 		return
 	}
 
 	response.Diagnostics.Append(response.State.Set(ctx, state)...)
 }
 
-// Delete is a no-op: the Aikido API has no delete endpoint for PR checks configuration.
+// Delete is a no-op: the Aikido API has no delete endpoint for PR checks settings.
 // Destroy only removes the resource from Terraform state; remote settings are left unchanged.
-func (r *prChecksConfigurationResource) Delete(context.Context, resource.DeleteRequest, *resource.DeleteResponse) {
+func (r *prChecksSettingsResource) Delete(context.Context, resource.DeleteRequest, *resource.DeleteResponse) {
 }
 
-func (r *prChecksConfigurationResource) ImportState(ctx context.Context, request resource.ImportStateRequest, response *resource.ImportStateResponse) {
+func (r *prChecksSettingsResource) ImportState(ctx context.Context, request resource.ImportStateRequest, response *resource.ImportStateResponse) {
 	codeRepoID, err := strconv.ParseInt(request.ID, 10, 64)
 	if err != nil {
 		response.Diagnostics.AddError(
@@ -363,39 +363,39 @@ func (r *prChecksConfigurationResource) ImportState(ctx context.Context, request
 	response.Diagnostics.Append(response.State.SetAttribute(ctx, path.Root("code_repo_id"), codeRepoID)...)
 }
 
-func (r *prChecksConfigurationResource) setPRChecksConfiguration(ctx context.Context, planned prChecksConfigurationModel) (prChecksConfigurationModel, error) {
-	if err := r.client.Do(ctx, "POST", prChecksConfigurationsPath, constructPRChecksBody(planned), nil); err != nil {
-		return prChecksConfigurationModel{}, err
+func (r *prChecksSettingsResource) setPRChecksSettings(ctx context.Context, planned prChecksSettingsModel) (prChecksSettingsModel, error) {
+	if err := r.client.Do(ctx, "POST", prChecksSettingsPath, constructPRChecksSettingsBody(planned), nil); err != nil {
+		return prChecksSettingsModel{}, err
 	}
 
-	apiConfig, err := getPRChecksConfiguration(ctx, r.client, planned.CodeRepoID.ValueInt64())
+	apiSettings, err := getPRChecksSettings(ctx, r.client, planned.CodeRepoID.ValueInt64())
 	if err != nil {
-		return prChecksConfigurationModel{}, err
+		return prChecksSettingsModel{}, err
 	}
 
-	if apiConfig == nil {
-		return prChecksConfigurationModel{}, fmt.Errorf("configuration for code_repo_id %d was not found after update", planned.CodeRepoID.ValueInt64())
+	if apiSettings == nil {
+		return prChecksSettingsModel{}, fmt.Errorf("settings for repository %d were not found after update", planned.CodeRepoID.ValueInt64())
 	}
 
-	return mergePRChecksAPIAndPrior(*apiConfig, &planned), nil
+	return mergePRChecksSettingsAPIAndPrior(*apiSettings, &planned), nil
 }
 
-func getPRChecksConfiguration(ctx context.Context, apiClient *client.Client, codeRepoID int64) (*prChecksConfigurationAPI, error) {
-	url := prChecksConfigurationsPath + "?filter_code_repo_id=" + url.QueryEscape(strconv.FormatInt(codeRepoID, 10))
+func getPRChecksSettings(ctx context.Context, apiClient *client.Client, codeRepoID int64) (*prChecksSettingsAPI, error) {
+	url := prChecksSettingsPath + "?filter_code_repo_id=" + url.QueryEscape(strconv.FormatInt(codeRepoID, 10))
 
-	var configs []prChecksConfigurationAPI
-	if err := apiClient.Do(ctx, "GET", url, nil, &configs); err != nil {
+	var settings []prChecksSettingsAPI
+	if err := apiClient.Do(ctx, "GET", url, nil, &settings); err != nil {
 		return nil, err
 	}
 
-	if len(configs) == 0 {
+	if len(settings) == 0 {
 		return nil, nil
 	}
 
-	return &configs[0], nil
+	return &settings[0], nil
 }
 
-func constructPRChecksBody(planned prChecksConfigurationModel) map[string]any {
+func constructPRChecksSettingsBody(planned prChecksSettingsModel) map[string]any {
 	body := map[string]any{
 		"code_repo_id":              planned.CodeRepoID.ValueInt64(),
 		"minimum_severity":          planned.MinimumSeverity.ValueString(),
@@ -430,8 +430,8 @@ func constructPRChecksBody(planned prChecksConfigurationModel) map[string]any {
 	return body
 }
 
-func mapPRChecksAPIToModel(api prChecksConfigurationAPI) prChecksConfigurationModel {
-	state := prChecksConfigurationModel{
+func mapPRChecksSettingsAPIToModel(api prChecksSettingsAPI) prChecksSettingsModel {
+	state := prChecksSettingsModel{
 		ID:                                       types.StringValue(strconv.FormatInt(api.ID, 10)),
 		CodeRepoID:                               types.Int64Value(api.CodeRepoID),
 		MinimumSeverity:                          types.StringValue(api.MinimumSeverity),
@@ -470,8 +470,8 @@ func mapPRChecksAPIToModel(api prChecksConfigurationAPI) prChecksConfigurationMo
 
 // mergePRChecksAPIAndPrior returns state from the API, but mirrors prior values for
 // fields the API ignores when the related feature is disabled.
-func mergePRChecksAPIAndPrior(api prChecksConfigurationAPI, prior *prChecksConfigurationModel) prChecksConfigurationModel {
-	state := mapPRChecksAPIToModel(api)
+func mergePRChecksSettingsAPIAndPrior(api prChecksSettingsAPI, prior *prChecksSettingsModel) prChecksSettingsModel {
+	state := mapPRChecksSettingsAPIToModel(api)
 	if prior == nil {
 		return state
 	}

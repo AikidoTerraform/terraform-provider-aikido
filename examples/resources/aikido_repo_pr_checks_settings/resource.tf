@@ -1,7 +1,7 @@
-# Manages pull request checks configuration for one Aikido code repository.
+# Manages pull request checks settings for one Aikido code repository.
 # Import by code_repo_id.
 # Destroy only removes this resource from Terraform state; remote PR checks stay as configured.
-resource "aikido_pr_checks_configuration" "example" {
+resource "aikido_repo_pr_checks_settings" "example" {
   code_repo_id = 12345
 
   minimum_severity                  = "high"

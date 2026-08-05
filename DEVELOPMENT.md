@@ -154,7 +154,7 @@ resource "aikido_autofix_pentest_settings" "example" {
   severity_filter = "critical_and_high_only"
 }
 
-resource "aikido_pr_checks_configuration" "example" {
+resource "aikido_repo_pr_checks_settings" "example" {
   code_repo_id                                    = 12345
   
   minimum_severity                                = "high"

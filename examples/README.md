@@ -13,7 +13,7 @@ These are **fragments**, not a complete root module by themselves. Combine the p
 | [`resources/aikido_autofix_dependency_settings/resource.tf`](resources/aikido_autofix_dependency_settings/resource.tf) | `aikido_autofix_dependency_settings` resource |
 | [`resources/aikido_autofix_sast_settings/resource.tf`](resources/aikido_autofix_sast_settings/resource.tf) | `aikido_autofix_sast_settings` resource |
 | [`resources/aikido_autofix_pentest_settings/resource.tf`](resources/aikido_autofix_pentest_settings/resource.tf) | `aikido_autofix_pentest_settings` resource |
-| [`resources/aikido_pr_checks_configuration/resource.tf`](resources/aikido_pr_checks_configuration/resource.tf) | `aikido_pr_checks_configuration` resource |
+| [`resources/aikido_repo_pr_checks_settings/resource.tf`](resources/aikido_repo_pr_checks_settings/resource.tf) | `aikido_repo_pr_checks_settings` resource |
 
 ## Prerequisites
 
@@ -73,7 +73,7 @@ resource "aikido_autofix_pentest_settings" "example" {
   severity_filter = "critical_and_high_only"
 }
 
-resource "aikido_pr_checks_configuration" "example" {
+resource "aikido_repo_pr_checks_settings" "example" {
   code_repo_id                                    = 12345
   
   minimum_severity                                = "high"
@@ -112,6 +112,6 @@ Prefer env vars for credentials so secrets are not committed. The provider block
 - `aikido_autofix_dependency_settings` manages the single **workspace-wide** dependency Autofix settings object; define it at most once. Set `repos_scope` to `all` or `selected`, and pass matching `repo_ids` (ignored when scope is `all`). When `enabled` is `false`, other fields are ignored. Destroying the resource disables automatic dependency AutoFix PR creation.
 - `aikido_autofix_sast_settings` manages the single **workspace-wide** SAST & IaC Autofix settings object; define it at most once. Set `repos_scope` to `all` or `selected`, and pass matching `repo_ids` (ignored when scope is `all`). When `enabled` is `false`, other fields are ignored. Destroying the resource disables automatic SAST AutoFix PR creation.
 - `aikido_autofix_pentest_settings` manages the single **workspace-wide** Pentest & AI Code Analysis Autofix settings object; define it at most once. When `enabled` is `false`, other fields are ignored. Destroying the resource disables automatic pentest AutoFix PR creation.
-- `aikido_pr_checks_configuration` manages PR checks for one code repository (`code_repo_id`). When `enable_code_quality_scan` is `true`, `post_code_quality_inline_comments_min_severity` is required; when it is `false`, `fail_on_code_quality_scan` must be `false`. Deep Review (`run_deep_audit_pr_scan`) needs at least one vulnerability scan type enabled. Import by `code_repo_id`.
+- `aikido_repo_pr_checks_settings` manages PR checks for one code repository (`code_repo_id`). When `enable_code_quality_scan` is `true`, `post_code_quality_inline_comments_min_severity` is required; when it is `false`, `fail_on_code_quality_scan` must be `false`. Deep Review (`run_deep_audit_pr_scan`) needs at least one vulnerability scan type enabled. Import by `code_repo_id`.
 - After changing provider Go code locally, re-run `make install` before `terraform apply`.
 - Full local/staging setup: [`DEVELOPMENT.md`](../DEVELOPMENT.md)

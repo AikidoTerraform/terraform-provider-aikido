@@ -8,7 +8,7 @@ import (
 )
 
 func TestConstructPRChecksBody(t *testing.T) {
-	model := prChecksConfigurationModel{
+	model := prChecksSettingsModel{
 		CodeRepoID:                               types.Int64Value(12),
 		MinimumSeverity:                          types.StringValue("high"),
 		FailOnDependencyScan:                     types.BoolValue(true),
@@ -25,7 +25,7 @@ func TestConstructPRChecksBody(t *testing.T) {
 		PostDeepAuditInlineCommentsMinSeverity:   types.StringValue("high"),
 	}
 
-	body := constructPRChecksBody(model)
+	body := constructPRChecksSettingsBody(model)
 	if body["code_repo_id"] != int64(12) {
 		t.Fatalf("unexpected code_repo_id: %#v", body["code_repo_id"])
 	}
@@ -44,7 +44,7 @@ func TestConstructPRChecksBody(t *testing.T) {
 }
 
 func TestConstructPRChecksBody_OmitsOptionalNullFields(t *testing.T) {
-	model := prChecksConfigurationModel{
+	model := prChecksSettingsModel{
 		CodeRepoID:                               types.Int64Value(12),
 		MinimumSeverity:                          types.StringValue("high"),
 		FailOnDependencyScan:                     types.BoolValue(true),
@@ -61,7 +61,7 @@ func TestConstructPRChecksBody_OmitsOptionalNullFields(t *testing.T) {
 		PostDeepAuditInlineCommentsMinSeverity:   types.StringNull(),
 	}
 
-	body := constructPRChecksBody(model)
+	body := constructPRChecksSettingsBody(model)
 	for _, key := range []string{
 		"post_inline_comments_min_severity",
 		"post_code_quality_inline_comments_min_severity",
@@ -75,7 +75,7 @@ func TestConstructPRChecksBody_OmitsOptionalNullFields(t *testing.T) {
 }
 
 func TestConstructPRChecksBody_SendsInlineNoneAsString(t *testing.T) {
-	model := prChecksConfigurationModel{
+	model := prChecksSettingsModel{
 		CodeRepoID:                               types.Int64Value(12),
 		MinimumSeverity:                          types.StringValue("high"),
 		FailOnDependencyScan:                     types.BoolValue(true),
@@ -90,7 +90,7 @@ func TestConstructPRChecksBody_SendsInlineNoneAsString(t *testing.T) {
 		PostCodeQualityInlineCommentsMinSeverity: types.StringNull(),
 	}
 
-	body := constructPRChecksBody(model)
+	body := constructPRChecksSettingsBody(model)
 	if body["post_inline_comments_min_severity"] != "none" {
 		t.Fatalf("unexpected post_inline_comments_min_severity: %#v", body["post_inline_comments_min_severity"])
 	}
@@ -103,7 +103,7 @@ func TestConstructPRChecksBody_SendsInlineNoneAsString(t *testing.T) {
 }
 
 func TestConstructPRChecksBody_DeepAuditDisabledOmitsInlineSeverity(t *testing.T) {
-	model := prChecksConfigurationModel{
+	model := prChecksSettingsModel{
 		CodeRepoID:                             types.Int64Value(12),
 		MinimumSeverity:                        types.StringValue("high"),
 		FailOnDependencyScan:                   types.BoolValue(true),
@@ -118,7 +118,7 @@ func TestConstructPRChecksBody_DeepAuditDisabledOmitsInlineSeverity(t *testing.T
 		PostDeepAuditInlineCommentsMinSeverity: types.StringValue("high"),
 	}
 
-	body := constructPRChecksBody(model)
+	body := constructPRChecksSettingsBody(model)
 	if body["run_deep_audit_pr_scan"] != false {
 		t.Fatalf("unexpected run_deep_audit_pr_scan: %#v", body["run_deep_audit_pr_scan"])
 	}
@@ -127,15 +127,15 @@ func TestConstructPRChecksBody_DeepAuditDisabledOmitsInlineSeverity(t *testing.T
 	}
 }
 
-func validatePRChecksConfig(config prChecksConfigurationModel) diag.Diagnostics {
+func validatePRChecksSettings(settings prChecksSettingsModel) diag.Diagnostics {
 	var diags diag.Diagnostics
-	diags.Append(validatePRChecksCodeQuality(config)...)
-	diags.Append(validatePRChecksDeepAudit(config)...)
+	diags.Append(validatePRChecksSettingsCodeQuality(settings)...)
+	diags.Append(validatePRChecksSettingsDeepAudit(settings)...)
 	return diags
 }
 
-func TestValidatePRChecksConfig(t *testing.T) {
-	validBase := prChecksConfigurationModel{
+func TestValidatePRChecksSettings(t *testing.T) {
+	validBase := prChecksSettingsModel{
 		CodeRepoID:                               types.Int64Value(12),
 		MinimumSeverity:                          types.StringValue("high"),
 		FailOnDependencyScan:                     types.BoolValue(true),
@@ -153,20 +153,20 @@ func TestValidatePRChecksConfig(t *testing.T) {
 
 	tests := []struct {
 		name      string
-		mutate    func(*prChecksConfigurationModel)
+		mutate    func(*prChecksSettingsModel)
 		wantError bool
 	}{
-		{name: "valid config"},
+		{name: "valid settings"},
 		{
 			name: "code quality enabled rejects omitted inline severity",
-			mutate: func(m *prChecksConfigurationModel) {
+			mutate: func(m *prChecksSettingsModel) {
 				m.PostCodeQualityInlineCommentsMinSeverity = types.StringNull()
 			},
 			wantError: true,
 		},
 		{
 			name: "code quality disabled rejects fail_on_code_quality_scan",
-			mutate: func(m *prChecksConfigurationModel) {
+			mutate: func(m *prChecksSettingsModel) {
 				m.EnableCodeQualityScan = types.BoolValue(false)
 				m.FailOnCodeQualityScan = types.BoolValue(true)
 				m.PostCodeQualityInlineCommentsMinSeverity = types.StringNull()
@@ -175,7 +175,7 @@ func TestValidatePRChecksConfig(t *testing.T) {
 		},
 		{
 			name: "code quality disabled allows set inline severity",
-			mutate: func(m *prChecksConfigurationModel) {
+			mutate: func(m *prChecksSettingsModel) {
 				m.EnableCodeQualityScan = types.BoolValue(false)
 				m.FailOnCodeQualityScan = types.BoolValue(false)
 				m.PostCodeQualityInlineCommentsMinSeverity = types.StringValue("low")
@@ -183,7 +183,7 @@ func TestValidatePRChecksConfig(t *testing.T) {
 		},
 		{
 			name: "code quality disabled allows omitted inline severity",
-			mutate: func(m *prChecksConfigurationModel) {
+			mutate: func(m *prChecksSettingsModel) {
 				m.EnableCodeQualityScan = types.BoolValue(false)
 				m.FailOnCodeQualityScan = types.BoolValue(false)
 				m.PostCodeQualityInlineCommentsMinSeverity = types.StringNull()
@@ -191,7 +191,7 @@ func TestValidatePRChecksConfig(t *testing.T) {
 		},
 		{
 			name: "deep audit requires a vulnerability scan",
-			mutate: func(m *prChecksConfigurationModel) {
+			mutate: func(m *prChecksSettingsModel) {
 				m.FailOnDependencyScan = types.BoolValue(false)
 				m.FailOnSastScan = types.BoolValue(false)
 				m.FailOnIacScan = types.BoolValue(false)
@@ -204,7 +204,7 @@ func TestValidatePRChecksConfig(t *testing.T) {
 		},
 		{
 			name: "deep audit allowed with dependency scan",
-			mutate: func(m *prChecksConfigurationModel) {
+			mutate: func(m *prChecksSettingsModel) {
 				m.FailOnDependencyScan = types.BoolValue(true)
 				m.FailOnSastScan = types.BoolValue(false)
 				m.FailOnIacScan = types.BoolValue(false)
@@ -216,7 +216,7 @@ func TestValidatePRChecksConfig(t *testing.T) {
 		},
 		{
 			name: "deep audit allowed with license severity",
-			mutate: func(m *prChecksConfigurationModel) {
+			mutate: func(m *prChecksSettingsModel) {
 				m.FailOnDependencyScan = types.BoolValue(false)
 				m.FailOnSastScan = types.BoolValue(false)
 				m.FailOnIacScan = types.BoolValue(false)
@@ -228,7 +228,7 @@ func TestValidatePRChecksConfig(t *testing.T) {
 		},
 		{
 			name: "deep audit unknown is skipped",
-			mutate: func(m *prChecksConfigurationModel) {
+			mutate: func(m *prChecksSettingsModel) {
 				m.FailOnDependencyScan = types.BoolValue(false)
 				m.FailOnSastScan = types.BoolValue(false)
 				m.FailOnIacScan = types.BoolValue(false)
@@ -240,7 +240,7 @@ func TestValidatePRChecksConfig(t *testing.T) {
 		},
 		{
 			name: "deep audit null is skipped",
-			mutate: func(m *prChecksConfigurationModel) {
+			mutate: func(m *prChecksSettingsModel) {
 				m.FailOnDependencyScan = types.BoolValue(false)
 				m.FailOnSastScan = types.BoolValue(false)
 				m.FailOnIacScan = types.BoolValue(false)
@@ -254,11 +254,11 @@ func TestValidatePRChecksConfig(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			config := validBase
+			settings := validBase
 			if tc.mutate != nil {
-				tc.mutate(&config)
+				tc.mutate(&settings)
 			}
-			diags := validatePRChecksConfig(config)
+			diags := validatePRChecksSettings(settings)
 			if diags.HasError() != tc.wantError {
 				t.Errorf("HasError() = %v, want %v (diags: %v)", diags.HasError(), tc.wantError, diags)
 			}
@@ -267,7 +267,7 @@ func TestValidatePRChecksConfig(t *testing.T) {
 }
 
 func TestMapPRChecksAPIToModel_NormalizesGetDefaults(t *testing.T) {
-	api := prChecksConfigurationAPI{
+	api := prChecksSettingsAPI{
 		ID:                                       1,
 		CodeRepoID:                               123,
 		MinimumSeverity:                          "high",
@@ -285,7 +285,7 @@ func TestMapPRChecksAPIToModel_NormalizesGetDefaults(t *testing.T) {
 		PostDeepAuditInlineCommentsMinSeverity:   "",
 	}
 
-	state := mapPRChecksAPIToModel(api)
+	state := mapPRChecksSettingsAPIToModel(api)
 	if state.PostInlineCommentsMinSeverity.ValueString() != "none" {
 		t.Fatalf("post_inline_comments_min_severity = %q, want none", state.PostInlineCommentsMinSeverity.ValueString())
 	}
@@ -302,7 +302,7 @@ func TestMapPRChecksAPIToModel_NormalizesGetDefaults(t *testing.T) {
 
 func TestMapPRChecksAPIToModel_CodeQualityEnabled(t *testing.T) {
 	severity := "medium"
-	api := prChecksConfigurationAPI{
+	api := prChecksSettingsAPI{
 		ID:                                       1,
 		CodeRepoID:                               123,
 		MinimumSeverity:                          "high",
@@ -320,7 +320,7 @@ func TestMapPRChecksAPIToModel_CodeQualityEnabled(t *testing.T) {
 		PostDeepAuditInlineCommentsMinSeverity:   "critical",
 	}
 
-	state := mapPRChecksAPIToModel(api)
+	state := mapPRChecksSettingsAPIToModel(api)
 	if state.ID.ValueString() != "1" {
 		t.Fatalf("id = %q, want 1", state.ID.ValueString())
 	}
@@ -336,7 +336,7 @@ func TestMapPRChecksAPIToModel_CodeQualityEnabled(t *testing.T) {
 }
 
 func TestMergePRChecksAPIAndPrior_PreservesIgnoredFields(t *testing.T) {
-	api := prChecksConfigurationAPI{
+	api := prChecksSettingsAPI{
 		ID:                                     1,
 		CodeRepoID:                             123,
 		MinimumSeverity:                        "high",
@@ -352,12 +352,12 @@ func TestMergePRChecksAPIAndPrior_PreservesIgnoredFields(t *testing.T) {
 		RunDeepAuditPRScan:                     false,
 		PostDeepAuditInlineCommentsMinSeverity: "low",
 	}
-	prior := prChecksConfigurationModel{
+	prior := prChecksSettingsModel{
 		PostCodeQualityInlineCommentsMinSeverity: types.StringValue("medium"),
 		PostDeepAuditInlineCommentsMinSeverity:   types.StringValue("high"),
 	}
 
-	state := mergePRChecksAPIAndPrior(api, &prior)
+	state := mergePRChecksSettingsAPIAndPrior(api, &prior)
 	if state.PostCodeQualityInlineCommentsMinSeverity.ValueString() != "medium" {
 		t.Fatalf("post_code_quality_inline_comments_min_severity = %q, want medium from prior", state.PostCodeQualityInlineCommentsMinSeverity.ValueString())
 	}
@@ -368,7 +368,7 @@ func TestMergePRChecksAPIAndPrior_PreservesIgnoredFields(t *testing.T) {
 
 func TestMergePRChecksAPIAndPrior_UsesAPIWhenEnabled(t *testing.T) {
 	severity := "critical"
-	api := prChecksConfigurationAPI{
+	api := prChecksSettingsAPI{
 		ID:                                       1,
 		CodeRepoID:                               123,
 		MinimumSeverity:                          "high",
@@ -385,12 +385,12 @@ func TestMergePRChecksAPIAndPrior_UsesAPIWhenEnabled(t *testing.T) {
 		RunDeepAuditPRScan:                       true,
 		PostDeepAuditInlineCommentsMinSeverity:   "medium",
 	}
-	prior := prChecksConfigurationModel{
+	prior := prChecksSettingsModel{
 		PostCodeQualityInlineCommentsMinSeverity: types.StringValue("low"),
 		PostDeepAuditInlineCommentsMinSeverity:   types.StringValue("high"),
 	}
 
-	state := mergePRChecksAPIAndPrior(api, &prior)
+	state := mergePRChecksSettingsAPIAndPrior(api, &prior)
 	if state.PostCodeQualityInlineCommentsMinSeverity.ValueString() != "critical" {
 		t.Fatalf("post_code_quality_inline_comments_min_severity = %q, want critical from API", state.PostCodeQualityInlineCommentsMinSeverity.ValueString())
 	}
