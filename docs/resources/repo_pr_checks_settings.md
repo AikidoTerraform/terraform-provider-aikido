@@ -58,7 +58,7 @@ resource "aikido_repo_pr_checks_settings" "example" {
 - `fail_on_sast_scan` (Boolean) Whether CI checks fail for new SAST issues.
 - `fail_on_secrets_scan` (Boolean) Whether CI checks fail for new secrets issues.
 - `minimum_license_severity` (String) Minimum license severity for failing CI checks. One of: none, high, critical. Set to none to disable license scanning.
-- `minimum_severity` (String) Minimum severity of new issues for when the CI check fails. One of: low, medium, high, critical.
+- `minimum_severity` (String) Minimum severity of new issues for when the CI check fails. One of: low, medium, high, critical, always_pass_check.
 
 ### Optional
 

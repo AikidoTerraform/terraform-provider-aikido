@@ -102,9 +102,9 @@ func (r *prChecksSettingsResource) Schema(_ context.Context, _ resource.SchemaRe
 			},
 			"minimum_severity": schema.StringAttribute{
 				Required:    true,
-				Description: "Minimum severity of new issues for when the CI check fails. One of: low, medium, high, critical.",
+				Description: "Minimum severity of new issues for when the CI check fails. One of: low, medium, high, critical, always_pass_check.",
 				Validators: []validator.String{
-					stringvalidator.OneOf("low", "medium", "high", "critical"),
+					stringvalidator.OneOf("low", "medium", "high", "critical", "always_pass_check"),
 				},
 			},
 			"fail_on_dependency_scan": schema.BoolAttribute{
