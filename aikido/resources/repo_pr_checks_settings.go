@@ -169,7 +169,7 @@ func (r *prChecksSettingsResource) Schema(_ context.Context, _ resource.SchemaRe
 					"Requires at least one vulnerability scan type to be enabled " +
 					"(fail_on_dependency_scan, fail_on_sast_scan, fail_on_iac_scan, fail_on_secrets_scan, fail_on_malware_scan, " +
 					"or minimum_license_severity other than none). " +
-					"For bitbucket and azure_devops repositories this is currently only available in the EU region.",
+					"Deep Review is currently only available in the EU region.",
 			},
 			"post_deep_audit_inline_comments_min_severity": schema.StringAttribute{
 				Optional: true,
