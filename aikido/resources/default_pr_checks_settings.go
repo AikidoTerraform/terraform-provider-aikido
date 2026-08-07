@@ -379,7 +379,7 @@ func (r *defaultPRChecksSettingsResource) setDefaultPRChecksSettings(ctx context
 func getDefaultPRChecksSettings(ctx context.Context, apiClient *client.Client) (defaultPRChecksSettingsAPI, error) {
 	var settings defaultPRChecksSettingsAPI
 	if err := apiClient.Do(ctx, "GET", defaultPRChecksSettingsPath, nil, &settings); err != nil {
-		
+
 		// No row means default PR checks are disabled / deleted for the workspace.
 		if client.NotFound(err) {
 			return defaultPRChecksSettingsAPI{IsEnabled: false}, nil
