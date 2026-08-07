@@ -14,6 +14,7 @@ These are **fragments**, not a complete root module by themselves. Combine the p
 | [`resources/aikido_autofix_sast_settings/resource.tf`](resources/aikido_autofix_sast_settings/resource.tf) | `aikido_autofix_sast_settings` resource |
 | [`resources/aikido_autofix_pentest_settings/resource.tf`](resources/aikido_autofix_pentest_settings/resource.tf) | `aikido_autofix_pentest_settings` resource |
 | [`resources/aikido_repo_pr_checks_settings/resource.tf`](resources/aikido_repo_pr_checks_settings/resource.tf) | `aikido_repo_pr_checks_settings` resource |
+| [`resources/aikido_default_pr_checks_settings/resource.tf`](resources/aikido_default_pr_checks_settings/resource.tf) | `aikido_default_pr_checks_settings` resource |
 
 ## Prerequisites
 
@@ -93,6 +94,25 @@ resource "aikido_repo_pr_checks_settings" "example" {
   run_deep_audit_pr_scan                          = true
   post_deep_audit_inline_comments_min_severity    = "high"
 }
+
+resource "aikido_default_pr_checks_settings" "example" {
+  minimum_severity                                = "high"
+  fail_on_dependency_scan                         = true
+  fail_on_sast_scan                               = true
+  fail_on_iac_scan                                = true
+  fail_on_secrets_scan                            = true
+  fail_on_malware_scan                            = true
+  post_inline_comments_min_severity               = "critical"
+
+  minimum_license_severity                        = "high"
+
+  fail_on_code_quality_scan                       = true
+  enable_code_quality_scan                        = true
+  post_code_quality_inline_comments_min_severity  = "medium"
+
+  run_deep_audit_pr_scan                          = true
+  post_deep_audit_inline_comments_min_severity    = "high"
+}
 ```
 
 Then:
@@ -113,5 +133,6 @@ Prefer env vars for credentials so secrets are not committed. The provider block
 - `aikido_autofix_sast_settings` manages the single **workspace-wide** SAST & IaC Autofix settings object; define it at most once. Set `repos_scope` to `all` or `selected`, and pass matching `repo_ids` (ignored when scope is `all`). When `enabled` is `false`, other fields are ignored. Destroying the resource disables automatic SAST AutoFix PR creation.
 - `aikido_autofix_pentest_settings` manages the single **workspace-wide** Pentest & AI Code Analysis Autofix settings object; define it at most once. When `enabled` is `false`, other fields are ignored. Destroying the resource disables automatic pentest AutoFix PR creation.
 - `aikido_repo_pr_checks_settings` manages PR checks for one code repository (`code_repo_id`). When `enable_code_quality_scan` is `true`, `post_code_quality_inline_comments_min_severity` is required; when it is `false`, `fail_on_code_quality_scan` must be `false`. Deep Review (`run_deep_audit_pr_scan`) needs at least one vulnerability scan type enabled. Import by `code_repo_id`.
+- `aikido_default_pr_checks_settings` manages the single **workspace-wide** default PR checks configuration applied to newly activated repositories; define it at most once. When all checks are disabled or the resource is removed, the settings are deleted in Aikido for the workspace. Import with `default_pr_checks_settings`.
 - After changing provider Go code locally, re-run `make install` before `terraform apply`.
 - Full local/staging setup: [`DEVELOPMENT.md`](../DEVELOPMENT.md)
