@@ -354,7 +354,7 @@ func (r *defaultPRChecksSettingsResource) Delete(ctx context.Context, request re
 		"run_deep_audit_pr_scan":    false,
 	}
 
-	if err := r.client.Do(ctx, "POST", defaultPRChecksSettingsPath, body, nil); err != nil {
+	if err := r.client.Do(ctx, "POST", defaultPRChecksSettingsPath, body, nil); err != nil && !client.NotFound(err) {
 		response.Diagnostics.AddError("Error removing default PR checks settings", err.Error())
 	}
 }
@@ -379,6 +379,12 @@ func (r *defaultPRChecksSettingsResource) setDefaultPRChecksSettings(ctx context
 func getDefaultPRChecksSettings(ctx context.Context, apiClient *client.Client) (defaultPRChecksSettingsAPI, error) {
 	var settings defaultPRChecksSettingsAPI
 	if err := apiClient.Do(ctx, "GET", defaultPRChecksSettingsPath, nil, &settings); err != nil {
+		
+		// No row means default PR checks are disabled / deleted for the workspace.
+		if client.NotFound(err) {
+			return defaultPRChecksSettingsAPI{IsEnabled: false}, nil
+		}
+
 		return defaultPRChecksSettingsAPI{}, err
 	}
 
