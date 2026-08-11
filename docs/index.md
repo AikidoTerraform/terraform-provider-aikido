@@ -29,6 +29,10 @@ provider "aikido" {
   # Optional: override the API base URL to target a non-default region (e.g. AU,
   # ME, US). Falls back to AIKIDO_BASE_URL.
   # base_url = "https://app.us.aikido.dev/api"
+
+  # Optional: raise the client-side rate limit for outbound API requests.
+  # Defaults to 20 requests/min (the standard API limit); can be raised up to 100.
+  # requests_per_minute = 100
 }
 ```
 
@@ -40,3 +44,4 @@ provider "aikido" {
 - `base_url` (String) Aikido API base URL. Set this to target a non-default region (e.g. AU, ME, US). Falls back to the AIKIDO_BASE_URL environment variable, then the default public API.
 - `client_id` (String) Aikido API client ID. Falls back to the AIKIDO_CLIENT_ID environment variable.
 - `client_secret` (String, Sensitive) Aikido API client secret. Falls back to the AIKIDO_CLIENT_SECRET environment variable.
+- `requests_per_minute` (Number) Client-side rate limit for outbound API requests, in requests per minute. Defaults to 20 (the standard API limit) and may be raised up to 100.

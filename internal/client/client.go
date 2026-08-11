@@ -26,13 +26,9 @@ const DefaultBaseURL = "https://app.aikido.dev/api"
 const (
 	maxRetries    = 4
 	maxRetryDelay = 60 * time.Second
-
-	// requestInterval paces outbound requests to stay under the 20 calls/min
-	// limit proactively, instead of relying on 429 retries. requestBurst allows an
-	// initial burst (matching Terraform's default parallelism) before pacing kicks
-	// in, so small plans are not serialized needlessly.
-	requestInterval = 3 * time.Second
-	requestBurst    = 10
+	DefaultRequestsPerMinute = 20
+	MaxRequestsPerMinute     = 100
+	requestBurst = 10
 )
 
 type Client struct {
@@ -50,6 +46,21 @@ func WithRateLimiter(limiter *rate.Limiter) Option {
 	return func(c *Client) { c.limiter = limiter }
 }
 
+// WithRequestsPerMinute paces outbound requests to the given rate. Values are
+// clamped to [DefaultRequestsPerMinute, MaxRequestsPerMinute]: anything below
+// the standard rate snaps up to DefaultRequestsPerMinute.
+func WithRequestsPerMinute(rpm int) Option {
+	return func(c *Client) {
+		if rpm < DefaultRequestsPerMinute {
+			rpm = DefaultRequestsPerMinute
+		}
+		if rpm > MaxRequestsPerMinute {
+			rpm = MaxRequestsPerMinute
+		}
+		c.limiter = rate.NewLimiter(rate.Every(time.Minute/time.Duration(rpm)), requestBurst)
+	}
+}
+
 // New wraps an already-authenticated HTTP client (see the auth package) with a
 // base URL. The httpClient is expected to inject the bearer token itself.
 func New(httpClient *http.Client, baseURL string, opts ...Option) *Client {
@@ -61,7 +72,7 @@ func New(httpClient *http.Client, baseURL string, opts ...Option) *Client {
 		opt(c)
 	}
 	if c.limiter == nil {
-		c.limiter = rate.NewLimiter(rate.Every(requestInterval), requestBurst)
+		c.limiter = rate.NewLimiter(rate.Every(time.Minute/time.Duration(DefaultRequestsPerMinute)), requestBurst)
 	}
 	return c
 }
