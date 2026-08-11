@@ -24,11 +24,11 @@ const DefaultBaseURL = "https://app.aikido.dev/api"
 // header when exceeded. maxRetries bounds how many times a single call waits and
 // retries; maxRetryDelay caps any single wait so a hostile header can't hang us.
 const (
-	maxRetries    = 4
-	maxRetryDelay = 60 * time.Second
+	maxRetries               = 4
+	maxRetryDelay            = 60 * time.Second
 	DefaultRequestsPerMinute = 20
 	MaxRequestsPerMinute     = 100
-	requestBurst = 10
+	requestBurst             = 10
 )
 
 type Client struct {
