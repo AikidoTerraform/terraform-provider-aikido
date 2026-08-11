@@ -18,5 +18,7 @@ provider "aikido" {
 
   # Optional: raise the client-side rate limit for outbound API requests.
   # Defaults to 20 requests/min (the standard API limit); can be raised up to 100.
+  # Only set this above 20 if the Aikido team has raised your workspace's API
+  # rate limit accordingly, otherwise requests will be throttled (HTTP 429).
   # requests_per_minute = 100
 }

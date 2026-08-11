@@ -63,7 +63,7 @@ func (p *aikidoProvider) Schema(_ context.Context, _ provider.SchemaRequest, res
 			},
 			"requests_per_minute": schema.Int64Attribute{
 				Optional:    true,
-				Description: fmt.Sprintf("Client-side rate limit for outbound API requests, in requests per minute. Defaults to %d (the standard API limit) and may be raised up to %d.", client.DefaultRequestsPerMinute, client.MaxRequestsPerMinute),
+				Description: fmt.Sprintf("Client-side rate limit for outbound API requests, in requests per minute. Defaults to %d (the standard API limit) and may be raised up to %d. Only raise this if the Aikido team has increased your workspace's API rate limit accordingly; otherwise requests will be throttled with HTTP 429 responses.", client.DefaultRequestsPerMinute, client.MaxRequestsPerMinute),
 				Validators: []validator.Int64{
 					int64validator.Between(client.DefaultRequestsPerMinute, client.MaxRequestsPerMinute),
 				},
