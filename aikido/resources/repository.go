@@ -3,6 +3,7 @@ package resources
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"strconv"
 
 	"github.com/AikidoTerraform/terraform-provider-aikido/internal/client"
@@ -16,7 +17,11 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
-const basePath = "/public/v1/repositories/code"
+const (
+	basePath             = "/public/v1/repositories/code"
+	repositoriesPageSize = 200
+	repositoriesCacheKey = "repositories/code"
+)
 
 var (
 	_ resource.Resource                = &repositoryResource{}
@@ -166,7 +171,14 @@ func (r *repositoryResource) Read(ctx context.Context, request resource.ReadRequ
 		return
 	}
 
-	apiRepository, err := r.getRepositoryDetails(ctx, priorState.ID.ValueString())
+	id, err := parseRepositoryID(priorState.ID.ValueString())
+	if err != nil {
+		response.Diagnostics.AddError("Error reading repository", err.Error())
+		return
+	}
+
+	// get repository from list cache
+	apiRepository, err := repositoryFromCache(ctx, r.client, id)
 	if err != nil {
 		if client.NotFound(err) {
 			response.State.RemoveResource(ctx)
@@ -175,6 +187,7 @@ func (r *repositoryResource) Read(ctx context.Context, request resource.ReadRequ
 		response.Diagnostics.AddError("Error reading repository", err.Error())
 		return
 	}
+
 	updatedState := repositoryModelFromAPI(apiRepository)
 	// Labels omitted from config are unmanaged — don't import API labels into state.
 	if priorState.Labels == nil {
@@ -239,7 +252,13 @@ func (r *repositoryResource) setRepoConfig(ctx context.Context, plannedRepositor
 		}
 	}
 
-	apiRepository, err := r.getRepositoryDetails(ctx, repositoryID)
+	// Detail GET after writes: label IDs for applyLabels + computed fields for state.
+	id, err := parseRepositoryID(repositoryID)
+	if err != nil {
+		return repositoryModel{}, err
+	}
+
+	apiRepository, err := repositoryFromAPI(ctx, r.client, id)
 	if err != nil {
 		return repositoryModel{}, err
 	}
@@ -256,9 +275,9 @@ func (r *repositoryResource) setRepoConfig(ctx context.Context, plannedRepositor
 
 // setActive activates or deactivates the repository.
 func (r *repositoryResource) setActive(ctx context.Context, repositoryID string, isActive bool) error {
-	codeRepoID, err := strconv.ParseInt(repositoryID, 10, 64)
+	codeRepoID, err := parseRepositoryID(repositoryID)
 	if err != nil {
-		return fmt.Errorf("invalid repository id %q: %w", repositoryID, err)
+		return err
 	}
 
 	endpoint := basePath + "/deactivate"
@@ -268,13 +287,65 @@ func (r *repositoryResource) setActive(ctx context.Context, repositoryID string,
 	return r.client.Do(ctx, "POST", endpoint, map[string]int64{"code_repo_id": codeRepoID}, nil)
 }
 
-// getRepositoryDetails reads the repository (including label IDs) from the API.
-func (r *repositoryResource) getRepositoryDetails(ctx context.Context, repositoryID string) (repositoryAPI, error) {
-	var apiRepository repositoryAPI
-	if err := r.client.Do(ctx, "GET", basePath+"/"+repositoryID, nil, &apiRepository); err != nil {
+func parseRepositoryID(repositoryID string) (int64, error) {
+	id, err := strconv.ParseInt(repositoryID, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("invalid repository id %q: %w", repositoryID, err)
+	}
+
+	return id, nil
+}
+
+// repositoryFromCache looks up a repo in the shared paginated list cache.
+// Use for Read when many resources share one plan (avoids N detail GETs).
+func repositoryFromCache(ctx context.Context, c *client.Client, id int64) (repositoryAPI, error) {
+	repos, err := client.LoadCached(c, ctx, repositoriesCacheKey, func(ctx context.Context) (map[int64]repositoryAPI, error) {
+		// fetch all repositories from the API once on first use
+		items, err := client.FetchAllPages[repositoryAPI](
+			ctx, c, basePath, repositoriesPageSize,
+			"include_inactive=true&include_labels=true",
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		repoCacheMap := make(map[int64]repositoryAPI, len(items))
+		for _, repo := range items {
+			repoCacheMap[repo.ID] = repo
+		}
+
+		return repoCacheMap, nil
+	})
+
+	if err != nil {
 		return repositoryAPI{}, err
 	}
-	return apiRepository, nil
+
+	// lookup the repository in the cache
+	cachedRepo, ok := repos[id]
+	if !ok {
+		return repositoryAPI{}, &client.APIError{
+			StatusCode: http.StatusNotFound,
+			Method:     http.MethodGet,
+			Path:       basePath + "/" + strconv.FormatInt(id, 10),
+			Body:       "repository not found",
+		}
+	}
+
+	return cachedRepo, nil
+}
+
+// repositoryFromAPI loads one repository via GET /repositories/code/{id}.
+// Use after writes so state reflects the API rather than a possibly stale list cache.
+func repositoryFromAPI(ctx context.Context, c *client.Client, id int64) (repositoryAPI, error) {
+	var repo repositoryAPI
+	path := basePath + "/" + strconv.FormatInt(id, 10)
+
+	if err := c.Do(ctx, http.MethodGet, path, nil, &repo); err != nil {
+		return repositoryAPI{}, err
+	}
+
+	return repo, nil
 }
 
 // repositoryModelFromAPI maps an API repository into a Terraform state model.

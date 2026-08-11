@@ -4,14 +4,13 @@ import (
 	"context"
 	"fmt"
 	"slices"
-	"strconv"
 
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
 type labelAPI struct {
-	ID         int64  `json:"id"`
+	ID         string `json:"id"`
 	Name       string `json:"name"`
 	IsImported bool   `json:"is_imported"`
 }
@@ -61,7 +60,7 @@ func (r *repositoryResource) applyLabels(ctx context.Context, repositoryID strin
 			continue
 		}
 
-		if err := r.deleteLabel(ctx, repositoryID, strconv.FormatInt(label.ID, 10)); err != nil {
+		if err := r.deleteLabel(ctx, repositoryID, label.ID); err != nil {
 			return fmt.Errorf("deleting label %q: %w", label.Name, err)
 		}
 	}

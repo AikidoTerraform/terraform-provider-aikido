@@ -13,12 +13,13 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/time/rate"
 )
 
-const DefaultBaseURL = "https://app.aikido.dev/api"
+const DefaultBaseURL = "https://app.test.aikido.dev/api"
 
 // The API allows 20 calls/min per workspace and returns 429 with a Retry-After
 // header when exceeded. maxRetries bounds how many times a single call waits and
@@ -39,6 +40,7 @@ type Client struct {
 	http    *http.Client
 	baseURL string
 	limiter *rate.Limiter
+	cache   sync.Map
 }
 
 // Option configures a Client.

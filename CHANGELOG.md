@@ -1,3 +1,9 @@
+## 1.1.1
+
+ENHANCEMENTS:
+
+- Faster `terraform plan` in large workspaces by caching repository and PR checks list data instead of fetching each resource individually.
+
 ## 1.1.0
 
 FEATURES:
