@@ -19,7 +19,7 @@ import (
 	"golang.org/x/time/rate"
 )
 
-const DefaultBaseURL = "https://app.test.aikido.dev/api"
+const DefaultBaseURL = "https://app.aikido.dev/api"
 
 // The API allows 20 calls/min per workspace and returns 429 with a Retry-After
 // header when exceeded. maxRetries bounds how many times a single call waits and
