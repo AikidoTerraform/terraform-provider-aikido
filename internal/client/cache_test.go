@@ -100,9 +100,14 @@ func TestLoadCached(t *testing.T) {
 		release := make(chan struct{})
 
 		load := func(context.Context) (int, error) {
-			calls.Add(1)
-			close(started)
+			n := calls.Add(1)
+			if n == 1 {
+				close(started)
+			}
 			<-release
+			if n != 1 {
+				return 0, errors.New("load invoked more than once")
+			}
 			return 7, nil
 		}
 
