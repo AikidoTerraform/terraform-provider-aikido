@@ -13,7 +13,9 @@ type cacheEntry struct {
 	err   error
 }
 
-// LoadCached returns the cached result for key, running load at most once per Client.
+// LoadCached returns the cached result for key, running load at most once per
+// successful result per Client. Failed loads are not memoized: the entry is
+// removed so a later call can retry (e.g. after a transient API or network error).
 func LoadCached[T any](apiClient *Client, ctx context.Context, key string, load func(context.Context) (T, error)) (T, error) {
 	var empty T
 	actual, _ := apiClient.cache.LoadOrStore(key, &cacheEntry{})
@@ -27,6 +29,9 @@ func LoadCached[T any](apiClient *Client, ctx context.Context, key string, load 
 	})
 
 	if entry.err != nil {
+		// Drop the failed entry so the next caller can retry. CompareAndDelete
+		// avoids wiping a newer successful entry that may have replaced ours.
+		apiClient.cache.CompareAndDelete(key, entry)
 		return empty, entry.err
 	}
 
