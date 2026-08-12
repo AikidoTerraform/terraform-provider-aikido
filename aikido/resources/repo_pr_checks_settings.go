@@ -3,7 +3,6 @@ package resources
 import (
 	"context"
 	"fmt"
-	"net/url"
 	"strconv"
 
 	"github.com/AikidoTerraform/terraform-provider-aikido/internal/client"
@@ -20,7 +19,11 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
-const prChecksSettingsPath = "/public/v1/repositories/code/continuous_integration/checks"
+const (
+	prChecksSettingsPath     = "/public/v1/repositories/code/continuous_integration/checks"
+	prChecksSettingsPageSize = 100
+	prChecksSettingsCacheKey = "repositories/code/continuous_integration/checks"
+)
 
 var (
 	_ resource.Resource                   = &prChecksSettingsResource{}
@@ -313,7 +316,7 @@ func (r *prChecksSettingsResource) Read(ctx context.Context, request resource.Re
 		return
 	}
 
-	apiSettings, err := getPRChecksSettings(ctx, r.client, prior.CodeRepoID.ValueInt64())
+	apiSettings, err := prChecksSettingsFromCache(ctx, r.client, prior.CodeRepoID.ValueInt64())
 	if err != nil {
 		response.Diagnostics.AddError("Error reading PR checks settings for repository "+strconv.FormatInt(prior.CodeRepoID.ValueInt64(), 10), err.Error())
 		return
@@ -368,7 +371,7 @@ func (r *prChecksSettingsResource) setPRChecksSettings(ctx context.Context, plan
 		return prChecksSettingsModel{}, err
 	}
 
-	apiSettings, err := getPRChecksSettings(ctx, r.client, planned.CodeRepoID.ValueInt64())
+	apiSettings, err := prChecksSettingsFromAPI(ctx, r.client, planned.CodeRepoID.ValueInt64())
 	if err != nil {
 		return prChecksSettingsModel{}, err
 	}
@@ -378,21 +381,6 @@ func (r *prChecksSettingsResource) setPRChecksSettings(ctx context.Context, plan
 	}
 
 	return mergePRChecksSettingsAPIAndPrior(*apiSettings, &planned), nil
-}
-
-func getPRChecksSettings(ctx context.Context, apiClient *client.Client, codeRepoID int64) (*prChecksSettingsAPI, error) {
-	url := prChecksSettingsPath + "?filter_code_repo_id=" + url.QueryEscape(strconv.FormatInt(codeRepoID, 10))
-
-	var settings []prChecksSettingsAPI
-	if err := apiClient.Do(ctx, "GET", url, nil, &settings); err != nil {
-		return nil, err
-	}
-
-	if len(settings) == 0 {
-		return nil, nil
-	}
-
-	return &settings[0], nil
 }
 
 func constructPRChecksSettingsBody(planned prChecksSettingsModel) map[string]any {
@@ -428,6 +416,53 @@ func constructPRChecksSettingsBody(planned prChecksSettingsModel) map[string]any
 	}
 
 	return body
+}
+
+// prChecksSettingsFromCache looks up settings in the shared paginated list cache.
+// Use for Read when many resources share one plan (avoids N filtered GETs).
+func prChecksSettingsFromCache(ctx context.Context, c *client.Client, codeRepoID int64) (*prChecksSettingsAPI, error) {
+	settings, err := client.LoadCached(c, ctx, prChecksSettingsCacheKey, func(ctx context.Context) (map[int64]prChecksSettingsAPI, error) {
+		// fetch all settings from the API once on first use
+		items, err := client.FetchAllPages[prChecksSettingsAPI](ctx, c, prChecksSettingsPath, prChecksSettingsPageSize, "")
+		if err != nil {
+			return nil, err
+		}
+
+		settingsCacheMap := make(map[int64]prChecksSettingsAPI, len(items))
+
+		for _, settings := range items {
+			settingsCacheMap[settings.CodeRepoID] = settings
+		}
+
+		return settingsCacheMap, nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	// lookup the settings in the cache
+	cachedSettings, ok := settings[codeRepoID]
+	if !ok {
+		return nil, nil
+	}
+
+	return &cachedSettings, nil
+}
+
+// prChecksSettingsFromAPI loads one repo's settings via filter_code_repo_id.
+// Use after writes: POST only returns {success:1}, and the list cache may be stale.
+func prChecksSettingsFromAPI(ctx context.Context, c *client.Client, codeRepoID int64) (*prChecksSettingsAPI, error) {
+	path := prChecksSettingsPath + "?filter_code_repo_id=" + strconv.FormatInt(codeRepoID, 10)
+
+	var settings []prChecksSettingsAPI
+	if err := c.Do(ctx, "GET", path, nil, &settings); err != nil {
+		return nil, err
+	}
+	if len(settings) == 0 {
+		return nil, nil
+	}
+	return &settings[0], nil
 }
 
 func mapPRChecksSettingsAPIToModel(api prChecksSettingsAPI) prChecksSettingsModel {

@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/time/rate"
@@ -35,6 +36,7 @@ type Client struct {
 	http    *http.Client
 	baseURL string
 	limiter *rate.Limiter
+	cache   sync.Map
 }
 
 // Option configures a Client.
