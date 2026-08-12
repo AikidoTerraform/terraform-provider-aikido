@@ -3,6 +3,12 @@
 ENHANCEMENTS:
 
 - Faster `terraform plan` in large workspaces by caching repository and PR checks list data instead of fetching each resource individually.
+- Added provider-level `requests_per_minute` configuration so customers with higher workspace API limits can increase the client-side request rate.
+
+NOTES:
+
+- Clarified in the PR checks documentation that Deep Review is currently only available in the EU region.
+- Updated the `aikido_repo_pr_checks_settings` resource to accept `always_pass_check` for `minimum_severity`, in line with the API.
 
 ## 1.1.0
 
