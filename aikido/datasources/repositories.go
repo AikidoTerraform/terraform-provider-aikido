@@ -12,6 +12,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
@@ -182,6 +184,11 @@ func (d *repositoriesDataSource) Read(ctx context.Context, request datasource.Re
 		return
 	}
 
+	response.Diagnostics.Append(unknownFilterDiagnostics(config)...)
+	if response.Diagnostics.HasError() {
+		return
+	}
+
 	allRepositories, err := repositories.All(ctx, d.client)
 	if err != nil {
 		response.Diagnostics.AddError("Error reading repositories", err.Error())
@@ -211,6 +218,37 @@ func matchingRepositories(allRepositories []repositories.Repository, config repo
 	}
 
 	return matched, matchedIDs
+}
+
+// unknownFilterDiagnostics rejects filters that are not known at read time.
+// Refusing beats ignoring: an ignored filter would widen the result to every
+// repository, and that result feeds repo_ids.
+func unknownFilterDiagnostics(config repositoriesDataSourceModel) diag.Diagnostics {
+	var diagnostics diag.Diagnostics
+
+	filters := []struct {
+		name      string
+		isUnknown bool
+	}{
+		{"name", config.Name.IsUnknown()},
+		{"branch", config.Branch.IsUnknown()},
+		{"git_provider", config.GitProvider.IsUnknown()},
+		{"active", config.Active.IsUnknown()},
+	}
+
+	for _, filter := range filters {
+		if !filter.isUnknown {
+			continue
+		}
+		diagnostics.AddAttributeError(
+			path.Root(filter.name),
+			"Unknown repository filter",
+			fmt.Sprintf("The %s filter is not known at read time, so it cannot be used to select repositories. "+
+				"Set it to a value that does not depend on an attribute that is only known after apply.", filter.name),
+		)
+	}
+
+	return diagnostics
 }
 
 // matchesFilters reports whether a repository satisfies every set filter.

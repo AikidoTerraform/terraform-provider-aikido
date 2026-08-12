@@ -2,6 +2,7 @@ package datasources
 
 import (
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/AikidoTerraform/terraform-provider-aikido/internal/repositories"
@@ -203,6 +204,52 @@ func TestMatchingRepositories_IDsStayAlignedAfterFiltering(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestUnknownFilterDiagnostics(t *testing.T) {
+	t.Run("known filters produce no error", func(t *testing.T) {
+		config := repositoriesDataSourceModel{
+			Name:        types.StringValue("payments"),
+			GitProvider: types.StringValue("github"),
+		}
+
+		if diagnostics := unknownFilterDiagnostics(config); diagnostics.HasError() {
+			t.Errorf("got %v, want no diagnostics", diagnostics)
+		}
+	})
+
+	t.Run("null filters produce no error", func(t *testing.T) {
+		if diagnostics := unknownFilterDiagnostics(repositoriesDataSourceModel{}); diagnostics.HasError() {
+			t.Errorf("got %v, want no diagnostics", diagnostics)
+		}
+	})
+
+	// An unknown filter must fail rather than be ignored: ignoring it would
+	// return every repository, which then feeds repo_ids.
+	t.Run("each unknown filter is reported", func(t *testing.T) {
+		tests := []struct {
+			name   string
+			config repositoriesDataSourceModel
+		}{
+			{"name", repositoriesDataSourceModel{Name: types.StringUnknown()}},
+			{"branch", repositoriesDataSourceModel{Branch: types.StringUnknown()}},
+			{"git_provider", repositoriesDataSourceModel{GitProvider: types.StringUnknown()}},
+			{"active", repositoriesDataSourceModel{Active: types.BoolUnknown()}},
+		}
+
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+				diagnostics := unknownFilterDiagnostics(test.config)
+				if !diagnostics.HasError() {
+					t.Fatalf("unknown %s produced no error", test.name)
+				}
+				if !strings.Contains(diagnostics.Errors()[0].Detail(), test.name) {
+					t.Errorf("error detail %q does not name the %s filter",
+						diagnostics.Errors()[0].Detail(), test.name)
+				}
+			})
+		}
+	})
 }
 
 func TestSortedLabelNames_EmptyIsNonNil(t *testing.T) {
