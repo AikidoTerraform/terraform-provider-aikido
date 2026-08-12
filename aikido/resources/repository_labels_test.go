@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/AikidoTerraform/terraform-provider-aikido/internal/repositories"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
@@ -46,7 +47,7 @@ func TestSetRepoConfig_LabelLifecycle(t *testing.T) {
 				_, _ = io.WriteString(w, `{"label_id":`+strconv.Itoa(100+len(created))+`}`)
 
 			case r.Method == http.MethodGet && r.URL.Path == "/public/v1/repositories/code/1":
-				_ = json.NewEncoder(w).Encode(repositoryAPI{ID: 1, Active: true})
+				_ = json.NewEncoder(w).Encode(repositories.Repository{ID: 1, Active: true})
 
 			default:
 				t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
@@ -85,10 +86,10 @@ func TestSetRepoConfig_LabelLifecycle(t *testing.T) {
 				_, _ = io.WriteString(w, `{}`)
 
 			case r.Method == http.MethodGet && r.URL.Path == "/public/v1/repositories/code/1":
-				_ = json.NewEncoder(w).Encode(repositoryAPI{
+				_ = json.NewEncoder(w).Encode(repositories.Repository{
 					ID:     1,
 					Active: true,
-					Labels: []labelAPI{
+					Labels: []repositories.Label{
 						{ID: "10", Name: "payments"},
 						{ID: "11", Name: "remove-me"},
 					},
@@ -125,10 +126,10 @@ func TestSetRepoConfig_LabelLifecycle(t *testing.T) {
 				_, _ = io.WriteString(w, `{}`)
 
 			case r.Method == http.MethodGet && r.URL.Path == "/public/v1/repositories/code/1":
-				_ = json.NewEncoder(w).Encode(repositoryAPI{
+				_ = json.NewEncoder(w).Encode(repositories.Repository{
 					ID:     1,
 					Active: true,
-					Labels: []labelAPI{{ID: "10", Name: "production"}},
+					Labels: []repositories.Label{{ID: "10", Name: "production"}},
 				})
 
 			default:
@@ -165,10 +166,10 @@ func TestSetRepoConfig_LabelLifecycle(t *testing.T) {
 				_, _ = io.WriteString(w, `{}`)
 
 			case r.Method == http.MethodGet && r.URL.Path == "/public/v1/repositories/code/1":
-				_ = json.NewEncoder(w).Encode(repositoryAPI{
+				_ = json.NewEncoder(w).Encode(repositories.Repository{
 					ID:     1,
 					Active: true,
-					Labels: []labelAPI{
+					Labels: []repositories.Label{
 						{ID: "10", Name: "payments"},
 						{ID: "11", Name: "production"},
 					},
@@ -222,7 +223,7 @@ func TestApplyLabels_KeepsImportedAndSyncsNames(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	current := []labelAPI{
+	current := []repositories.Label{
 		{ID: "10", Name: "payments", IsImported: false},
 		{ID: "11", Name: "production", IsImported: false},
 		{ID: "12", Name: "imported", IsImported: true},
@@ -256,7 +257,7 @@ func TestApplyLabels_KeepsImportedAndSyncsNames(t *testing.T) {
 		context.Background(),
 		"1",
 		nil,
-		[]labelAPI{{ID: "10", Name: "payments"}},
+		[]repositories.Label{{ID: "10", Name: "payments"}},
 	); err != nil {
 		t.Fatalf("omitted applyLabels: %v", err)
 	}

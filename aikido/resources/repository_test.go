@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/AikidoTerraform/terraform-provider-aikido/internal/client"
+	"github.com/AikidoTerraform/terraform-provider-aikido/internal/repositories"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"golang.org/x/time/rate"
 )
@@ -17,7 +18,7 @@ func testClient(srv *httptest.Server) *client.Client {
 	return client.New(srv.Client(), srv.URL, client.WithRateLimiter(rate.NewLimiter(rate.Inf, 1)))
 }
 
-func writeReposList(t *testing.T, w http.ResponseWriter, repos ...repositoryAPI) {
+func writeReposList(t *testing.T, w http.ResponseWriter, repos ...repositories.Repository) {
 	t.Helper()
 
 	if err := json.NewEncoder(w).Encode(repos); err != nil {
@@ -93,7 +94,7 @@ func TestSetRepoConfig_UpdatesAndSkipsNulls(t *testing.T) {
 			calls[r.URL.Path]++
 
 			if r.Method == http.MethodGet && r.URL.Path == "/public/v1/repositories/code/9" {
-				_ = json.NewEncoder(w).Encode(repositoryAPI{ID: 9, Active: true, Name: "from-detail"})
+				_ = json.NewEncoder(w).Encode(repositories.Repository{ID: 9, Active: true, Name: "from-detail"})
 				return
 			}
 
@@ -138,7 +139,7 @@ func TestSetRepoConfig_UpdatesAndSkipsNulls(t *testing.T) {
 			calls[r.URL.Path]++
 
 			if r.Method == http.MethodGet && r.URL.Path == "/public/v1/repositories/code/9" {
-				_ = json.NewEncoder(w).Encode(repositoryAPI{ID: 9, Active: false})
+				_ = json.NewEncoder(w).Encode(repositories.Repository{ID: 9, Active: false})
 				return
 			}
 
@@ -176,14 +177,14 @@ func TestRepositoryFromCache_NotFound(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	_, err := repositoryFromCache(context.Background(), testClient(srv), 1)
+	_, err := repositories.ByID(context.Background(), testClient(srv), 1)
 	if err == nil || !client.NotFound(err) {
 		t.Fatalf("err = %v, want NotFound", err)
 	}
 }
 
 func TestRepositoryModelFromAPI(t *testing.T) {
-	state := repositoryModelFromAPI(repositoryAPI{
+	state := repositoryModelFromAPI(repositories.Repository{
 		ID:             1,
 		Name:           "Compression service",
 		Provider:       "github",
@@ -193,7 +194,7 @@ func TestRepositoryModelFromAPI(t *testing.T) {
 		URL:            "https://github.com/example/repo",
 		Connectivity:   "connected",
 		Sensitivity:    "normal",
-		Labels:         []labelAPI{{ID: "10", Name: "payments"}},
+		Labels:         []repositories.Label{{ID: "10", Name: "payments"}},
 	})
 
 	if state.ID.ValueString() != "1" || !state.Active.ValueBool() {

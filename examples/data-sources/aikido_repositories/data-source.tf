@@ -1,0 +1,100 @@
+# Look up one repository by name, so configuration refers to a repository by a
+# name people recognise instead of an opaque Aikido ID. Names are not unique
+# across Git providers, so git_provider is set here to guarantee a single match:
+# the one() calls below fail if the lookup returns more than one repository.
+data "aikido_repositories" "payments" {
+  name         = "payments"
+  git_provider = "github"
+}
+
+resource "aikido_repository" "payments" {
+  id     = one(data.aikido_repositories.payments.repositories).id
+  active = true
+}
+
+# ids is numeric, so a single match feeds code_repo_id with no conversion.
+resource "aikido_repo_pr_checks_settings" "payments" {
+  code_repo_id = one(data.aikido_repositories.payments.ids)
+
+  minimum_severity                  = "high"
+  fail_on_dependency_scan           = true
+  fail_on_sast_scan                 = true
+  fail_on_iac_scan                  = true
+  fail_on_secrets_scan              = true
+  fail_on_malware_scan              = true
+  post_inline_comments_min_severity = "critical"
+
+  minimum_license_severity = "high"
+
+  fail_on_code_quality_scan                      = true
+  enable_code_quality_scan                       = true
+  post_code_quality_inline_comments_min_severity = "medium"
+
+  run_deep_audit_pr_scan                       = true
+  post_deep_audit_inline_comments_min_severity = "high"
+}
+
+# Filters combine with AND. Omitting every filter returns all repositories,
+# active and inactive.
+data "aikido_repositories" "active_github" {
+  git_provider = "github"
+  active       = true
+}
+
+# ids matches the type of repo_ids, so scoping workspace-wide Autofix settings to
+# every active GitHub repository needs no hand-maintained list of integers.
+resource "aikido_autofix_sast_settings" "example" {
+  enabled         = true
+  severity_filter = "critical_and_high_only"
+  repos_scope     = "selected"
+  repo_ids        = data.aikido_repositories.active_github.ids
+}
+
+# The name filter is an exact match. Selecting repositories by naming convention
+# is done with a Terraform expression over the repositories list: startswith for a
+# prefix, endswith for a suffix, or can(regex(...)) for anything more involved.
+data "aikido_repositories" "all" {}
+
+resource "aikido_autofix_dependency_settings" "team_a" {
+  enabled                      = true
+  severity_filter              = "critical_and_high_only"
+  repos_scope                  = "selected"
+  use_aikido_library_for_major = true
+
+  repo_ids = [
+    for repository in data.aikido_repositories.all.repositories :
+    tonumber(repository.id) if startswith(repository.name, "team-a-")
+  ]
+}
+
+# A lookup map replaces an out-of-band name-to-ID mapping. The key includes the
+# Git provider because a name on its own is not unique across providers, and a
+# for expression fails with "Duplicate object key" the moment two repositories
+# collide. Add "..." after the value to group instead, if a name can repeat
+# within a single provider too.
+locals {
+  repositories_by_provider_and_name = {
+    for repository in data.aikido_repositories.all.repositories :
+    "${repository.git_provider}/${repository.name}" => repository
+  }
+}
+
+output "payments_repository_id" {
+  value = local.repositories_by_provider_and_name["github/payments"].id
+}
+
+output "service_repository_ids" {
+  description = "Numeric IDs of repositories whose name ends in -service or -api."
+  value = [
+    for repository in data.aikido_repositories.all.repositories :
+    tonumber(repository.id) if can(regex("-(service|api)$", repository.name))
+  ]
+}
+
+output "never_scanned_repositories" {
+  description = "Repositories Aikido has not scanned yet (last_scanned_at is -1)."
+  value = [
+    for repository in data.aikido_repositories.all.repositories :
+    repository.name if repository.last_scanned_at == -1
+  ]
+}

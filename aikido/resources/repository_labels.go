@@ -5,15 +5,10 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/AikidoTerraform/terraform-provider-aikido/internal/repositories"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
-
-type labelAPI struct {
-	ID         string `json:"id"`
-	Name       string `json:"name"`
-	IsImported bool   `json:"is_imported"`
-}
 
 type labelWriteResponse struct {
 	LabelID int64 `json:"label_id"`
@@ -33,7 +28,7 @@ func labelsSchemaAttribute() schema.SetAttribute {
 // no labels property in the terraform file means no labels are managed and existing labels in Aikido are left untouched.
 // An empty list deletes every label currently on the repository.
 // a non empty list creates and deletes labels as needed to match the planned labels.
-func (r *repositoryResource) applyLabels(ctx context.Context, repositoryID string, plannedLabels []types.String, currentLabels []labelAPI) error {
+func (r *repositoryResource) applyLabels(ctx context.Context, repositoryID string, plannedLabels []types.String, currentLabels []repositories.Label) error {
 	if plannedLabels == nil {
 		return nil
 	}
@@ -41,7 +36,7 @@ func (r *repositoryResource) applyLabels(ctx context.Context, repositoryID strin
 	// Create planned names that don't exist yet.
 	for _, label := range plannedLabels {
 		name := label.ValueString()
-		if slices.ContainsFunc(currentLabels, func(l labelAPI) bool { return l.Name == name }) {
+		if slices.ContainsFunc(currentLabels, func(l repositories.Label) bool { return l.Name == name }) {
 			continue
 		}
 
