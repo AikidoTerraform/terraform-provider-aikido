@@ -47,8 +47,8 @@ func WithRateLimiter(limiter *rate.Limiter) Option {
 }
 
 // WithRequestsPerMinute paces outbound requests to the given rate. Values are
-// clamped to [DefaultRequestsPerMinute, MaxRequestsPerMinute]: anything below
-// the standard rate snaps up to DefaultRequestsPerMinute.
+// clamped to the provider-supported range; anything below the standard rate
+// snaps up to DefaultRequestsPerMinute.
 func WithRequestsPerMinute(rpm int) Option {
 	return func(c *Client) {
 		if rpm < DefaultRequestsPerMinute {
