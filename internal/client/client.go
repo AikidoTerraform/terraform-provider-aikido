@@ -27,7 +27,7 @@ const (
 	maxRetries               = 4
 	maxRetryDelay            = 60 * time.Second
 	DefaultRequestsPerMinute = 20
-	MaxRequestsPerMinute     = 100
+	MaxRequestsPerMinute     = 250
 	requestBurst             = 10
 )
 
