@@ -44,11 +44,6 @@ func TestMatchesFilters(t *testing.T) {
 			want:   false,
 		},
 		{
-			name:   "git provider matches",
-			config: repositoriesDataSourceModel{GitProvider: types.StringValue("github")},
-			want:   true,
-		},
-		{
 			name:   "active false excludes an active repository",
 			config: repositoriesDataSourceModel{Active: types.BoolValue(false)},
 			want:   false,
@@ -56,8 +51,8 @@ func TestMatchesFilters(t *testing.T) {
 		{
 			name: "filters combine with AND",
 			config: repositoriesDataSourceModel{
-				Name:        types.StringValue("payments"),
-				GitProvider: types.StringValue("gitlab"),
+				Name:   types.StringValue("payments"),
+				Branch: types.StringValue("develop"),
 			},
 			want: false,
 		},
@@ -126,13 +121,13 @@ func TestRepositoryModelFromAPI_EmptyEnumsBecomeNull(t *testing.T) {
 	}
 }
 
-// workspace mirrors the shape the complaint describes: repositories across
-// providers, active and inactive, sharing a name across two providers.
+// workspace mirrors a real one: a single Git provider, repositories both active
+// and inactive, and more than one scanned branch.
 var workspace = []repositories.Repository{
 	{ID: 10, Name: "payments", Provider: "github", Branch: "main", Active: true},
 	{ID: 20, Name: "legacy-batch", Provider: "github", Branch: "master", Active: false},
-	{ID: 30, Name: "checkout", Provider: "gitlab", Branch: "main", Active: true},
-	{ID: 40, Name: "payments", Provider: "gitlab", Branch: "main", Active: true},
+	{ID: 30, Name: "checkout", Provider: "github", Branch: "main", Active: true},
+	{ID: 40, Name: "team-a-billing", Provider: "github", Branch: "main", Active: true},
 }
 
 // ids must line up with repositories entry for entry after filtering, because
@@ -149,27 +144,27 @@ func TestMatchingRepositories_IDsStayAlignedAfterFiltering(t *testing.T) {
 			wantIDs: []int64{10, 20, 30, 40},
 		},
 		{
-			name:    "git provider filter",
-			config:  repositoriesDataSourceModel{GitProvider: types.StringValue("github")},
-			wantIDs: []int64{10, 20},
+			name:    "active filter",
+			config:  repositoriesDataSourceModel{Active: types.BoolValue(true)},
+			wantIDs: []int64{10, 30, 40},
 		},
 		{
-			name: "provider and active combine with AND",
+			name:    "branch filter",
+			config:  repositoriesDataSourceModel{Branch: types.StringValue("master")},
+			wantIDs: []int64{20},
+		},
+		{
+			name: "branch and active combine with AND",
 			config: repositoriesDataSourceModel{
-				GitProvider: types.StringValue("github"),
-				Active:      types.BoolValue(true),
+				Branch: types.StringValue("master"),
+				Active: types.BoolValue(true),
 			},
-			wantIDs: []int64{10},
+			wantIDs: []int64{},
 		},
 		{
-			name:    "a name shared across providers returns both",
+			name:    "name selects a single repository",
 			config:  repositoriesDataSourceModel{Name: types.StringValue("payments")},
-			wantIDs: []int64{10, 40},
-		},
-		{
-			name:    "name and git_provider disambiguate a shared name",
-			config:  repositoriesDataSourceModel{Name: types.StringValue("payments"), GitProvider: types.StringValue("gitlab")},
-			wantIDs: []int64{40},
+			wantIDs: []int64{10},
 		},
 		{
 			name:    "no match yields empty, not null",
@@ -209,8 +204,8 @@ func TestMatchingRepositories_IDsStayAlignedAfterFiltering(t *testing.T) {
 func TestUnknownFilterDiagnostics(t *testing.T) {
 	t.Run("known filters produce no error", func(t *testing.T) {
 		config := repositoriesDataSourceModel{
-			Name:        types.StringValue("payments"),
-			GitProvider: types.StringValue("github"),
+			Name:   types.StringValue("payments"),
+			Branch: types.StringValue("main"),
 		}
 
 		if diagnostics := unknownFilterDiagnostics(config); diagnostics.HasError() {
@@ -233,7 +228,6 @@ func TestUnknownFilterDiagnostics(t *testing.T) {
 		}{
 			{"name", repositoriesDataSourceModel{Name: types.StringUnknown()}},
 			{"branch", repositoriesDataSourceModel{Branch: types.StringUnknown()}},
-			{"git_provider", repositoriesDataSourceModel{GitProvider: types.StringUnknown()}},
 			{"active", repositoriesDataSourceModel{Active: types.BoolUnknown()}},
 		}
 

@@ -9,12 +9,10 @@ import (
 
 	"github.com/AikidoTerraform/terraform-provider-aikido/internal/client"
 	"github.com/AikidoTerraform/terraform-provider-aikido/internal/repositories"
-	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
-	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
@@ -38,7 +36,6 @@ type repositoriesDataSource struct {
 type repositoriesDataSourceModel struct {
 	Name         types.String      `tfsdk:"name"`
 	Branch       types.String      `tfsdk:"branch"`
-	GitProvider  types.String      `tfsdk:"git_provider"`
 	Active       types.Bool        `tfsdk:"active"`
 	IDs          []types.Int64     `tfsdk:"ids"`
 	Repositories []repositoryModel `tfsdk:"repositories"`
@@ -74,23 +71,14 @@ func (d *repositoriesDataSource) Schema(_ context.Context, _ datasource.SchemaRe
 		Attributes: map[string]schema.Attribute{
 			"name": schema.StringAttribute{
 				Optional: true,
-				Description: "Only return repositories whose name is exactly this. " +
+				Description: "Only return the repository whose name is exactly this. " +
 					"Matching is exact, not a substring or glob. " +
-					"Names are not guaranteed unique across Git providers, so this can match more than one repository; " +
-					"combine it with git_provider to narrow the result to one, since one(...) fails on multiple matches. " +
 					"To select repositories by naming convention instead, omit this and filter the repositories list with a Terraform expression, " +
 					"for example: [for repository in data.aikido_repositories.all.repositories : tonumber(repository.id) if startswith(repository.name, \"team-a-\")].",
 			},
 			"branch": schema.StringAttribute{
 				Optional:    true,
 				Description: "Only return repositories whose scanned branch is exactly this.",
-			},
-			"git_provider": schema.StringAttribute{
-				Optional:    true,
-				Description: "Only return repositories hosted on this Git provider. One of: github, gitlab, gitlab-server, bitbucket, azure_devops, selfscan.",
-				Validators: []validator.String{
-					stringvalidator.OneOf("github", "gitlab", "gitlab-server", "bitbucket", "azure_devops", "selfscan"),
-				},
 			},
 			"active": schema.BoolAttribute{
 				Optional:    true,
@@ -232,7 +220,6 @@ func unknownFilterDiagnostics(config repositoriesDataSourceModel) diag.Diagnosti
 	}{
 		{"name", config.Name.IsUnknown()},
 		{"branch", config.Branch.IsUnknown()},
-		{"git_provider", config.GitProvider.IsUnknown()},
 		{"active", config.Active.IsUnknown()},
 	}
 
@@ -258,9 +245,6 @@ func matchesFilters(apiRepository repositories.Repository, config repositoriesDa
 		return false
 	}
 	if !config.Branch.IsNull() && apiRepository.Branch != config.Branch.ValueString() {
-		return false
-	}
-	if !config.GitProvider.IsNull() && apiRepository.Provider != config.GitProvider.ValueString() {
 		return false
 	}
 	if !config.Active.IsNull() && apiRepository.Active != config.Active.ValueBool() {

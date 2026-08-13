@@ -1,10 +1,7 @@
 # Look up one repository by name, so configuration refers to a repository by a
-# name people recognise instead of an opaque Aikido ID. Names are not unique
-# across Git providers, so git_provider is set here to guarantee a single match:
-# the one() calls below fail if the lookup returns more than one repository.
+# name people recognise instead of an opaque Aikido ID.
 data "aikido_repositories" "payments" {
-  name         = "payments"
-  git_provider = "github"
+  name = "payments"
 }
 
 resource "aikido_repository" "payments" {
@@ -36,18 +33,17 @@ resource "aikido_repo_pr_checks_settings" "payments" {
 
 # Filters combine with AND. Omitting every filter returns all repositories,
 # active and inactive.
-data "aikido_repositories" "active_github" {
-  git_provider = "github"
-  active       = true
+data "aikido_repositories" "active" {
+  active = true
 }
 
 # ids matches the type of repo_ids, so scoping workspace-wide Autofix settings to
-# every active GitHub repository needs no hand-maintained list of integers.
+# every active repository needs no hand-maintained list of integers.
 resource "aikido_autofix_sast_settings" "example" {
   enabled         = true
   severity_filter = "critical_and_high_only"
   repos_scope     = "selected"
-  repo_ids        = data.aikido_repositories.active_github.ids
+  repo_ids        = data.aikido_repositories.active.ids
 }
 
 # The name filter is an exact match. Selecting repositories by naming convention
@@ -67,20 +63,16 @@ resource "aikido_autofix_dependency_settings" "team_a" {
   ]
 }
 
-# A lookup map replaces an out-of-band name-to-ID mapping. The key includes the
-# Git provider because a name on its own is not unique across providers, and a
-# for expression fails with "Duplicate object key" the moment two repositories
-# collide. Add "..." after the value to group instead, if a name can repeat
-# within a single provider too.
+# A lookup map keyed by name replaces an out-of-band name-to-ID mapping.
 locals {
-  repositories_by_provider_and_name = {
+  repository_ids_by_name = {
     for repository in data.aikido_repositories.all.repositories :
-    "${repository.git_provider}/${repository.name}" => repository
+    repository.name => tonumber(repository.id)
   }
 }
 
 output "payments_repository_id" {
-  value = local.repositories_by_provider_and_name["github/payments"].id
+  value = local.repository_ids_by_name["payments"]
 }
 
 output "service_repository_ids" {

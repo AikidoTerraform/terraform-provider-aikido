@@ -45,11 +45,8 @@ terraform {
 provider "aikido" {}
 
 # Look up repositories by name, so no numeric Aikido IDs appear in config.
-# git_provider is set because a name alone is not unique across providers,
-# and the one() calls below fail on more than one match.
 data "aikido_repositories" "payments" {
-  name         = "payments"
-  git_provider = "github"
+  name = "payments"
 }
 
 # Every repository, for selecting groups with Terraform expressions.
@@ -124,9 +121,8 @@ Prefer env vars for credentials so secrets are not committed. The provider block
 
 ## Notes
 
-- `aikido_repositories` is a read-only lookup, so config never has to hard-code Aikido's numeric repository IDs. Filter with `name`, `branch`, `git_provider` and `active` (combined with AND); omit all four to get every repository, active and inactive.
+- `aikido_repositories` is a read-only lookup, so config never has to hard-code Aikido's numeric repository IDs. Filter with `name`, `branch` and `active` (combined with AND); omit all three to get every repository, active and inactive.
   - `name` matches **exactly** — it is not a substring or glob match. To select repositories by naming convention, omit `name` and filter the `repositories` list with a Terraform expression such as `startswith(repository.name, "team-a-")`, `endswith(...)` or `can(regex(...))`.
-  - Names are **not unique across Git providers**, so `name` alone can match more than one repository. Add `git_provider` when you need exactly one, because `one(...)` fails on multiple matches. For the same reason, key lookup maps on `"${repository.git_provider}/${repository.name}"` rather than `repository.name`, or a `for` expression fails with `Duplicate object key`.
   - Use `ids` (Set of Number) wherever a resource wants numeric IDs: assign it straight to `repo_ids`, or `one(...ids)` to a single `code_repo_id`. Use `repositories[*].id` (String) for `aikido_repository`'s `id`.
   - One data source reads the whole repository list once per Terraform run and shares it with every other data source and `aikido_repository` resource in the same run, so extra lookups cost no extra API calls.
 - `aikido_repository` configures an **existing** code repository by ID. It does not create the repo in your SCM.
