@@ -3,12 +3,12 @@
 page_title: "Aikido Code Repositories"
 subcategory: ""
 description: |-
-  Looks up Aikido code repositories, so configuration can reference repositories by name instead of hard-coding Aikido's numeric repository IDs. Returns every repository, active and inactive, unless filters narrow the result. Filters combine with AND; a filter that matches nothing yields an empty list rather than an error. Use the ids attribute to feed the numeric repo_ids and code_repo_id attributes of the other resources, and the repositories attribute when Terraform expressions need to select by naming convention.
+  Looks up Aikido code repositories. Returns every repository, active and inactive, unless filters narrow the result. Filters combine with AND; a filter that matches nothing yields an empty list rather than an error. Use the ids attribute to feed the numeric repo_ids and code_repo_id attributes of the other resources, and the repositories attribute when Terraform expressions need to select by naming convention.
 ---
 
 # aikido_repositories (Data Source)
 
-Looks up Aikido code repositories, so configuration can reference repositories by name instead of hard-coding Aikido's numeric repository IDs. Returns every repository, active and inactive, unless filters narrow the result. Filters combine with AND; a filter that matches nothing yields an empty list rather than an error. Use the ids attribute to feed the numeric repo_ids and code_repo_id attributes of the other resources, and the repositories attribute when Terraform expressions need to select by naming convention.
+Looks up Aikido code repositories. Returns every repository, active and inactive, unless filters narrow the result. Filters combine with AND; a filter that matches nothing yields an empty list rather than an error. Use the ids attribute to feed the numeric repo_ids and code_repo_id attributes of the other resources, and the repositories attribute when Terraform expressions need to select by naming convention.
 
 ## Example Usage
 

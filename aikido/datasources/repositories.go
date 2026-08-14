@@ -62,8 +62,7 @@ func (d *repositoriesDataSource) Metadata(_ context.Context, request datasource.
 
 func (d *repositoriesDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, response *datasource.SchemaResponse) {
 	response.Schema = schema.Schema{
-		Description: "Looks up Aikido code repositories, so configuration can reference repositories by name " +
-			"instead of hard-coding Aikido's numeric repository IDs. " +
+		Description: "Looks up Aikido code repositories. " +
 			"Returns every repository, active and inactive, unless filters narrow the result. " +
 			"Filters combine with AND; a filter that matches nothing yields an empty list rather than an error. " +
 			"Use the ids attribute to feed the numeric repo_ids and code_repo_id attributes of the other resources, " +
