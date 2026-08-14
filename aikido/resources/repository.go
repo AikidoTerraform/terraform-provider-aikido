@@ -3,10 +3,10 @@ package resources
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"strconv"
 
 	"github.com/AikidoTerraform/terraform-provider-aikido/internal/client"
+	"github.com/AikidoTerraform/terraform-provider-aikido/internal/repositories"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -17,11 +17,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
-const (
-	basePath             = "/public/v1/repositories/code"
-	repositoriesPageSize = 200
-	repositoriesCacheKey = "repositories/code"
-)
+const basePath = repositories.BasePath
 
 var (
 	_ resource.Resource                = &repositoryResource{}
@@ -50,19 +46,6 @@ type repositoryModel struct {
 	URL            types.String   `tfsdk:"url"`
 	ExternalRepoID types.String   `tfsdk:"external_repo_id"`
 	Labels         []types.String `tfsdk:"labels"`
-}
-
-type repositoryAPI struct {
-	ID             int64      `json:"id"`
-	Name           string     `json:"name"`
-	Provider       string     `json:"provider"`
-	ExternalRepoID string     `json:"external_repo_id"`
-	Active         bool       `json:"active"`
-	Branch         string     `json:"branch"`
-	URL            string     `json:"url"`
-	Connectivity   string     `json:"connectivity"`
-	Sensitivity    string     `json:"sensitivity"`
-	Labels         []labelAPI `json:"labels"`
 }
 
 // Metadata sets the resource type name.
@@ -178,7 +161,7 @@ func (r *repositoryResource) Read(ctx context.Context, request resource.ReadRequ
 	}
 
 	// get repository from list cache
-	apiRepository, err := repositoryFromCache(ctx, r.client, id)
+	apiRepository, err := repositories.ByID(ctx, r.client, id)
 	if err != nil {
 		if client.NotFound(err) {
 			response.State.RemoveResource(ctx)
@@ -258,7 +241,7 @@ func (r *repositoryResource) setRepoConfig(ctx context.Context, plannedRepositor
 		return repositoryModel{}, err
 	}
 
-	apiRepository, err := repositoryFromAPI(ctx, r.client, id)
+	apiRepository, err := repositories.Detail(ctx, r.client, id)
 	if err != nil {
 		return repositoryModel{}, err
 	}
@@ -296,60 +279,8 @@ func parseRepositoryID(repositoryID string) (int64, error) {
 	return id, nil
 }
 
-// repositoryFromCache looks up a repo in the shared paginated list cache.
-// Use for Read when many resources share one plan (avoids N detail GETs).
-func repositoryFromCache(ctx context.Context, c *client.Client, id int64) (repositoryAPI, error) {
-	repos, err := client.LoadCached(c, ctx, repositoriesCacheKey, func(ctx context.Context) (map[int64]repositoryAPI, error) {
-		// fetch all repositories from the API once on first use
-		items, err := client.FetchAllPages[repositoryAPI](
-			ctx, c, basePath, repositoriesPageSize,
-			"include_inactive=true&include_labels=true",
-		)
-		if err != nil {
-			return nil, err
-		}
-
-		repoCacheMap := make(map[int64]repositoryAPI, len(items))
-		for _, repo := range items {
-			repoCacheMap[repo.ID] = repo
-		}
-
-		return repoCacheMap, nil
-	})
-
-	if err != nil {
-		return repositoryAPI{}, err
-	}
-
-	// lookup the repository in the cache
-	cachedRepo, ok := repos[id]
-	if !ok {
-		return repositoryAPI{}, &client.APIError{
-			StatusCode: http.StatusNotFound,
-			Method:     http.MethodGet,
-			Path:       basePath + "/" + strconv.FormatInt(id, 10),
-			Body:       "repository not found",
-		}
-	}
-
-	return cachedRepo, nil
-}
-
-// repositoryFromAPI loads one repository via GET /repositories/code/{id}.
-// Use after writes so state reflects the API rather than a possibly stale list cache.
-func repositoryFromAPI(ctx context.Context, c *client.Client, id int64) (repositoryAPI, error) {
-	var repo repositoryAPI
-	path := basePath + "/" + strconv.FormatInt(id, 10)
-
-	if err := c.Do(ctx, http.MethodGet, path, nil, &repo); err != nil {
-		return repositoryAPI{}, err
-	}
-
-	return repo, nil
-}
-
 // repositoryModelFromAPI maps an API repository into a Terraform state model.
-func repositoryModelFromAPI(apiRepository repositoryAPI) repositoryModel {
+func repositoryModelFromAPI(apiRepository repositories.Repository) repositoryModel {
 	repositoryState := repositoryModel{
 		ID:             types.StringValue(strconv.FormatInt(apiRepository.ID, 10)),
 		Active:         types.BoolValue(apiRepository.Active),
@@ -375,7 +306,7 @@ func repositoryModelFromAPI(apiRepository repositoryAPI) repositoryModel {
 
 // labelNamesFromAPI maps API labels into Terraform state (names only).
 // Always returns a non-nil slice so a managed empty set differs from omitted (nil).
-func labelNamesFromAPI(apiLabels []labelAPI) []types.String {
+func labelNamesFromAPI(apiLabels []repositories.Label) []types.String {
 	names := make([]types.String, 0, len(apiLabels))
 	for _, apiLabel := range apiLabels {
 		names = append(names, types.StringValue(apiLabel.Name))

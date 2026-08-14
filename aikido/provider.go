@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/AikidoTerraform/terraform-provider-aikido/aikido/datasources"
 	"github.com/AikidoTerraform/terraform-provider-aikido/aikido/resources"
 	"github.com/AikidoTerraform/terraform-provider-aikido/internal/auth"
 	"github.com/AikidoTerraform/terraform-provider-aikido/internal/client"
@@ -125,7 +126,9 @@ func (p *aikidoProvider) Resources(_ context.Context) []func() resource.Resource
 }
 
 func (p *aikidoProvider) DataSources(_ context.Context) []func() datasource.DataSource {
-	return []func() datasource.DataSource{}
+	return []func() datasource.DataSource{
+		datasources.NewRepositoriesDataSource,
+	}
 }
 
 func firstNonEmpty(values ...string) string {

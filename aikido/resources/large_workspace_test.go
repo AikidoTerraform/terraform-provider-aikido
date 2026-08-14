@@ -11,6 +11,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+
+	"github.com/AikidoTerraform/terraform-provider-aikido/internal/repositories"
 )
 
 // Scale proof only: old Read = 1 GET per TF resource; new Read = paginate list once.
@@ -50,10 +52,10 @@ func writeRepoListPage(t *testing.T, response http.ResponseWriter, request *http
 	}
 
 	lastIndex := min(firstIndex+reposPerListPage, reposInWorkspace)
-	page := make([]repositoryAPI, 0, lastIndex-firstIndex)
+	page := make([]repositories.Repository, 0, lastIndex-firstIndex)
 
 	for repoID := firstIndex + 1; repoID <= lastIndex; repoID++ {
-		page = append(page, repositoryAPI{ID: int64(repoID), Name: "repo", Active: true})
+		page = append(page, repositories.Repository{ID: int64(repoID), Name: "repo", Active: true})
 	}
 
 	writeReposList(t, response, page...)
@@ -96,7 +98,7 @@ func newRepoAPIServer(t *testing.T, counts *apiCallCounts) *httptest.Server {
 		case request.Method == http.MethodGet && strings.HasPrefix(request.URL.Path, "/public/v1/repositories/code/"):
 			counts.perResourceGET.Add(1)
 			repoID, _ := strconv.ParseInt(strings.TrimPrefix(request.URL.Path, "/public/v1/repositories/code/"), 10, 64)
-			_ = json.NewEncoder(response).Encode(repositoryAPI{ID: repoID, Name: "repo", Active: true})
+			_ = json.NewEncoder(response).Encode(repositories.Repository{ID: repoID, Name: "repo", Active: true})
 
 		default:
 			t.Errorf("unexpected %s %s", request.Method, request.URL.Path)
@@ -171,7 +173,7 @@ func TestLargeWorkspace_RepositoryRefresh_OldVsCached(t *testing.T) {
 	oldAPI := testClient(oldServer)
 
 	forEachManagedResource(t, func(resourceIndex int) error {
-		_, err := repositoryFromAPI(ctx, oldAPI, int64(resourceIndex))
+		_, err := repositories.Detail(ctx, oldAPI, int64(resourceIndex))
 		return err
 	})
 
@@ -188,7 +190,7 @@ func TestLargeWorkspace_RepositoryRefresh_OldVsCached(t *testing.T) {
 	cachedAPI := testClient(cachedServer)
 
 	forEachManagedResource(t, func(resourceIndex int) error {
-		_, err := repositoryFromCache(ctx, cachedAPI, int64(resourceIndex))
+		_, err := repositories.ByID(ctx, cachedAPI, int64(resourceIndex))
 		return err
 	})
 
