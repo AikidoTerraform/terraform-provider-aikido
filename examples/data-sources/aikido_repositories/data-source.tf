@@ -1,7 +1,6 @@
-# Look up one repository by name, so configuration refers to a repository by a
-# name people recognise instead of an opaque Aikido ID.
 data "aikido_repositories" "payments" {
-  name = "payments"
+  name   = "payments"
+  branch = "main"
 }
 
 resource "aikido_repository" "payments" {
@@ -9,7 +8,7 @@ resource "aikido_repository" "payments" {
   active = true
 }
 
-# ids is numeric, so a single match feeds code_repo_id with no conversion.
+# ids is numeric, so the name and branch match feeds code_repo_id with no conversion.
 resource "aikido_repo_pr_checks_settings" "payments" {
   code_repo_id = one(data.aikido_repositories.payments.ids)
 

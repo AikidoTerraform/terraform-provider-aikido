@@ -71,8 +71,10 @@ func (d *repositoriesDataSource) Schema(_ context.Context, _ datasource.SchemaRe
 		Attributes: map[string]schema.Attribute{
 			"name": schema.StringAttribute{
 				Optional: true,
-				Description: "Only return the repository whose name is exactly this. " +
+				Description: "Only return repositories whose name is exactly this. " +
 					"Matching is exact, not a substring or glob. " +
+					"A name can match more than one repository: configuring a second branch for a repository adds a separate repository in Aikido, " +
+					"so combine this with branch to select exactly one. " +
 					"To select repositories by naming convention instead, omit this and filter the repositories list with a Terraform expression, " +
 					"for example: [for repository in data.aikido_repositories.all.repositories : tonumber(repository.id) if startswith(repository.name, \"team-a-\")].",
 			},

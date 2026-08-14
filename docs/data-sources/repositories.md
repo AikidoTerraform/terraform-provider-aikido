@@ -13,10 +13,9 @@ Looks up Aikido code repositories, so configuration can reference repositories b
 ## Example Usage
 
 ```terraform
-# Look up one repository by name, so configuration refers to a repository by a
-# name people recognise instead of an opaque Aikido ID.
 data "aikido_repositories" "payments" {
-  name = "payments"
+  name   = "payments"
+  branch = "main"
 }
 
 resource "aikido_repository" "payments" {
@@ -24,7 +23,7 @@ resource "aikido_repository" "payments" {
   active = true
 }
 
-# ids is numeric, so a single match feeds code_repo_id with no conversion.
+# ids is numeric, so the name and branch match feeds code_repo_id with no conversion.
 resource "aikido_repo_pr_checks_settings" "payments" {
   code_repo_id = one(data.aikido_repositories.payments.ids)
 
@@ -114,7 +113,7 @@ output "never_scanned_repositories" {
 
 - `active` (Boolean) Only return repositories with this activation state. Omit to return both active and inactive repositories.
 - `branch` (String) Only return repositories whose scanned branch is exactly this.
-- `name` (String) Only return the repository whose name is exactly this. Matching is exact, not a substring or glob. To select repositories by naming convention instead, omit this and filter the repositories list with a Terraform expression, for example: [for repository in data.aikido_repositories.all.repositories : tonumber(repository.id) if startswith(repository.name, "team-a-")].
+- `name` (String) Only return repositories whose name is exactly this. Matching is exact, not a substring or glob. A name can match more than one repository: configuring a second branch for a repository adds a separate repository in Aikido, so combine this with branch to select exactly one. To select repositories by naming convention instead, omit this and filter the repositories list with a Terraform expression, for example: [for repository in data.aikido_repositories.all.repositories : tonumber(repository.id) if startswith(repository.name, "team-a-")].
 
 ### Read-Only
 
