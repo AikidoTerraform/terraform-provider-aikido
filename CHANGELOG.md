@@ -1,3 +1,9 @@
+## 1.2.0
+
+FEATURES:
+
+- **New Data Source:** `aikido_repositories` — lets you look up repositories directly from Aikido instead of hard-coding repository IDs. Supports filtering by name, branch, and active state, and can be used to target individual repositories or build dynamic lists for workspace-wide settings.
+
 ## 1.1.1
 
 ENHANCEMENTS:
