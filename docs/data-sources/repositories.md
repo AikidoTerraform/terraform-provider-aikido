@@ -3,12 +3,12 @@
 page_title: "Aikido Code Repositories"
 subcategory: ""
 description: |-
-  Looks up Aikido code repositories. Returns every repository, active and inactive, unless filters narrow the result. Filters combine with AND; a filter that matches nothing yields an empty list rather than an error. Use the ids attribute to feed the numeric repo_ids and code_repo_id attributes of the other resources, and the repositories attribute when Terraform expressions need to select by naming convention.
+  Looks up Aikido code repositories. Returns every repository, active and inactive, unless filters narrow the result. Filters combine with AND; a filter that matches nothing yields an empty list rather than an error. Use the ids attribute to feed the numeric repo_ids, excluded_repos, and code_repo_id attributes of the other resources, and the repositories attribute when Terraform expressions need to select by naming convention.
 ---
 
 # aikido_repositories (Data Source)
 
-Looks up Aikido code repositories. Returns every repository, active and inactive, unless filters narrow the result. Filters combine with AND; a filter that matches nothing yields an empty list rather than an error. Use the ids attribute to feed the numeric repo_ids and code_repo_id attributes of the other resources, and the repositories attribute when Terraform expressions need to select by naming convention.
+Looks up Aikido code repositories. Returns every repository, active and inactive, unless filters narrow the result. Filters combine with AND; a filter that matches nothing yields an empty list rather than an error. Use the ids attribute to feed the numeric repo_ids, excluded_repos, and code_repo_id attributes of the other resources, and the repositories attribute when Terraform expressions need to select by naming convention.
 
 ## Example Usage
 
@@ -43,6 +43,28 @@ resource "aikido_repo_pr_checks_settings" "payments" {
 
   run_deep_audit_pr_scan                       = true
   post_deep_audit_inline_comments_min_severity = "high"
+}
+
+# ids also feeds excluded_repos on the workspace-wide PR checks bulk apply.
+resource "aikido_all_repo_pr_checks_settings" "workspace" {
+  excluded_repos = data.aikido_repositories.payments.ids
+
+  minimum_severity                  = "critical"
+  fail_on_dependency_scan           = false
+  fail_on_sast_scan                 = false
+  fail_on_iac_scan                  = false
+  fail_on_secrets_scan              = false
+  fail_on_malware_scan              = false
+  post_inline_comments_min_severity = "low"
+
+  minimum_license_severity = "none"
+
+  fail_on_code_quality_scan                      = false
+  enable_code_quality_scan                       = false
+  post_code_quality_inline_comments_min_severity = "low"
+
+  run_deep_audit_pr_scan                       = false
+  post_deep_audit_inline_comments_min_severity = "medium"
 }
 
 # Filters combine with AND. Omitting every filter returns all repositories,
@@ -117,7 +139,7 @@ output "never_scanned_repositories" {
 
 ### Read-Only
 
-- `ids` (Set of Number) Numeric IDs of the matching repositories. Typed to match the repo_ids attribute of the autofix settings resources, so it can be assigned to them directly; use one(...) to feed a single numeric code_repo_id.
+- `ids` (Set of Number) Numeric IDs of the matching repositories. Typed to match the repo_ids and excluded_repos attributes of other resources, so it can be assigned to them directly; use one(...) to feed a single numeric code_repo_id.
 - `repositories` (Attributes List) Matching repositories, ordered by Aikido repository ID. (see [below for nested schema](#nestedatt--repositories))
 
 <a id="nestedatt--repositories"></a>
@@ -131,7 +153,7 @@ Read-Only:
 - `external_repo_id` (String) Repository ID from the Git provider.
 - `external_repo_numeric_id` (Number) Numeric repository ID from the Git provider.
 - `git_provider` (String) Git provider hosting the repository.
-- `id` (String) Aikido code repository ID, as a string to match the id attribute of aikido_repository. For the numeric code_repo_id and repo_ids attributes, use the ids attribute of this data source instead.
+- `id` (String) Aikido code repository ID, as a string to match the id attribute of aikido_repository. For the numeric code_repo_id, repo_ids, and excluded_repos attributes, use the ids attribute of this data source instead.
 - `labels` (List of String) Label names on the repository, sorted alphabetically.
 - `last_scanned_at` (Number) Unix timestamp of the last completed scan, or -1 if the repository has never been scanned.
 - `name` (String) Name of the code repository.

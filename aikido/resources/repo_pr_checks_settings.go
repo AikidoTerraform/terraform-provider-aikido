@@ -366,6 +366,10 @@ func (r *prChecksSettingsResource) ImportState(ctx context.Context, request reso
 	response.Diagnostics.Append(response.State.SetAttribute(ctx, path.Root("code_repo_id"), codeRepoID)...)
 }
 
+// setPRChecksSettings POSTs one repo's settings, then GETs that repo so
+// Terraform state matches the API. POST only returns {success:1}. The list
+// cache is not used: it may still hold pre-write values, and paginating the
+// whole workspace to refresh one repo would be far more expensive.
 func (r *prChecksSettingsResource) setPRChecksSettings(ctx context.Context, planned prChecksSettingsModel) (prChecksSettingsModel, error) {
 	if err := r.client.Do(ctx, "POST", prChecksSettingsPath, constructPRChecksSettingsBody(planned), nil); err != nil {
 		return prChecksSettingsModel{}, err
@@ -418,25 +422,29 @@ func constructPRChecksSettingsBody(planned prChecksSettingsModel) map[string]any
 	return body
 }
 
-// prChecksSettingsFromCache looks up settings in the shared paginated list cache.
-// Use for Read when many resources share one plan (avoids N filtered GETs).
-func prChecksSettingsFromCache(ctx context.Context, c *client.Client, codeRepoID int64) (*prChecksSettingsAPI, error) {
-	settings, err := client.LoadCached(c, ctx, prChecksSettingsCacheKey, func(ctx context.Context) (map[int64]prChecksSettingsAPI, error) {
-		// fetch all settings from the API once on first use
+// prChecksSettingsList returns the shared paginated list of PR checks settings,
+// fetched at most once per Client. A workspace of N repos costs N/page_size
+// list GETs instead of N filtered GETs when many resources share one plan.
+func prChecksSettingsList(ctx context.Context, c *client.Client) (map[int64]prChecksSettingsAPI, error) {
+	return client.LoadCached(c, ctx, prChecksSettingsCacheKey, func(ctx context.Context) (map[int64]prChecksSettingsAPI, error) {
 		items, err := client.FetchAllPages[prChecksSettingsAPI](ctx, c, prChecksSettingsPath, prChecksSettingsPageSize, "")
 		if err != nil {
 			return nil, err
 		}
 
 		settingsCacheMap := make(map[int64]prChecksSettingsAPI, len(items))
-
 		for _, settings := range items {
 			settingsCacheMap[settings.CodeRepoID] = settings
 		}
 
 		return settingsCacheMap, nil
 	})
+}
 
+// prChecksSettingsFromCache looks up one repo in the shared list. Use for Read
+// when many resources share one plan (avoids N filtered GETs).
+func prChecksSettingsFromCache(ctx context.Context, c *client.Client, codeRepoID int64) (*prChecksSettingsAPI, error) {
+	settings, err := prChecksSettingsList(ctx, c)
 	if err != nil {
 		return nil, err
 	}
@@ -450,8 +458,9 @@ func prChecksSettingsFromCache(ctx context.Context, c *client.Client, codeRepoID
 	return &cachedSettings, nil
 }
 
-// prChecksSettingsFromAPI loads one repo's settings via filter_code_repo_id.
-// Use after writes: POST only returns {success:1}, and the list cache may be stale.
+// prChecksSettingsFromAPI loads one repo via filter_code_repo_id. Use after
+// writes: POST only returns {success:1}, and the list cache may still hold
+// pre-write values. One filtered GET is enough because the repo id is known.
 func prChecksSettingsFromAPI(ctx context.Context, c *client.Client, codeRepoID int64) (*prChecksSettingsAPI, error) {
 	path := prChecksSettingsPath + "?filter_code_repo_id=" + strconv.FormatInt(codeRepoID, 10)
 
