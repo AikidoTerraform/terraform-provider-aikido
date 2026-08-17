@@ -3,9 +3,11 @@ package resources
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/AikidoTerraform/terraform-provider-aikido/internal/client"
 	"github.com/AikidoTerraform/terraform-provider-aikido/internal/helpers"
+	"github.com/AikidoTerraform/terraform-provider-aikido/internal/repositories"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -294,12 +296,19 @@ func (r *allPrChecksSettingsResource) Read(ctx context.Context, request resource
 		return
 	}
 
-	settings, err := allPRChecksSettingsFromCache(ctx, r.client, prior.ExcludedRepos)
+	settingsList, err := prChecksSettingsListFromCache(ctx, r.client)
 	if err != nil {
-		response.Diagnostics.AddError("Error reading PR checks settings for all existing repositories", err.Error())
+		response.Diagnostics.AddError("Error reading PR checks settings list", err.Error())
 		return
 	}
 
+	repos, err := repositories.All(ctx, r.client)
+	if err != nil {
+		response.Diagnostics.AddError("Error reading repositories list", err.Error())
+		return
+	}
+
+	settings := settingsFromOneTargetRepo(settingsList, getActualReposToUpdate(repos, prior.ExcludedRepos))
 	if settings == nil {
 		response.Diagnostics.Append(response.State.Set(ctx, prior)...)
 		return
@@ -343,16 +352,7 @@ func (r *allPrChecksSettingsResource) setAllPRChecksSettings(ctx context.Context
 	// into the shared cache (page size 100 — not one GET per repository).
 	client.InvalidateCached(r.client, prChecksSettingsCacheKey)
 
-	settings, err := allPRChecksSettingsFromCache(ctx, r.client, planned.ExcludedRepos)
-	if err != nil {
-		return allPrChecksSettingsModel{}, err
-	}
-
-	if settings == nil {
-		return allPRChecksSettingsStateFromPlan(planned), nil
-	}
-
-	return allPRChecksSettingsFromAPI(*settings, &planned), nil
+	return allPRChecksSettingsStateFromPlan(planned), nil
 }
 
 func constructAllPRChecksSettingsBody(planned allPrChecksSettingsModel) map[string]any {
@@ -390,27 +390,40 @@ func constructAllPRChecksSettingsBody(planned allPrChecksSettingsModel) map[stri
 	return body
 }
 
-// allPRChecksSettingsFromCache looks up this resource's settings in the shared list (paginated once per client).
-func allPRChecksSettingsFromCache(ctx context.Context, c *client.Client, excludedRepos []int64) (*prChecksSettingsAPI, error) {
-	settings, err := prChecksSettingsList(ctx, c)
-	if err != nil {
-		return nil, err
-	}
-
-	return getSettingsFromOneAppliedRepo(settings, excludedRepos), nil
-}
-
-// After a bulk apply every non-excluded repo has the same settings, so one of those rows is enough for state.
-// excluded_repos are skipped because they were not written.
-func getSettingsFromOneAppliedRepo(settings map[int64]prChecksSettingsAPI, excludedRepos []int64) *prChecksSettingsAPI {
+// getActualReposToUpdate is the set the bulk endpoint actually writes:
+// active GitHub repositories, minus excluded_repos and Aikido-internal
+// repositories (external_repo_id contains _aikidoclone_, custom_, or selfscan_).
+func getActualReposToUpdate(repos []repositories.Repository, excludedRepos []int64) map[int64]struct{} {
 	skip := make(map[int64]struct{}, len(excludedRepos))
 	for _, id := range excludedRepos {
 		skip[id] = struct{}{}
 	}
 
+	targets := make(map[int64]struct{})
+	for _, repo := range repos {
+		shouldAlsoBeIgnored := strings.Contains(repo.ExternalRepoID, "_aikidoclone_") || strings.Contains(repo.ExternalRepoID, "custom_") || strings.Contains(repo.ExternalRepoID, "selfscan_")
+
+		// Only native GitHub repositories are supported
+		if !repo.Active || repo.Provider != "github" || shouldAlsoBeIgnored {
+			continue
+		}
+
+		if _, excluded := skip[repo.ID]; excluded {
+			continue
+		}
+
+		targets[repo.ID] = struct{}{}
+	}
+
+	return targets
+}
+
+// settingsFromOneTargetRepo returns one PR-checks row from the repos the bulk
+// endpoint actually writes. After apply those repos share the same settings, so one row is enough.
+func settingsFromOneTargetRepo(settings map[int64]prChecksSettingsAPI, targetRepos map[int64]struct{}) *prChecksSettingsAPI {
 	var chosen *prChecksSettingsAPI
 	for id, item := range settings {
-		if _, ok := skip[id]; ok {
+		if _, ok := targetRepos[id]; !ok {
 			continue
 		}
 
@@ -457,10 +470,8 @@ func allPRChecksSettingsFromAPI(api prChecksSettingsAPI, prior *allPrChecksSetti
 	return state
 }
 
-// allPRChecksSettingsStateFromPlan builds Terraform state from the plan when
-// settingsFromOneAppliedRepo has nothing to copy: empty workspace, or every
-// repo is in excluded_repos. POST still succeeded ({success:1}), and computed
-// attributes (id, omitted optionals) cannot stay unknown or apply fails.
+// allPRChecksSettingsStateFromPlan copies the plan into state after a successful
+// POST. Computed attributes (id, omitted optionals) cannot stay unknown or apply fails.
 func allPRChecksSettingsStateFromPlan(planned allPrChecksSettingsModel) allPrChecksSettingsModel {
 	state := planned
 	state.ID = types.StringValue(allRepoPRChecksSettingsResourceID)
@@ -477,9 +488,12 @@ func allPRChecksSettingsStateFromPlan(planned allPrChecksSettingsModel) allPrChe
 		state.PostCodeQualityInlineCommentsMinSeverity = types.StringNull()
 	}
 
-	if !state.RunDeepAuditPRScan.ValueBool() &&
-		(planned.PostDeepAuditInlineCommentsMinSeverity.IsNull() || planned.PostDeepAuditInlineCommentsMinSeverity.IsUnknown()) {
-		state.PostDeepAuditInlineCommentsMinSeverity = types.StringNull()
+	if planned.PostDeepAuditInlineCommentsMinSeverity.IsNull() || planned.PostDeepAuditInlineCommentsMinSeverity.IsUnknown() {
+		if state.RunDeepAuditPRScan.ValueBool() {
+			state.PostDeepAuditInlineCommentsMinSeverity = types.StringValue("none")
+		} else {
+			state.PostDeepAuditInlineCommentsMinSeverity = types.StringNull()
+		}
 	}
 
 	return state

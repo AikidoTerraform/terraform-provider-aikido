@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/AikidoTerraform/terraform-provider-aikido/internal/repositories"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
@@ -254,10 +255,23 @@ func TestAllPRChecksSettingsStateFromPlan(t *testing.T) {
 	if !state.PostDeepAuditInlineCommentsMinSeverity.IsNull() {
 		t.Errorf("deep audit inline = %#v, want null", state.PostDeepAuditInlineCommentsMinSeverity)
 	}
+
+	enabled := allPRChecksSettingsStateFromPlan(allPrChecksSettingsModel{
+		MinimumSeverity:                        types.StringValue("critical"),
+		FailOnDependencyScan:                   types.BoolValue(true),
+		EnableCodeQualityScan:                  types.BoolValue(false),
+		FailOnCodeQualityScan:                  types.BoolValue(false),
+		MinimumLicenseSeverity:                 types.StringValue("none"),
+		RunDeepAuditPRScan:                     types.BoolValue(true),
+		PostDeepAuditInlineCommentsMinSeverity: types.StringUnknown(),
+	})
+	if enabled.PostDeepAuditInlineCommentsMinSeverity.ValueString() != "none" {
+		t.Errorf("deep audit inline with Deep Review enabled = %q, want none", enabled.PostDeepAuditInlineCommentsMinSeverity.ValueString())
+	}
 }
 
-func TestSetAllPRChecksSettings_PostsThenFetches(t *testing.T) {
-	var posts, listGets int
+func TestSetAllPRChecksSettings_PostsThenUsesPlan(t *testing.T) {
+	var posts int
 	var gotPath string
 	var gotBody map[string]any
 
@@ -270,19 +284,6 @@ func TestSetAllPRChecksSettings_PostsThenFetches(t *testing.T) {
 				t.Errorf("decode body: %v", err)
 			}
 			_, _ = io.WriteString(w, `{"success":1}`)
-
-		case r.Method == http.MethodGet && r.URL.Path == prChecksSettingsPath:
-			if r.URL.Query().Get("filter_code_repo_id") != "" {
-				t.Errorf("unexpected filtered GET %s", r.URL.String())
-				w.WriteHeader(http.StatusNotFound)
-				return
-			}
-
-			listGets++
-			_ = json.NewEncoder(w).Encode([]prChecksSettingsAPI{
-				{ID: 1, CodeRepoID: 1234, MinimumSeverity: "low"},
-				{ID: 2, CodeRepoID: 12, MinimumSeverity: "critical"},
-			})
 
 		default:
 			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
@@ -317,9 +318,6 @@ func TestSetAllPRChecksSettings_PostsThenFetches(t *testing.T) {
 	if posts != 1 {
 		t.Errorf("posts=%d, want 1", posts)
 	}
-	if listGets != 1 {
-		t.Errorf("listGets=%d, want 1", listGets)
-	}
 	if gotPath != allPrChecksSettingsPath {
 		t.Errorf("path = %q, want %s", gotPath, allPrChecksSettingsPath)
 	}
@@ -336,7 +334,7 @@ func TestSetAllPRChecksSettings_PostsThenFetches(t *testing.T) {
 		t.Errorf("state excluded_repos = %#v", state.ExcludedRepos)
 	}
 	if state.MinimumSeverity.ValueString() != "critical" {
-		t.Errorf("minimum_severity = %q, want critical from refilled list", state.MinimumSeverity.ValueString())
+		t.Errorf("minimum_severity = %q, want critical from plan", state.MinimumSeverity.ValueString())
 	}
 }
 
@@ -360,6 +358,9 @@ func TestSetAllPRChecksSettings_InvalidatesListCache(t *testing.T) {
 				{ID: 2, CodeRepoID: 12, MinimumSeverity: "high"},
 			})
 
+		case isCodeReposList(r):
+			writeReposList(t, w, repositories.Repository{ID: 12, Provider: "github", Active: true})
+
 		default:
 			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
 			w.WriteHeader(http.StatusNotFound)
@@ -368,7 +369,7 @@ func TestSetAllPRChecksSettings_InvalidatesListCache(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	api := testClient(srv)
-	if _, err := prChecksSettingsFromCache(context.Background(), api, 12); err != nil {
+	if _, err := prChecksSettingsFromCacheForRepo(context.Background(), api, 12); err != nil {
 		t.Fatalf("prime cache: %v", err)
 	}
 	if listGets != 1 {
@@ -393,24 +394,131 @@ func TestSetAllPRChecksSettings_InvalidatesListCache(t *testing.T) {
 		t.Fatalf("setAllPRChecksSettings: %v", err)
 	}
 
+	if listGets != 1 {
+		t.Fatalf("listGets after bulk write = %d, want 1 (write must not refetch the list)", listGets)
+	}
+
+	if _, err := prChecksSettingsFromCacheForRepo(context.Background(), api, 12); err != nil {
+		t.Fatalf("load after invalidate: %v", err)
+	}
 	if listGets != 2 {
-		t.Errorf("listGets after bulk write = %d, want 2 (cache invalidated)", listGets)
+		t.Errorf("listGets after post-write read = %d, want 2 (cache invalidated)", listGets)
 	}
 }
 
-func TestSettingsFromOneAppliedRepo(t *testing.T) {
+func TestGetActualReposToUpdate(t *testing.T) {
+	repos := []repositories.Repository{
+		{ID: 5, Provider: "gitlab", Active: true},
+		{ID: 12, Provider: "github", Active: true, ExternalRepoID: "R_kgDOI5RlKA"},
+		{ID: 44, Provider: "github", Active: false},
+		{ID: 50, Provider: "github", Active: true, ExternalRepoID: "org_aikidoclone_repo"},
+		{ID: 51, Provider: "github", Active: true, ExternalRepoID: "custom_123"},
+		{ID: 52, Provider: "github", Active: true, ExternalRepoID: "selfscan_abc"},
+		{ID: 1234, Provider: "github", Active: true},
+	}
+
+	got := getActualReposToUpdate(repos, []int64{1234})
+	if _, ok := got[12]; !ok || len(got) != 1 {
+		t.Fatalf("got %#v, want only repo 12", got)
+	}
+	for _, skipped := range []int64{5, 44, 50, 51, 52, 1234} {
+		if _, ok := got[skipped]; ok {
+			t.Errorf("repo %d should be skipped", skipped)
+		}
+	}
+
+	if len(getActualReposToUpdate(repos, []int64{12, 1234})) != 0 {
+		t.Fatal("expected empty target when every active GitHub repo is excluded")
+	}
+}
+
+func TestSettingsFromOneTargetRepo(t *testing.T) {
 	settings := map[int64]prChecksSettingsAPI{
+		5:    {CodeRepoID: 5, MinimumSeverity: "low"},
 		1234: {CodeRepoID: 1234, MinimumSeverity: "low"},
 		12:   {CodeRepoID: 12, MinimumSeverity: "critical"},
 		44:   {CodeRepoID: 44, MinimumSeverity: "high"},
 	}
 
-	got := getSettingsFromOneAppliedRepo(settings, []int64{1234})
+	got := settingsFromOneTargetRepo(settings, map[int64]struct{}{12: {}, 99: {}})
 	if got == nil || got.CodeRepoID != 12 {
 		t.Fatalf("got %#v, want repo 12", got)
 	}
 
-	if getSettingsFromOneAppliedRepo(settings, []int64{12, 44, 1234}) != nil {
-		t.Fatal("expected nil when every repo is excluded")
+	if settingsFromOneTargetRepo(settings, map[int64]struct{}{}) != nil {
+		t.Fatal("expected nil when the target set is empty")
 	}
+
+	if settingsFromOneTargetRepo(settings, map[int64]struct{}{99: {}}) != nil {
+		t.Fatal("expected nil when no listed row belongs to the target set")
+	}
+}
+
+func TestSettingsFromTargetRepos_SkipsInactiveNonGitHubAndSynthetic(t *testing.T) {
+	repos := []repositories.Repository{
+		{ID: 5, Provider: "gitlab", Active: true},
+		{ID: 12, Provider: "github", Active: true, ExternalRepoID: "R_kgDOI5RlKA"},
+		{ID: 44, Provider: "github", Active: false},
+		{ID: 50, Provider: "github", Active: true, ExternalRepoID: "org_aikidoclone_repo"},
+		{ID: 51, Provider: "github", Active: true, ExternalRepoID: "custom_123"},
+		{ID: 52, Provider: "github", Active: true, ExternalRepoID: "selfscan_abc"},
+	}
+	skippedRows := []prChecksSettingsAPI{
+		{ID: 1, CodeRepoID: 5, MinimumSeverity: "low"},
+		{ID: 3, CodeRepoID: 44, MinimumSeverity: "high"},
+		{ID: 4, CodeRepoID: 50, MinimumSeverity: "low"},
+		{ID: 5, CodeRepoID: 51, MinimumSeverity: "low"},
+		{ID: 6, CodeRepoID: 52, MinimumSeverity: "low"},
+	}
+
+	load := func(t *testing.T, rows []prChecksSettingsAPI) *prChecksSettingsAPI {
+		t.Helper()
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch {
+			case r.Method == http.MethodGet && r.URL.Path == prChecksSettingsPath:
+				_ = json.NewEncoder(w).Encode(rows)
+
+			case isCodeReposList(r):
+				writeReposList(t, w, repos...)
+
+			default:
+				t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+				w.WriteHeader(http.StatusNotFound)
+			}
+		}))
+		t.Cleanup(srv.Close)
+
+		ctx := context.Background()
+		api := testClient(srv)
+
+		settingsList, err := prChecksSettingsListFromCache(ctx, api)
+		if err != nil {
+			t.Fatalf("prChecksSettingsList: %v", err)
+		}
+
+		listedRepos, err := repositories.All(ctx, api)
+		if err != nil {
+			t.Fatalf("repositories.All: %v", err)
+		}
+
+		return settingsFromOneTargetRepo(settingsList, getActualReposToUpdate(listedRepos, nil))
+	}
+
+	t.Run("nil when no PR-checks row belongs to the bulk target set", func(t *testing.T) {
+		if got := load(t, skippedRows); got != nil {
+			t.Fatalf("got %#v, want nil when no PR-checks row belongs to the bulk target set", got)
+		}
+	})
+
+	t.Run("picks the active GitHub row and ignores skipped repos", func(t *testing.T) {
+		rows := append([]prChecksSettingsAPI{
+			{ID: 2, CodeRepoID: 12, MinimumSeverity: "critical"},
+		}, skippedRows...)
+
+		got := load(t, rows)
+		if got == nil || got.CodeRepoID != 12 || got.MinimumSeverity != "critical" {
+			t.Fatalf("got %#v, want repo 12 with critical", got)
+		}
+	})
 }

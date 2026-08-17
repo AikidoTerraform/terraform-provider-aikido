@@ -316,7 +316,7 @@ func (r *prChecksSettingsResource) Read(ctx context.Context, request resource.Re
 		return
 	}
 
-	apiSettings, err := prChecksSettingsFromCache(ctx, r.client, prior.CodeRepoID.ValueInt64())
+	apiSettings, err := prChecksSettingsFromCacheForRepo(ctx, r.client, prior.CodeRepoID.ValueInt64())
 	if err != nil {
 		response.Diagnostics.AddError("Error reading PR checks settings for repository "+strconv.FormatInt(prior.CodeRepoID.ValueInt64(), 10), err.Error())
 		return
@@ -425,7 +425,7 @@ func constructPRChecksSettingsBody(planned prChecksSettingsModel) map[string]any
 // prChecksSettingsList returns the shared paginated list of PR checks settings,
 // fetched at most once per Client. A workspace of N repos costs N/page_size
 // list GETs instead of N filtered GETs when many resources share one plan.
-func prChecksSettingsList(ctx context.Context, c *client.Client) (map[int64]prChecksSettingsAPI, error) {
+func prChecksSettingsListFromCache(ctx context.Context, c *client.Client) (map[int64]prChecksSettingsAPI, error) {
 	return client.LoadCached(c, ctx, prChecksSettingsCacheKey, func(ctx context.Context) (map[int64]prChecksSettingsAPI, error) {
 		items, err := client.FetchAllPages[prChecksSettingsAPI](ctx, c, prChecksSettingsPath, prChecksSettingsPageSize, "")
 		if err != nil {
@@ -443,8 +443,8 @@ func prChecksSettingsList(ctx context.Context, c *client.Client) (map[int64]prCh
 
 // prChecksSettingsFromCache looks up one repo in the shared list. Use for Read
 // when many resources share one plan (avoids N filtered GETs).
-func prChecksSettingsFromCache(ctx context.Context, c *client.Client, codeRepoID int64) (*prChecksSettingsAPI, error) {
-	settings, err := prChecksSettingsList(ctx, c)
+func prChecksSettingsFromCacheForRepo(ctx context.Context, c *client.Client, codeRepoID int64) (*prChecksSettingsAPI, error) {
+	settings, err := prChecksSettingsListFromCache(ctx, c)
 	if err != nil {
 		return nil, err
 	}

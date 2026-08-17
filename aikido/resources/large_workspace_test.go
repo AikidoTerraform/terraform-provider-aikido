@@ -236,7 +236,7 @@ func TestLargeWorkspace_PRChecksRefresh_OldVsCached(t *testing.T) {
 	cachedAPI := testClient(cachedServer)
 
 	forEachManagedResource(t, func(resourceIndex int) error {
-		settings, err := prChecksSettingsFromCache(ctx, cachedAPI, int64(resourceIndex))
+		settings, err := prChecksSettingsFromCacheForRepo(ctx, cachedAPI, int64(resourceIndex))
 		if err != nil {
 			return err
 		}
