@@ -146,7 +146,7 @@ Prefer env vars for credentials so secrets are not committed. The provider block
 
 - `aikido_repositories` is a read-only lookup, so config never has to hard-code Aikido's numeric repository IDs. Filter with `name`, `branch` and `active` (combined with AND); omit all three to get every repository, active and inactive.
   - `name` matches **exactly** — it is not a substring or glob match. To select repositories by naming convention, omit `name` and filter the `repositories` list with a Terraform expression such as `startswith(repository.name, "team-a-")`, `endswith(...)` or `can(regex(...))`.
-  - Use `ids` (Set of Number) wherever a resource wants numeric IDs: assign it straight to `repo_ids` or `excluded_repos`, or `one(...ids)` to a single `code_repo_id`. Use `repositories[*].id` (String) for `aikido_repository`'s `id`.
+  - Use `ids` (Set of Number) wherever a resource wants numeric IDs: assign it straight to `repo_ids`, or `one(...ids)` to a single `code_repo_id`. Use `repositories[*].id` (String) for `aikido_repository`'s `id`.
   - One data source reads the whole repository list once per Terraform run and shares it with every other data source and `aikido_repository` resource in the same run, so extra lookups cost no extra API calls.
 - `aikido_repository` configures an **existing** code repository by ID. It does not create the repo in your SCM.
 - `labels` is optional. When set, labels are fully managed from Terraform state. Omitting `labels` leaves Aikido labels untouched; `labels = []` fetches current labels from Aikido and deletes them.

@@ -432,29 +432,88 @@ func TestGetActualReposToUpdate(t *testing.T) {
 	}
 }
 
-func TestSettingsFromOneTargetRepo(t *testing.T) {
-	settings := map[int64]prChecksSettingsAPI{
-		5:    {CodeRepoID: 5, MinimumSeverity: "low"},
-		1234: {CodeRepoID: 1234, MinimumSeverity: "low"},
-		12:   {CodeRepoID: 12, MinimumSeverity: "critical"},
-		44:   {CodeRepoID: 44, MinimumSeverity: "high"},
+func TestKeepAllPRChecksSettingsUnlessDrifted(t *testing.T) {
+	prior := allPrChecksSettingsModel{
+		ID:                                       types.StringValue(allRepoPRChecksSettingsResourceID),
+		ExcludedRepos:                            []int64{1234},
+		MinimumSeverity:                          types.StringValue("critical"),
+		FailOnDependencyScan:                     types.BoolValue(false),
+		FailOnSastScan:                           types.BoolValue(false),
+		FailOnIacScan:                            types.BoolValue(false),
+		FailOnSecretsScan:                        types.BoolValue(false),
+		FailOnMalwareScan:                        types.BoolValue(false),
+		PostInlineCommentsMinSeverity:            types.StringValue("none"),
+		MinimumLicenseSeverity:                   types.StringValue("none"),
+		FailOnCodeQualityScan:                    types.BoolValue(false),
+		EnableCodeQualityScan:                    types.BoolValue(false),
+		PostCodeQualityInlineCommentsMinSeverity: types.StringNull(),
+		RunDeepAuditPRScan:                       types.BoolValue(false),
+		PostDeepAuditInlineCommentsMinSeverity:   types.StringNull(),
+	}
+	matching := func(codeRepoID int64) prChecksSettingsAPI {
+		return prChecksSettingsAPI{
+			ID:                            codeRepoID,
+			CodeRepoID:                    codeRepoID,
+			MinimumSeverity:               "critical",
+			MinimumLicenseSeverity:        "none",
+			PostInlineCommentsMinSeverity: "none",
+		}
 	}
 
-	got := settingsFromOneTargetRepo(settings, map[int64]struct{}{12: {}, 99: {}})
-	if got == nil || got.CodeRepoID != 12 {
-		t.Fatalf("got %#v, want repo 12", got)
-	}
+	t.Run("keeps prior when every managed repo matches", func(t *testing.T) {
+		got := keepAllPRChecksSettingsUnlessDrifted(map[int64]prChecksSettingsAPI{
+			12: matching(12),
+			99: matching(99),
+		}, map[int64]struct{}{12: {}, 99: {}}, prior)
+		if got.MinimumSeverity.ValueString() != "critical" {
+			t.Fatalf("minimum_severity = %q, want critical from prior", got.MinimumSeverity.ValueString())
+		}
+		if !reflect.DeepEqual(got.ExcludedRepos, []int64{1234}) {
+			t.Errorf("excluded_repos = %#v, want preserved", got.ExcludedRepos)
+		}
+	})
 
-	if settingsFromOneTargetRepo(settings, map[int64]struct{}{}) != nil {
-		t.Fatal("expected nil when the target set is empty")
-	}
+	t.Run("writes the drifted repo settings not a sentinel", func(t *testing.T) {
+		got := keepAllPRChecksSettingsUnlessDrifted(map[int64]prChecksSettingsAPI{
+			12: matching(12),
+			99: {CodeRepoID: 99, MinimumSeverity: "low", MinimumLicenseSeverity: "none", PostInlineCommentsMinSeverity: "none"},
+		}, map[int64]struct{}{12: {}, 99: {}}, prior)
+		if got.MinimumSeverity.ValueString() != "low" {
+			t.Fatalf("minimum_severity = %q, want low from the drifted repo", got.MinimumSeverity.ValueString())
+		}
+	})
 
-	if settingsFromOneTargetRepo(settings, map[int64]struct{}{99: {}}) != nil {
-		t.Fatal("expected nil when no listed row belongs to the target set")
-	}
+	t.Run("maps a missing row as unset settings", func(t *testing.T) {
+		got := keepAllPRChecksSettingsUnlessDrifted(map[int64]prChecksSettingsAPI{
+			12: matching(12),
+		}, map[int64]struct{}{12: {}, 99: {}}, prior)
+		if got.MinimumSeverity.ValueString() != "" {
+			t.Fatalf("minimum_severity = %q, want empty for a missing PR-checks row", got.MinimumSeverity.ValueString())
+		}
+	})
+
+	t.Run("keeps prior when the managed set is empty", func(t *testing.T) {
+		got := keepAllPRChecksSettingsUnlessDrifted(map[int64]prChecksSettingsAPI{
+			12: matching(12),
+			5:  {CodeRepoID: 5, MinimumSeverity: "low"},
+		}, map[int64]struct{}{}, prior)
+		if !allPRChecksSettingsEqual(got, prior) {
+			t.Fatal("expected prior when no repositories are managed")
+		}
+	})
+
+	t.Run("keeps prior when a non-managed row differs", func(t *testing.T) {
+		got := keepAllPRChecksSettingsUnlessDrifted(map[int64]prChecksSettingsAPI{
+			12: matching(12),
+			5:  {CodeRepoID: 5, MinimumSeverity: "low"},
+		}, map[int64]struct{}{12: {}}, prior)
+		if !allPRChecksSettingsEqual(got, prior) {
+			t.Fatal("expected prior when only a non-managed repository differs")
+		}
+	})
 }
 
-func TestSettingsFromTargetRepos_SkipsInactiveNonGitHubAndSynthetic(t *testing.T) {
+func TestKeepAllPRChecksSettingsUnlessDrifted_SkipsInactiveNonGitHubAndSynthetic(t *testing.T) {
 	repos := []repositories.Repository{
 		{ID: 5, Provider: "gitlab", Active: true},
 		{ID: 12, Provider: "github", Active: true, ExternalRepoID: "R_kgDOI5RlKA"},
@@ -462,6 +521,22 @@ func TestSettingsFromTargetRepos_SkipsInactiveNonGitHubAndSynthetic(t *testing.T
 		{ID: 50, Provider: "github", Active: true, ExternalRepoID: "org_aikidoclone_repo"},
 		{ID: 51, Provider: "github", Active: true, ExternalRepoID: "custom_123"},
 		{ID: 52, Provider: "github", Active: true, ExternalRepoID: "selfscan_abc"},
+	}
+	desired := allPrChecksSettingsModel{
+		ID:                                       types.StringValue(allRepoPRChecksSettingsResourceID),
+		MinimumSeverity:                          types.StringValue("critical"),
+		FailOnDependencyScan:                     types.BoolValue(false),
+		FailOnSastScan:                           types.BoolValue(false),
+		FailOnIacScan:                            types.BoolValue(false),
+		FailOnSecretsScan:                        types.BoolValue(false),
+		FailOnMalwareScan:                        types.BoolValue(false),
+		PostInlineCommentsMinSeverity:            types.StringValue("none"),
+		MinimumLicenseSeverity:                   types.StringValue("none"),
+		FailOnCodeQualityScan:                    types.BoolValue(false),
+		EnableCodeQualityScan:                    types.BoolValue(false),
+		PostCodeQualityInlineCommentsMinSeverity: types.StringNull(),
+		RunDeepAuditPRScan:                       types.BoolValue(false),
+		PostDeepAuditInlineCommentsMinSeverity:   types.StringNull(),
 	}
 	skippedRows := []prChecksSettingsAPI{
 		{ID: 1, CodeRepoID: 5, MinimumSeverity: "low"},
@@ -471,7 +546,7 @@ func TestSettingsFromTargetRepos_SkipsInactiveNonGitHubAndSynthetic(t *testing.T
 		{ID: 6, CodeRepoID: 52, MinimumSeverity: "low"},
 	}
 
-	load := func(t *testing.T, rows []prChecksSettingsAPI) *prChecksSettingsAPI {
+	load := func(t *testing.T, rows []prChecksSettingsAPI) bool {
 		t.Helper()
 
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -502,23 +577,29 @@ func TestSettingsFromTargetRepos_SkipsInactiveNonGitHubAndSynthetic(t *testing.T
 			t.Fatalf("repositories.All: %v", err)
 		}
 
-		return settingsFromOneTargetRepo(settingsList, getActualReposToUpdate(listedRepos, nil))
+		got := keepAllPRChecksSettingsUnlessDrifted(settingsList, getActualReposToUpdate(listedRepos, nil), desired)
+		return allPRChecksSettingsEqual(got, desired)
 	}
 
-	t.Run("nil when no PR-checks row belongs to the bulk target set", func(t *testing.T) {
-		if got := load(t, skippedRows); got != nil {
-			t.Fatalf("got %#v, want nil when no PR-checks row belongs to the bulk target set", got)
+	t.Run("drift when the managed GitHub repo has no PR-checks row", func(t *testing.T) {
+		if load(t, skippedRows) {
+			t.Fatal("expected drift when no PR-checks row belongs to the bulk target set")
 		}
 	})
 
-	t.Run("picks the active GitHub row and ignores skipped repos", func(t *testing.T) {
+	t.Run("match when the managed GitHub repo matches and skipped repos differ", func(t *testing.T) {
 		rows := append([]prChecksSettingsAPI{
-			{ID: 2, CodeRepoID: 12, MinimumSeverity: "critical"},
+			{
+				ID:                            2,
+				CodeRepoID:                    12,
+				MinimumSeverity:               "critical",
+				MinimumLicenseSeverity:        "none",
+				PostInlineCommentsMinSeverity: "none",
+			},
 		}, skippedRows...)
 
-		got := load(t, rows)
-		if got == nil || got.CodeRepoID != 12 || got.MinimumSeverity != "critical" {
-			t.Fatalf("got %#v, want repo 12 with critical", got)
+		if !load(t, rows) {
+			t.Fatal("expected match: skipped repos must not hide or create drift")
 		}
 	})
 }

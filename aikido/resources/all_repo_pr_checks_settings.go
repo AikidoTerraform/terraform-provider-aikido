@@ -308,13 +308,14 @@ func (r *allPrChecksSettingsResource) Read(ctx context.Context, request resource
 		return
 	}
 
-	settings := settingsFromOneTargetRepo(settingsList, getActualReposToUpdate(repos, prior.ExcludedRepos))
-	if settings == nil {
-		response.Diagnostics.Append(response.State.Set(ctx, prior)...)
-		return
-	}
+	// get the actual repositories to update. This are the github active repos minus the excluded repos and Aikido-internal repositories.
+	actualReposToUpdate := getActualReposToUpdate(repos, prior.ExcludedRepos)
 
-	response.Diagnostics.Append(response.State.Set(ctx, allPRChecksSettingsFromAPI(*settings, &prior))...)
+	// get the settings for those actual repositories to update. If no drift, return the prior state. If drift, return the settings for the drifted repository.
+	settings := keepAllPRChecksSettingsUnlessDrifted(settingsList, actualReposToUpdate, prior)
+
+	// set the state
+	response.Diagnostics.Append(response.State.Set(ctx, settings)...)
 }
 
 func (r *allPrChecksSettingsResource) Update(ctx context.Context, request resource.UpdateRequest, response *resource.UpdateResponse) {
@@ -391,20 +392,19 @@ func constructAllPRChecksSettingsBody(planned allPrChecksSettingsModel) map[stri
 }
 
 // getActualReposToUpdate is the set the bulk endpoint actually writes:
-// active GitHub repositories, minus excluded_repos and Aikido-internal
-// repositories (external_repo_id contains _aikidoclone_, custom_, or selfscan_).
+// active GitHub repositories, minus excluded_repos and Aikido-internal repositories.
 func getActualReposToUpdate(repos []repositories.Repository, excludedRepos []int64) map[int64]struct{} {
 	skip := make(map[int64]struct{}, len(excludedRepos))
 	for _, id := range excludedRepos {
 		skip[id] = struct{}{}
 	}
 
-	targets := make(map[int64]struct{})
+	actualReposToUpdate := make(map[int64]struct{})
 	for _, repo := range repos {
-		shouldAlsoBeIgnored := strings.Contains(repo.ExternalRepoID, "_aikidoclone_") || strings.Contains(repo.ExternalRepoID, "custom_") || strings.Contains(repo.ExternalRepoID, "selfscan_")
+		shouldAlsoIgnoreAikidoInternalRepo := strings.Contains(repo.ExternalRepoID, "_aikidoclone_") || strings.Contains(repo.ExternalRepoID, "custom_") || strings.Contains(repo.ExternalRepoID, "selfscan_")
 
 		// Only native GitHub repositories are supported
-		if !repo.Active || repo.Provider != "github" || shouldAlsoBeIgnored {
+		if !repo.Active || repo.Provider != "github" || shouldAlsoIgnoreAikidoInternalRepo {
 			continue
 		}
 
@@ -412,28 +412,62 @@ func getActualReposToUpdate(repos []repositories.Repository, excludedRepos []int
 			continue
 		}
 
-		targets[repo.ID] = struct{}{}
+		actualReposToUpdate[repo.ID] = struct{}{}
 	}
 
-	return targets
+	return actualReposToUpdate
 }
 
-// settingsFromOneTargetRepo returns one PR-checks row from the repos the bulk
-// endpoint actually writes. After apply those repos share the same settings, so one row is enough.
-func settingsFromOneTargetRepo(settings map[int64]prChecksSettingsAPI, targetRepos map[int64]struct{}) *prChecksSettingsAPI {
+// keepAllPRChecksSettingsUnlessDrifted returns prior when every managed repo
+// still matches Terraform. If any repo drifted, it returns that repo's settings
+// so the next plan shows the difference. Missing PR-checks rows are drift.
+func keepAllPRChecksSettingsUnlessDrifted(settings map[int64]prChecksSettingsAPI, reposToUpdate map[int64]struct{}, prior allPrChecksSettingsModel) allPrChecksSettingsModel {
 	var chosen *prChecksSettingsAPI
-	for id, item := range settings {
-		if _, ok := targetRepos[id]; !ok {
+	drifted := false
+
+	for id := range reposToUpdate {
+		row, exists := settings[id]
+		if !exists {
+			drifted = true
 			continue
 		}
 
-		candidate := item
-		if chosen == nil || candidate.CodeRepoID < chosen.CodeRepoID {
-			chosen = &candidate
+		settings := allPRChecksSettingsFromAPI(row, &prior)
+		if allPRChecksSettingsEqual(settings, prior) {
+			continue
+		}
+
+		drifted = true
+		if chosen == nil || row.CodeRepoID < chosen.CodeRepoID {
+			chosen = &row
 		}
 	}
 
-	return chosen
+	if !drifted {
+		return prior
+	}
+
+	if chosen != nil {
+		return allPRChecksSettingsFromAPI(*chosen, &prior)
+	}
+
+	return allPRChecksSettingsFromAPI(prChecksSettingsAPI{}, &prior)
+}
+
+func allPRChecksSettingsEqual(currentSettings, previousSettings allPrChecksSettingsModel) bool {
+	return currentSettings.MinimumSeverity.Equal(previousSettings.MinimumSeverity) &&
+		currentSettings.FailOnDependencyScan.Equal(previousSettings.FailOnDependencyScan) &&
+		currentSettings.FailOnSastScan.Equal(previousSettings.FailOnSastScan) &&
+		currentSettings.FailOnIacScan.Equal(previousSettings.FailOnIacScan) &&
+		currentSettings.FailOnSecretsScan.Equal(previousSettings.FailOnSecretsScan) &&
+		currentSettings.FailOnMalwareScan.Equal(previousSettings.FailOnMalwareScan) &&
+		currentSettings.PostInlineCommentsMinSeverity.Equal(previousSettings.PostInlineCommentsMinSeverity) &&
+		currentSettings.MinimumLicenseSeverity.Equal(previousSettings.MinimumLicenseSeverity) &&
+		currentSettings.FailOnCodeQualityScan.Equal(previousSettings.FailOnCodeQualityScan) &&
+		currentSettings.EnableCodeQualityScan.Equal(previousSettings.EnableCodeQualityScan) &&
+		currentSettings.PostCodeQualityInlineCommentsMinSeverity.Equal(previousSettings.PostCodeQualityInlineCommentsMinSeverity) &&
+		currentSettings.RunDeepAuditPRScan.Equal(previousSettings.RunDeepAuditPRScan) &&
+		currentSettings.PostDeepAuditInlineCommentsMinSeverity.Equal(previousSettings.PostDeepAuditInlineCommentsMinSeverity)
 }
 
 func allPRChecksSettingsFromAPI(api prChecksSettingsAPI, prior *allPrChecksSettingsModel) allPrChecksSettingsModel {
@@ -470,8 +504,7 @@ func allPRChecksSettingsFromAPI(api prChecksSettingsAPI, prior *allPrChecksSetti
 	return state
 }
 
-// allPRChecksSettingsStateFromPlan copies the plan into state after a successful
-// POST. Computed attributes (id, omitted optionals) cannot stay unknown or apply fails.
+// allPRChecksSettingsStateFromPlan copies the plan into state after a successful POST.
 func allPRChecksSettingsStateFromPlan(planned allPrChecksSettingsModel) allPrChecksSettingsModel {
 	state := planned
 	state.ID = types.StringValue(allRepoPRChecksSettingsResourceID)

@@ -65,7 +65,7 @@ func (d *repositoriesDataSource) Schema(_ context.Context, _ datasource.SchemaRe
 		Description: "Looks up Aikido code repositories. " +
 			"Returns every repository, active and inactive, unless filters narrow the result. " +
 			"Filters combine with AND; a filter that matches nothing yields an empty list rather than an error. " +
-			"Use the ids attribute to feed the numeric repo_ids, excluded_repos, and code_repo_id attributes of the other resources, " +
+			"Use the ids attribute to feed the numeric repo_ids and code_repo_id attributes of the other resources, " +
 			"and the repositories attribute when Terraform expressions need to select by naming convention.",
 		Attributes: map[string]schema.Attribute{
 			"name": schema.StringAttribute{
@@ -88,7 +88,7 @@ func (d *repositoriesDataSource) Schema(_ context.Context, _ datasource.SchemaRe
 			"ids": schema.SetAttribute{
 				Computed:    true,
 				ElementType: types.Int64Type,
-				Description: "Numeric IDs of the matching repositories. Typed to match the repo_ids and excluded_repos attributes of other resources, so it can be assigned to them directly; use one(...) to feed a single numeric code_repo_id.",
+				Description: "Numeric IDs of the matching repositories. Typed to match the repo_ids attribute of the autofix settings resources, so it can be assigned to them directly; use one(...) to feed a single numeric code_repo_id.",
 			},
 			"repositories": schema.ListNestedAttribute{
 				Computed:    true,
@@ -97,7 +97,7 @@ func (d *repositoriesDataSource) Schema(_ context.Context, _ datasource.SchemaRe
 					Attributes: map[string]schema.Attribute{
 						"id": schema.StringAttribute{
 							Computed:    true,
-							Description: "Aikido code repository ID, as a string to match the id attribute of aikido_repository. For the numeric code_repo_id, repo_ids, and excluded_repos attributes, use the ids attribute of this data source instead.",
+							Description: "Aikido code repository ID, as a string to match the id attribute of aikido_repository. For the numeric code_repo_id and repo_ids attributes, use the ids attribute of this data source instead.",
 						},
 						"name": schema.StringAttribute{
 							Computed:    true,
