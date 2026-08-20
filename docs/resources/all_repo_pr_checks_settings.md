@@ -10,7 +10,7 @@ description: |-
 
 Applies pull request checks settings to every active GitHub repository. Currently only GitHub is supported. Use excluded_repos to skip repositories that should keep their current settings or need specific settings. There is exactly one all-repos PR checks settings resource per workspace. The Aikido API has no delete endpoint for PR checks settings, so destroying this resource only removes it from Terraform state and leaves the remote settings unchanged.
 
-There is exactly one all-repos PR checks settings object per workspace, so define this resource at most once. Use `excluded_repos` to skip repositories that should keep their current settings. When `enable_code_quality_scan` is `true`, `post_code_quality_inline_comments_min_severity` is required. When `enable_code_quality_scan` is `false`, `fail_on_code_quality_scan` must be `false`. Deep Review (`run_deep_audit_pr_scan`) requires at least one vulnerability scan type to be enabled.
+There is exactly one all-repos PR checks settings resource per workspace, so define this resource at most once. Use `excluded_repos` to skip repositories that should keep their current settings. When `enable_code_quality_scan` is `true`, `post_code_quality_inline_comments_min_severity` is required. When `enable_code_quality_scan` is `false`, `fail_on_code_quality_scan` must be `false`. Deep Review (`run_deep_audit_pr_scan`) requires at least one vulnerability scan type to be enabled.
 
 -> Currently only **GitHub** is supported.
 
@@ -23,7 +23,7 @@ Read reconstructs state from one PR-checks row belonging to an active GitHub rep
 ```terraform
 # Applies pull request checks settings to every active GitHub repository.
 # Currently only GitHub is supported.
-# There is exactly one all-repos PR checks settings object per workspace.
+# There is exactly one all-repos PR checks settings resource per workspace.
 # Use excluded_repos to skip repositories that should keep their current settings.
 # Destroy only removes this resource from Terraform state; remote PR checks stay as configured.
 resource "aikido_all_repo_pr_checks_settings" "example" {
@@ -74,14 +74,3 @@ resource "aikido_all_repo_pr_checks_settings" "example" {
 ### Read-Only
 
 - `id` (String) Workspace all-repos PR checks settings identifier.
-
-## Import
-
-Import is supported using the following syntax:
-
-The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
-
-```shell
-# All-repos PR checks settings are imported by the singleton workspace identifier.
-terraform import aikido_all_repo_pr_checks_settings.example all_repo_pr_checks_settings
-```

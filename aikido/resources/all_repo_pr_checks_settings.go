@@ -26,7 +26,6 @@ const (
 
 var (
 	_ resource.Resource                   = &allPrChecksSettingsResource{}
-	_ resource.ResourceWithImportState    = &allPrChecksSettingsResource{}
 	_ resource.ResourceWithConfigure      = &allPrChecksSettingsResource{}
 	_ resource.ResourceWithValidateConfig = &allPrChecksSettingsResource{}
 )
@@ -338,10 +337,6 @@ func (r *allPrChecksSettingsResource) Update(ctx context.Context, request resour
 // Delete is a no-op: the Aikido API has no delete endpoint for PR checks settings.
 // Destroy only removes the resource from Terraform state; remote settings are left unchanged.
 func (r *allPrChecksSettingsResource) Delete(context.Context, resource.DeleteRequest, *resource.DeleteResponse) {
-}
-
-func (r *allPrChecksSettingsResource) ImportState(ctx context.Context, request resource.ImportStateRequest, response *resource.ImportStateResponse) {
-	resource.ImportStatePassthroughID(ctx, path.Root("id"), request, response)
 }
 
 func (r *allPrChecksSettingsResource) setAllPRChecksSettings(ctx context.Context, planned allPrChecksSettingsModel) (allPrChecksSettingsModel, error) {

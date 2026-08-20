@@ -1,6 +1,6 @@
 # Applies pull request checks settings to every active GitHub repository.
 # Currently only GitHub is supported.
-# There is exactly one all-repos PR checks settings object per workspace.
+# There is exactly one all-repos PR checks settings resource per workspace.
 # Use excluded_repos to skip repositories that should keep their current settings.
 # Destroy only removes this resource from Terraform state; remote PR checks stay as configured.
 resource "aikido_all_repo_pr_checks_settings" "example" {
