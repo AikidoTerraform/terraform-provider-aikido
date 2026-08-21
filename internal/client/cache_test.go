@@ -137,3 +137,70 @@ func TestLoadCached(t *testing.T) {
 		}
 	})
 }
+
+func TestInvalidateCached(t *testing.T) {
+	t.Run("next load runs again", func(t *testing.T) {
+		c := client.New(http.DefaultClient, "http://example.invalid", unlimited())
+		var calls atomic.Int32
+
+		load := func(context.Context) (int, error) {
+			return int(calls.Add(1)), nil
+		}
+
+		got, err := client.LoadCached(c, context.Background(), "k", load)
+		if err != nil || got != 1 {
+			t.Fatalf("first = %d, %v", got, err)
+		}
+
+		client.InvalidateCached(c, "k")
+
+		got, err = client.LoadCached(c, context.Background(), "k", load)
+		if err != nil || got != 2 {
+			t.Fatalf("after invalidate = %d, %v", got, err)
+		}
+		if calls.Load() != 2 {
+			t.Errorf("calls = %d, want 2", calls.Load())
+		}
+	})
+
+	t.Run("does not affect other keys", func(t *testing.T) {
+		c := client.New(http.DefaultClient, "http://example.invalid", unlimited())
+		var a, b atomic.Int32
+
+		if _, err := client.LoadCached(c, context.Background(), "a", func(context.Context) (int, error) {
+			return int(a.Add(1)), nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := client.LoadCached(c, context.Background(), "b", func(context.Context) (int, error) {
+			return int(b.Add(1)), nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+
+		client.InvalidateCached(c, "a")
+
+		if _, err := client.LoadCached(c, context.Background(), "a", func(context.Context) (int, error) {
+			return int(a.Add(1)), nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := client.LoadCached(c, context.Background(), "b", func(context.Context) (int, error) {
+			return int(b.Add(1)), nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+
+		if a.Load() != 2 {
+			t.Errorf("a = %d, want 2", a.Load())
+		}
+		if b.Load() != 1 {
+			t.Errorf("b = %d, want 1", b.Load())
+		}
+	})
+
+	t.Run("missing key is a no-op", func(t *testing.T) {
+		c := client.New(http.DefaultClient, "http://example.invalid", unlimited())
+		client.InvalidateCached(c, "missing")
+	})
+}

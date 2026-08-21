@@ -316,7 +316,7 @@ func (r *prChecksSettingsResource) Read(ctx context.Context, request resource.Re
 		return
 	}
 
-	apiSettings, err := prChecksSettingsFromCache(ctx, r.client, prior.CodeRepoID.ValueInt64())
+	apiSettings, err := prChecksSettingsFromCacheForRepo(ctx, r.client, prior.CodeRepoID.ValueInt64())
 	if err != nil {
 		response.Diagnostics.AddError("Error reading PR checks settings for repository "+strconv.FormatInt(prior.CodeRepoID.ValueInt64(), 10), err.Error())
 		return
@@ -418,25 +418,29 @@ func constructPRChecksSettingsBody(planned prChecksSettingsModel) map[string]any
 	return body
 }
 
-// prChecksSettingsFromCache looks up settings in the shared paginated list cache.
-// Use for Read when many resources share one plan (avoids N filtered GETs).
-func prChecksSettingsFromCache(ctx context.Context, c *client.Client, codeRepoID int64) (*prChecksSettingsAPI, error) {
-	settings, err := client.LoadCached(c, ctx, prChecksSettingsCacheKey, func(ctx context.Context) (map[int64]prChecksSettingsAPI, error) {
-		// fetch all settings from the API once on first use
+// prChecksSettingsList returns the shared paginated list of PR checks settings,
+// fetched at most once per Client. A workspace of N repos costs N/page_size
+// list GETs instead of N filtered GETs when many resources share one plan.
+func prChecksSettingsListFromCache(ctx context.Context, c *client.Client) (map[int64]prChecksSettingsAPI, error) {
+	return client.LoadCached(c, ctx, prChecksSettingsCacheKey, func(ctx context.Context) (map[int64]prChecksSettingsAPI, error) {
 		items, err := client.FetchAllPages[prChecksSettingsAPI](ctx, c, prChecksSettingsPath, prChecksSettingsPageSize, "")
 		if err != nil {
 			return nil, err
 		}
 
 		settingsCacheMap := make(map[int64]prChecksSettingsAPI, len(items))
-
 		for _, settings := range items {
 			settingsCacheMap[settings.CodeRepoID] = settings
 		}
 
 		return settingsCacheMap, nil
 	})
+}
 
+// prChecksSettingsFromCache looks up one repo in the shared list. Use for Read
+// when many resources share one plan (avoids N filtered GETs).
+func prChecksSettingsFromCacheForRepo(ctx context.Context, c *client.Client, codeRepoID int64) (*prChecksSettingsAPI, error) {
+	settings, err := prChecksSettingsListFromCache(ctx, c)
 	if err != nil {
 		return nil, err
 	}

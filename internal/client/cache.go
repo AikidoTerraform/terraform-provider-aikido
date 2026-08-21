@@ -42,3 +42,8 @@ func LoadCached[T any](apiClient *Client, ctx context.Context, key string, load 
 
 	return value, nil
 }
+
+// InvalidateCached drops the cached result for key so the next LoadCached runs load again.
+func InvalidateCached(apiClient *Client, key string) {
+	apiClient.cache.Delete(key)
+}

@@ -1,3 +1,9 @@
+## 1.3.0
+
+FEATURES:
+
+- **New Resource:** `aikido_all_repo_pr_checks_settings` — applies pull request checks settings to every active GitHub repository, with optional `excluded_repos`. Currently only GitHub is supported.
+
 ## 1.2.0
 
 FEATURES:
