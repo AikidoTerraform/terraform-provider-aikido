@@ -3,7 +3,6 @@ package resources
 import (
 	"context"
 	"fmt"
-	"net/url"
 	"strconv"
 
 	"github.com/AikidoTerraform/terraform-provider-aikido/internal/client"
@@ -20,7 +19,11 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
-const prChecksSettingsPath = "/public/v1/repositories/code/continuous_integration/checks"
+const (
+	prChecksSettingsPath     = "/public/v1/repositories/code/continuous_integration/checks"
+	prChecksSettingsPageSize = 100
+	prChecksSettingsCacheKey = "repositories/code/continuous_integration/checks"
+)
 
 var (
 	_ resource.Resource                   = &prChecksSettingsResource{}
@@ -169,7 +172,7 @@ func (r *prChecksSettingsResource) Schema(_ context.Context, _ resource.SchemaRe
 					"Requires at least one vulnerability scan type to be enabled " +
 					"(fail_on_dependency_scan, fail_on_sast_scan, fail_on_iac_scan, fail_on_secrets_scan, fail_on_malware_scan, " +
 					"or minimum_license_severity other than none). " +
-					"For bitbucket and azure_devops repositories this is currently only available in the EU region.",
+					"Deep Review is currently only available in the EU region.",
 			},
 			"post_deep_audit_inline_comments_min_severity": schema.StringAttribute{
 				Optional: true,
@@ -313,7 +316,7 @@ func (r *prChecksSettingsResource) Read(ctx context.Context, request resource.Re
 		return
 	}
 
-	apiSettings, err := getPRChecksSettings(ctx, r.client, prior.CodeRepoID.ValueInt64())
+	apiSettings, err := prChecksSettingsFromCacheForRepo(ctx, r.client, prior.CodeRepoID.ValueInt64())
 	if err != nil {
 		response.Diagnostics.AddError("Error reading PR checks settings for repository "+strconv.FormatInt(prior.CodeRepoID.ValueInt64(), 10), err.Error())
 		return
@@ -368,7 +371,7 @@ func (r *prChecksSettingsResource) setPRChecksSettings(ctx context.Context, plan
 		return prChecksSettingsModel{}, err
 	}
 
-	apiSettings, err := getPRChecksSettings(ctx, r.client, planned.CodeRepoID.ValueInt64())
+	apiSettings, err := prChecksSettingsFromAPI(ctx, r.client, planned.CodeRepoID.ValueInt64())
 	if err != nil {
 		return prChecksSettingsModel{}, err
 	}
@@ -378,21 +381,6 @@ func (r *prChecksSettingsResource) setPRChecksSettings(ctx context.Context, plan
 	}
 
 	return mergePRChecksSettingsAPIAndPrior(*apiSettings, &planned), nil
-}
-
-func getPRChecksSettings(ctx context.Context, apiClient *client.Client, codeRepoID int64) (*prChecksSettingsAPI, error) {
-	url := prChecksSettingsPath + "?filter_code_repo_id=" + url.QueryEscape(strconv.FormatInt(codeRepoID, 10))
-
-	var settings []prChecksSettingsAPI
-	if err := apiClient.Do(ctx, "GET", url, nil, &settings); err != nil {
-		return nil, err
-	}
-
-	if len(settings) == 0 {
-		return nil, nil
-	}
-
-	return &settings[0], nil
 }
 
 func constructPRChecksSettingsBody(planned prChecksSettingsModel) map[string]any {
@@ -428,6 +416,57 @@ func constructPRChecksSettingsBody(planned prChecksSettingsModel) map[string]any
 	}
 
 	return body
+}
+
+// prChecksSettingsList returns the shared paginated list of PR checks settings,
+// fetched at most once per Client. A workspace of N repos costs N/page_size
+// list GETs instead of N filtered GETs when many resources share one plan.
+func prChecksSettingsListFromCache(ctx context.Context, c *client.Client) (map[int64]prChecksSettingsAPI, error) {
+	return client.LoadCached(c, ctx, prChecksSettingsCacheKey, func(ctx context.Context) (map[int64]prChecksSettingsAPI, error) {
+		items, err := client.FetchAllPages[prChecksSettingsAPI](ctx, c, prChecksSettingsPath, prChecksSettingsPageSize, "")
+		if err != nil {
+			return nil, err
+		}
+
+		settingsCacheMap := make(map[int64]prChecksSettingsAPI, len(items))
+		for _, settings := range items {
+			settingsCacheMap[settings.CodeRepoID] = settings
+		}
+
+		return settingsCacheMap, nil
+	})
+}
+
+// prChecksSettingsFromCache looks up one repo in the shared list. Use for Read
+// when many resources share one plan (avoids N filtered GETs).
+func prChecksSettingsFromCacheForRepo(ctx context.Context, c *client.Client, codeRepoID int64) (*prChecksSettingsAPI, error) {
+	settings, err := prChecksSettingsListFromCache(ctx, c)
+	if err != nil {
+		return nil, err
+	}
+
+	// lookup the settings in the cache
+	cachedSettings, ok := settings[codeRepoID]
+	if !ok {
+		return nil, nil
+	}
+
+	return &cachedSettings, nil
+}
+
+// prChecksSettingsFromAPI loads one repo's settings via filter_code_repo_id.
+// Use after writes: POST only returns {success:1}, and the list cache may be stale.
+func prChecksSettingsFromAPI(ctx context.Context, c *client.Client, codeRepoID int64) (*prChecksSettingsAPI, error) {
+	path := prChecksSettingsPath + "?filter_code_repo_id=" + strconv.FormatInt(codeRepoID, 10)
+
+	var settings []prChecksSettingsAPI
+	if err := c.Do(ctx, "GET", path, nil, &settings); err != nil {
+		return nil, err
+	}
+	if len(settings) == 0 {
+		return nil, nil
+	}
+	return &settings[0], nil
 }
 
 func mapPRChecksSettingsAPIToModel(api prChecksSettingsAPI) prChecksSettingsModel {

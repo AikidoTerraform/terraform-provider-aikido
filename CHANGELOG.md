@@ -1,8 +1,32 @@
-## 1.2.0
+## 1.4.0
 
 FEATURES:
 
 - **New Resource:** `aikido_default_pr_checks_settings` — manages the workspace default pull request checks settings applied to newly activated repositories. 
+
+## 1.3.0
+
+FEATURES:
+
+- **New Resource:** `aikido_all_repo_pr_checks_settings` — applies pull request checks settings to every active GitHub repository, with optional `excluded_repos`. Currently only GitHub is supported.
+
+## 1.2.0
+
+FEATURES:
+
+- **New Data Source:** `aikido_repositories` — lets you look up repositories directly from Aikido instead of hard-coding repository IDs. Supports filtering by name, branch, and active state, and can be used to target individual repositories or build dynamic lists for workspace-wide settings.
+
+## 1.1.1
+
+ENHANCEMENTS:
+
+- Faster `terraform plan` in large workspaces by caching repository and PR checks list data instead of fetching each resource individually.
+- Added provider-level `requests_per_minute` configuration so customers with higher workspace API limits can increase the client-side request rate.
+
+NOTES:
+
+- Clarified in the PR checks documentation that Deep Review is currently only available in the EU region.
+- Updated the `aikido_repo_pr_checks_settings` resource to accept `always_pass_check` for `minimum_severity`, in line with the API.
 
 ## 1.1.0
 

@@ -2,16 +2,20 @@ package aikido
 
 import (
 	"context"
+	"fmt"
 	"os"
 
+	"github.com/AikidoTerraform/terraform-provider-aikido/aikido/datasources"
 	"github.com/AikidoTerraform/terraform-provider-aikido/aikido/resources"
 	"github.com/AikidoTerraform/terraform-provider-aikido/internal/auth"
 	"github.com/AikidoTerraform/terraform-provider-aikido/internal/client"
+	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
@@ -23,9 +27,10 @@ type aikidoProvider struct {
 
 // aikidoProviderModel maps provider-block config to Go values.
 type aikidoProviderModel struct {
-	ClientID     types.String `tfsdk:"client_id"`
-	ClientSecret types.String `tfsdk:"client_secret"`
-	BaseURL      types.String `tfsdk:"base_url"`
+	ClientID          types.String `tfsdk:"client_id"`
+	ClientSecret      types.String `tfsdk:"client_secret"`
+	BaseURL           types.String `tfsdk:"base_url"`
+	RequestsPerMinute types.Int64  `tfsdk:"requests_per_minute"`
 }
 
 func New(version string) func() provider.Provider {
@@ -56,6 +61,13 @@ func (p *aikidoProvider) Schema(_ context.Context, _ provider.SchemaRequest, res
 			"base_url": schema.StringAttribute{
 				Optional:    true,
 				Description: "Aikido API base URL. Set this to target a non-default region (e.g. AU, ME, US). Falls back to the AIKIDO_BASE_URL environment variable, then the default public API.",
+			},
+			"requests_per_minute": schema.Int64Attribute{
+				Optional:    true,
+				Description: fmt.Sprintf("Client-side rate limit for outbound API requests, in requests per minute. Defaults to %d (the standard API limit). Only raise this if the Aikido team has increased your workspace's API rate limit accordingly; otherwise requests will be throttled with HTTP 429 responses.", client.DefaultRequestsPerMinute),
+				Validators: []validator.Int64{
+					int64validator.Between(client.DefaultRequestsPerMinute, client.MaxRequestsPerMinute),
+				},
 			},
 		},
 	}
@@ -91,7 +103,12 @@ func (p *aikidoProvider) Configure(ctx context.Context, req provider.ConfigureRe
 	}
 
 	httpClient := auth.NewHTTPClient(clientID, clientSecret, baseURL)
-	c := client.New(httpClient, baseURL)
+
+	var opts []client.Option
+	if !config.RequestsPerMinute.IsNull() {
+		opts = append(opts, client.WithRequestsPerMinute(int(config.RequestsPerMinute.ValueInt64())))
+	}
+	c := client.New(httpClient, baseURL, opts...)
 
 	// Make the configured client available to resources and data sources.
 	resp.ResourceData = c
@@ -105,12 +122,15 @@ func (p *aikidoProvider) Resources(_ context.Context) []func() resource.Resource
 		resources.NewAutofixSastSettingsResource,
 		resources.NewAutofixPentestSettingsResource,
 		resources.NewRepoPRChecksSettingsResource,
+		resources.NewAllRepoPRChecksSettingsResource,
 		resources.NewDefaultPRChecksSettingsResource,
 	}
 }
 
 func (p *aikidoProvider) DataSources(_ context.Context) []func() datasource.DataSource {
-	return []func() datasource.DataSource{}
+	return []func() datasource.DataSource{
+		datasources.NewRepositoriesDataSource,
+	}
 }
 
 func firstNonEmpty(values ...string) string {

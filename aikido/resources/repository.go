@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/AikidoTerraform/terraform-provider-aikido/internal/client"
+	"github.com/AikidoTerraform/terraform-provider-aikido/internal/repositories"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -16,7 +17,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
-const basePath = "/public/v1/repositories/code"
+const basePath = repositories.BasePath
 
 var (
 	_ resource.Resource                = &repositoryResource{}
@@ -45,19 +46,6 @@ type repositoryModel struct {
 	URL            types.String   `tfsdk:"url"`
 	ExternalRepoID types.String   `tfsdk:"external_repo_id"`
 	Labels         []types.String `tfsdk:"labels"`
-}
-
-type repositoryAPI struct {
-	ID             int64      `json:"id"`
-	Name           string     `json:"name"`
-	Provider       string     `json:"provider"`
-	ExternalRepoID string     `json:"external_repo_id"`
-	Active         bool       `json:"active"`
-	Branch         string     `json:"branch"`
-	URL            string     `json:"url"`
-	Connectivity   string     `json:"connectivity"`
-	Sensitivity    string     `json:"sensitivity"`
-	Labels         []labelAPI `json:"labels"`
 }
 
 // Metadata sets the resource type name.
@@ -166,7 +154,14 @@ func (r *repositoryResource) Read(ctx context.Context, request resource.ReadRequ
 		return
 	}
 
-	apiRepository, err := r.getRepositoryDetails(ctx, priorState.ID.ValueString())
+	id, err := parseRepositoryID(priorState.ID.ValueString())
+	if err != nil {
+		response.Diagnostics.AddError("Error reading repository", err.Error())
+		return
+	}
+
+	// get repository from list cache
+	apiRepository, err := repositories.ByID(ctx, r.client, id)
 	if err != nil {
 		if client.NotFound(err) {
 			response.State.RemoveResource(ctx)
@@ -175,6 +170,7 @@ func (r *repositoryResource) Read(ctx context.Context, request resource.ReadRequ
 		response.Diagnostics.AddError("Error reading repository", err.Error())
 		return
 	}
+
 	updatedState := repositoryModelFromAPI(apiRepository)
 	// Labels omitted from config are unmanaged — don't import API labels into state.
 	if priorState.Labels == nil {
@@ -239,7 +235,13 @@ func (r *repositoryResource) setRepoConfig(ctx context.Context, plannedRepositor
 		}
 	}
 
-	apiRepository, err := r.getRepositoryDetails(ctx, repositoryID)
+	// Detail GET after writes: label IDs for applyLabels + computed fields for state.
+	id, err := parseRepositoryID(repositoryID)
+	if err != nil {
+		return repositoryModel{}, err
+	}
+
+	apiRepository, err := repositories.Detail(ctx, r.client, id)
 	if err != nil {
 		return repositoryModel{}, err
 	}
@@ -256,9 +258,9 @@ func (r *repositoryResource) setRepoConfig(ctx context.Context, plannedRepositor
 
 // setActive activates or deactivates the repository.
 func (r *repositoryResource) setActive(ctx context.Context, repositoryID string, isActive bool) error {
-	codeRepoID, err := strconv.ParseInt(repositoryID, 10, 64)
+	codeRepoID, err := parseRepositoryID(repositoryID)
 	if err != nil {
-		return fmt.Errorf("invalid repository id %q: %w", repositoryID, err)
+		return err
 	}
 
 	endpoint := basePath + "/deactivate"
@@ -268,17 +270,17 @@ func (r *repositoryResource) setActive(ctx context.Context, repositoryID string,
 	return r.client.Do(ctx, "POST", endpoint, map[string]int64{"code_repo_id": codeRepoID}, nil)
 }
 
-// getRepositoryDetails reads the repository (including label IDs) from the API.
-func (r *repositoryResource) getRepositoryDetails(ctx context.Context, repositoryID string) (repositoryAPI, error) {
-	var apiRepository repositoryAPI
-	if err := r.client.Do(ctx, "GET", basePath+"/"+repositoryID, nil, &apiRepository); err != nil {
-		return repositoryAPI{}, err
+func parseRepositoryID(repositoryID string) (int64, error) {
+	id, err := strconv.ParseInt(repositoryID, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("invalid repository id %q: %w", repositoryID, err)
 	}
-	return apiRepository, nil
+
+	return id, nil
 }
 
 // repositoryModelFromAPI maps an API repository into a Terraform state model.
-func repositoryModelFromAPI(apiRepository repositoryAPI) repositoryModel {
+func repositoryModelFromAPI(apiRepository repositories.Repository) repositoryModel {
 	repositoryState := repositoryModel{
 		ID:             types.StringValue(strconv.FormatInt(apiRepository.ID, 10)),
 		Active:         types.BoolValue(apiRepository.Active),
@@ -304,7 +306,7 @@ func repositoryModelFromAPI(apiRepository repositoryAPI) repositoryModel {
 
 // labelNamesFromAPI maps API labels into Terraform state (names only).
 // Always returns a non-nil slice so a managed empty set differs from omitted (nil).
-func labelNamesFromAPI(apiLabels []labelAPI) []types.String {
+func labelNamesFromAPI(apiLabels []repositories.Label) []types.String {
 	names := make([]types.String, 0, len(apiLabels))
 	for _, apiLabel := range apiLabels {
 		names = append(names, types.StringValue(apiLabel.Name))

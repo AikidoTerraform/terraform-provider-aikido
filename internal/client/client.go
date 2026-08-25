@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/time/rate"
@@ -24,21 +25,18 @@ const DefaultBaseURL = "https://app.aikido.dev/api"
 // header when exceeded. maxRetries bounds how many times a single call waits and
 // retries; maxRetryDelay caps any single wait so a hostile header can't hang us.
 const (
-	maxRetries    = 4
-	maxRetryDelay = 60 * time.Second
-
-	// requestInterval paces outbound requests to stay under the 20 calls/min
-	// limit proactively, instead of relying on 429 retries. requestBurst allows an
-	// initial burst (matching Terraform's default parallelism) before pacing kicks
-	// in, so small plans are not serialized needlessly.
-	requestInterval = 3 * time.Second
-	requestBurst    = 10
+	maxRetries               = 4
+	maxRetryDelay            = 60 * time.Second
+	DefaultRequestsPerMinute = 20
+	MaxRequestsPerMinute     = 250
+	requestBurst             = 10
 )
 
 type Client struct {
 	http    *http.Client
 	baseURL string
 	limiter *rate.Limiter
+	cache   sync.Map
 }
 
 // Option configures a Client.
@@ -48,6 +46,21 @@ type Option func(*Client)
 // can disable pacing with rate.NewLimiter(rate.Inf, 1).
 func WithRateLimiter(limiter *rate.Limiter) Option {
 	return func(c *Client) { c.limiter = limiter }
+}
+
+// WithRequestsPerMinute paces outbound requests to the given rate. Values are
+// clamped to the provider-supported range; anything below the standard rate
+// snaps up to DefaultRequestsPerMinute.
+func WithRequestsPerMinute(rpm int) Option {
+	return func(c *Client) {
+		if rpm < DefaultRequestsPerMinute {
+			rpm = DefaultRequestsPerMinute
+		}
+		if rpm > MaxRequestsPerMinute {
+			rpm = MaxRequestsPerMinute
+		}
+		c.limiter = rate.NewLimiter(rate.Every(time.Minute/time.Duration(rpm)), requestBurst)
+	}
 }
 
 // New wraps an already-authenticated HTTP client (see the auth package) with a
@@ -61,7 +74,7 @@ func New(httpClient *http.Client, baseURL string, opts ...Option) *Client {
 		opt(c)
 	}
 	if c.limiter == nil {
-		c.limiter = rate.NewLimiter(rate.Every(requestInterval), requestBurst)
+		c.limiter = rate.NewLimiter(rate.Every(time.Minute/time.Duration(DefaultRequestsPerMinute)), requestBurst)
 	}
 	return c
 }
