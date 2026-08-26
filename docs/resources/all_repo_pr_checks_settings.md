@@ -10,7 +10,7 @@ description: |-
 
 Applies pull request checks settings to every active GitHub repository. Currently only GitHub is supported. Use excluded_repos to skip repositories that should keep their current settings or need specific settings. There is exactly one all-repos PR checks settings resource per workspace. The Aikido API has no delete endpoint for PR checks settings, so destroying this resource only removes it from Terraform state and leaves the remote settings unchanged.
 
-There is exactly one all-repos PR checks settings resource per workspace, so define this resource at most once. Use `excluded_repos` to skip repositories that should keep their current settings. When `enable_code_quality_scan` is `true`, `post_code_quality_inline_comments_min_severity` is required. When `enable_code_quality_scan` is `false`, `fail_on_code_quality_scan` must be `false`. Deep Review (`run_deep_audit_pr_scan`) requires at least one vulnerability scan type to be enabled and is available in the EU, US, and AU regions.
+There is exactly one all-repos PR checks settings resource per workspace, so define this resource at most once. Use `excluded_repos` to skip repositories that should keep their current settings. When `enable_code_quality_scan` is `true`, `post_code_quality_inline_comments_min_severity` is required. When `enable_code_quality_scan` is `false`, `fail_on_code_quality_scan` must be `false`. Deep Review (`run_deep_audit_pr_scan`) requires at least one vulnerability scan type to be enabled.
 
 -> Currently only **GitHub** is supported.
 
