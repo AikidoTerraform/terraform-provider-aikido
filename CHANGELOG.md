@@ -1,3 +1,9 @@
+## 1.3.1
+
+ENHANCEMENTS:
+
+- Added import support for `aikido_all_repo_pr_checks_settings`.
+
 ## 1.3.0
 
 FEATURES:
