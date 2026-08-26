@@ -383,10 +383,6 @@ type allPrChecksBulkExcludedReposAPI struct {
 func getAllPRChecksExcludedRepos(ctx context.Context, apiClient *client.Client) ([]int64, error) {
 	var api allPrChecksBulkExcludedReposAPI
 	if err := apiClient.Do(ctx, "GET", allPrChecksSettingsPath+"/excluded_repos", nil, &api); err != nil {
-		if client.NotFound(err) {
-			return []int64{}, nil
-		}
-
 		return nil, err
 	}
 
