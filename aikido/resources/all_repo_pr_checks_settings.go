@@ -321,21 +321,21 @@ func (r *allPrChecksSettingsResource) Read(ctx context.Context, request resource
 	// get the actual repositories to update. This are the github active repos minus the excluded repos and Aikido-internal repositories.
 	actualReposToUpdate := getActualReposToUpdate(repos, prior.ExcludedRepos)
 
-	// Settings come from per-repo PR-checks rows (shared list cache). Import only
-	// seeds id, so with no managed repo to sample we would leave required attrs
-	// unset — fail instead of writing an incomplete state.
-	if len(actualReposToUpdate) == 0 && (prior.MinimumSeverity.IsNull() || prior.MinimumSeverity.IsUnknown()) {
+	// get the settings for those actual repositories to update. If no drift, return the prior state. If drift, return the settings for the drifted repository.
+	settings := keepAllPRChecksSettingsUnlessDrifted(settingsList, actualReposToUpdate, prior)
+
+	// On import, state only has id. If we could not load settings from any
+	// managed repo, refuse instead of saving empty required attributes.
+	if (prior.MinimumSeverity.IsNull() || prior.MinimumSeverity.IsUnknown()) &&
+		settings.MinimumSeverity.ValueString() == "" {
 		response.Diagnostics.AddError(
 			"Cannot read all-repos PR checks settings",
-			"No active GitHub repositories are managed by this resource (all are excluded or none exist). "+
+			"No active GitHub repository managed by this resource has PR checks settings. "+
 				"Import and refresh need at least one non-excluded active GitHub repository with PR checks settings, "+
 				"or an existing Terraform state that already contains the settings.",
 		)
 		return
 	}
-
-	// get the settings for those actual repositories to update. If no drift, return the prior state. If drift, return the settings for the drifted repository.
-	settings := keepAllPRChecksSettingsUnlessDrifted(settingsList, actualReposToUpdate, prior)
 
 	// set the state
 	response.Diagnostics.Append(response.State.Set(ctx, settings)...)
