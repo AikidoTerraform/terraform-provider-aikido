@@ -12,6 +12,7 @@ import (
 	"github.com/AikidoTerraform/terraform-provider-aikido/internal/repositories"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
@@ -621,10 +622,54 @@ func TestAllPrChecksSettingsImportState(t *testing.T) {
 	}
 }
 
+func TestAllPrChecksSettingsRead_ErrorsWhenImportHasNoManagedRepos(t *testing.T) {
+	repos := []repositories.Repository{
+		{ID: 12, Provider: "github", Active: true, ExternalRepoID: "R_kgDOI5RlKA"},
+		{ID: 1234, Provider: "github", Active: true},
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == allPrChecksSettingsPath+"/excluded_repos":
+			_ = json.NewEncoder(w).Encode(allPrChecksBulkExcludedReposAPI{ExcludedRepos: []int64{12, 1234}})
+
+		case r.Method == http.MethodGet && r.URL.Path == prChecksSettingsPath:
+			_ = json.NewEncoder(w).Encode([]prChecksSettingsAPI{
+				{ID: 1, CodeRepoID: 12, MinimumSeverity: "low"},
+			})
+
+		case isCodeReposList(r):
+			writeReposList(t, w, repos...)
+
+		default:
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	res := &allPrChecksSettingsResource{client: testClient(srv)}
+	var schemaResp resource.SchemaResponse
+	res.Schema(context.Background(), resource.SchemaRequest{}, &schemaResp)
+
+	prior := allPrChecksSettingsModel{ID: types.StringValue(allRepoPRChecksSettingsResourceID)}
+	state := tfsdk.State{Schema: schemaResp.Schema}
+	if diags := state.Set(context.Background(), prior); diags.HasError() {
+		t.Fatalf("set prior: %v", diags)
+	}
+
+	var response resource.ReadResponse
+	response.State = state
+	res.Read(context.Background(), resource.ReadRequest{State: state}, &response)
+	if !response.Diagnostics.HasError() {
+		t.Fatal("expected error when import has no managed repositories to sample")
+	}
+}
+
 func TestGetAllPRChecksExcludedRepos(t *testing.T) {
 	t.Run("reads persisted exclusions", func(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.Method != http.MethodGet || r.URL.Path != allPrChecksSettingsPath {
+			if r.Method != http.MethodGet || r.URL.Path != allPrChecksSettingsPath+"/excluded_repos" {
 				t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
 				w.WriteHeader(http.StatusNotFound)
 				return

@@ -321,6 +321,19 @@ func (r *allPrChecksSettingsResource) Read(ctx context.Context, request resource
 	// get the actual repositories to update. This are the github active repos minus the excluded repos and Aikido-internal repositories.
 	actualReposToUpdate := getActualReposToUpdate(repos, prior.ExcludedRepos)
 
+	// Settings come from per-repo PR-checks rows (shared list cache). Import only
+	// seeds id, so with no managed repo to sample we would leave required attrs
+	// unset — fail instead of writing an incomplete state.
+	if len(actualReposToUpdate) == 0 && (prior.MinimumSeverity.IsNull() || prior.MinimumSeverity.IsUnknown()) {
+		response.Diagnostics.AddError(
+			"Cannot read all-repos PR checks settings",
+			"No active GitHub repositories are managed by this resource (all are excluded or none exist). "+
+				"Import and refresh need at least one non-excluded active GitHub repository with PR checks settings, "+
+				"or an existing Terraform state that already contains the settings.",
+		)
+		return
+	}
+
 	// get the settings for those actual repositories to update. If no drift, return the prior state. If drift, return the settings for the drifted repository.
 	settings := keepAllPRChecksSettingsUnlessDrifted(settingsList, actualReposToUpdate, prior)
 
@@ -370,7 +383,7 @@ type allPrChecksBulkExcludedReposAPI struct {
 // getAllPRChecksExcludedRepos loads exclusions for Read/import refresh.
 func getAllPRChecksExcludedRepos(ctx context.Context, apiClient *client.Client) ([]int64, error) {
 	var api allPrChecksBulkExcludedReposAPI
-	if err := apiClient.Do(ctx, "GET", allPrChecksSettingsPath, nil, &api); err != nil {
+	if err := apiClient.Do(ctx, "GET", allPrChecksSettingsPath+"/excluded_repos", nil, &api); err != nil {
 		if client.NotFound(err) {
 			return []int64{}, nil
 		}
