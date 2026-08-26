@@ -10,13 +10,13 @@ description: |-
 
 {{ .Description | trimspace }}
 
-There is exactly one all-repos PR checks settings resource per workspace, so define this resource at most once. Use `excluded_repos` to skip repositories that should keep their current settings. When `enable_code_quality_scan` is `true`, `post_code_quality_inline_comments_min_severity` is required. When `enable_code_quality_scan` is `false`, `fail_on_code_quality_scan` must be `false`. Deep Review (`run_deep_audit_pr_scan`) requires at least one vulnerability scan type to be enabled.
+There is exactly one all-repos PR checks settings resource per workspace, so define this resource at most once. Use `excluded_repos` to skip repositories that should keep their current settings. When `enable_code_quality_scan` is `true`, `post_code_quality_inline_comments_min_severity` is required. When `enable_code_quality_scan` is `false`, `fail_on_code_quality_scan` must be `false`. Deep Review (`run_deep_audit_pr_scan`) requires at least one vulnerability scan type to be enabled and is available in the EU, US, and AU regions.
 
 -> Currently only **GitHub** is supported.
 
 -> Destroy does **not** reset or disable PR checks in Aikido. It only removes the resource from Terraform state.
 
-Read reconstructs state from one PR-checks row belonging to an active GitHub repository that is not in `excluded_repos`. After apply, every managed repository has the same settings, so one row is enough. Inactive, non-GitHub, and Aikido clone/custom/self-scan repositories are ignored because the bulk endpoint does not update them. `excluded_repos` is not returned by that API, so Terraform keeps it from state.
+Read reconstructs check settings from PR-checks rows belonging to active GitHub repositories that are not in `excluded_repos`. After apply, every managed repository has the same settings, so one drifted row is enough to surface a plan. Inactive, non-GitHub, and Aikido clone/custom/self-scan repositories are ignored because the bulk endpoint does not update them. `excluded_repos` is persisted by Aikido and refreshed from the API on read and import.
 
 {{ if .HasExamples -}}
 ## Example Usage
@@ -28,3 +28,29 @@ Read reconstructs state from one PR-checks row belonging to an active GitHub rep
 {{- end }}
 
 {{ .SchemaMarkdown | trimspace }}
+{{- if or .HasImport .HasImportIDConfig .HasImportIdentityConfig }}
+
+## Import
+
+Import is supported using the following syntax.
+{{- end }}
+{{- if .HasImportIdentityConfig }}
+
+In Terraform v1.12.0 and later, the [`import` block](https://developer.hashicorp.com/terraform/language/import) can be used with the `identity` attribute, for example:
+
+{{tffile .ImportIdentityConfigFile }}
+
+{{ .IdentitySchemaMarkdown | trimspace }}
+{{- end }}
+{{- if .HasImportIDConfig }}
+
+In Terraform v1.5.0 and later, the [`import` block](https://developer.hashicorp.com/terraform/language/import) can be used with the `id` attribute, for example:
+
+{{tffile .ImportIDConfigFile }}
+{{- end }}
+{{- if .HasImport }}
+
+The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
+
+{{codefile "shell" .ImportFile }}
+{{- end }}
