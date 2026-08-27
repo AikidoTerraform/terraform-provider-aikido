@@ -16,7 +16,7 @@ There is exactly one all-repos PR checks settings resource per workspace, so def
 
 -> Destroy does **not** reset or disable PR checks in Aikido. It only removes the resource from Terraform state.
 
-Read reconstructs state from one PR-checks row belonging to an active GitHub repository that is not in `excluded_repos`. After apply, every managed repository has the same settings, so one row is enough. Inactive, non-GitHub, and Aikido clone/custom/self-scan repositories are ignored because the bulk endpoint does not update them. `excluded_repos` is not returned by that API, so Terraform keeps it from state.
+Read reconstructs check settings from PR-checks rows belonging to active GitHub repositories that are not in `excluded_repos`. After apply, every managed repository has the same settings, so one drifted row is enough to surface a plan. Inactive, non-GitHub, and Aikido clone/custom/self-scan repositories are ignored because the bulk endpoint does not update them. `excluded_repos` is persisted by Aikido and refreshed from the API on read and import.
 
 ## Example Usage
 
@@ -65,12 +65,23 @@ resource "aikido_all_repo_pr_checks_settings" "example" {
 
 ### Optional
 
-- `excluded_repos` (Set of Number) Repository IDs to exclude from the bulk configuration. Omitted or empty applies the settings to every active GitHub repository.
+- `excluded_repos` (Set of Number) Repository IDs to exclude from the bulk configuration. Omitted or empty applies the settings to every active GitHub repository. Persisted by Aikido and recovered on import and refresh.
 - `post_code_quality_inline_comments_min_severity` (String) Minimum severity for code quality inline comments. Required when enable_code_quality_scan is true (one of: low, medium, high, critical). Ignored when enable_code_quality_scan is false and may be omitted.
 - `post_deep_audit_inline_comments_min_severity` (String) Minimum severity for Deep Review inline comments. One of: none, low, medium, high, critical. Ignored when run_deep_audit_pr_scan is false and may be omitted.
 - `post_inline_comments_min_severity` (String) Minimum severity for inline comments. Defaults to none when omitted. One of: none, low, medium, high, critical.
-- `run_deep_audit_pr_scan` (Boolean) Whether Deep Review is run on pull requests. Requires at least one vulnerability scan type to be enabled (fail_on_dependency_scan, fail_on_sast_scan, fail_on_iac_scan, fail_on_secrets_scan, fail_on_malware_scan, or minimum_license_severity other than none). Deep Review is currently only available in the EU region.
+- `run_deep_audit_pr_scan` (Boolean) Whether Deep Review is run on pull requests. Requires at least one vulnerability scan type to be enabled (fail_on_dependency_scan, fail_on_sast_scan, fail_on_iac_scan, fail_on_secrets_scan, fail_on_malware_scan, or minimum_license_severity other than none).
 
 ### Read-Only
 
 - `id` (String) Workspace all-repos PR checks settings identifier.
+
+## Import
+
+Import is supported using the following syntax.
+
+The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
+
+```shell
+# Import by the fixed workspace singleton ID. excluded_repos is recovered from the Aikido API.
+terraform import aikido_all_repo_pr_checks_settings.example all_repo_pr_checks_settings
+```

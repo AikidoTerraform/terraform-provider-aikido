@@ -26,6 +26,7 @@ const (
 
 var (
 	_ resource.Resource                   = &allPrChecksSettingsResource{}
+	_ resource.ResourceWithImportState    = &allPrChecksSettingsResource{}
 	_ resource.ResourceWithConfigure      = &allPrChecksSettingsResource{}
 	_ resource.ResourceWithValidateConfig = &allPrChecksSettingsResource{}
 )
@@ -80,7 +81,8 @@ func (r *allPrChecksSettingsResource) Schema(_ context.Context, _ resource.Schem
 				Optional:    true,
 				ElementType: types.Int64Type,
 				Description: "Repository IDs to exclude from the bulk configuration. " +
-					"Omitted or empty applies the settings to every active GitHub repository.",
+					"Omitted or empty applies the settings to every active GitHub repository. " +
+					"Persisted by Aikido and recovered on import and refresh.",
 			},
 			"minimum_severity": schema.StringAttribute{
 				Required:    true,
@@ -150,8 +152,7 @@ func (r *allPrChecksSettingsResource) Schema(_ context.Context, _ resource.Schem
 				Description: "Whether Deep Review is run on pull requests. " +
 					"Requires at least one vulnerability scan type to be enabled " +
 					"(fail_on_dependency_scan, fail_on_sast_scan, fail_on_iac_scan, fail_on_secrets_scan, fail_on_malware_scan, " +
-					"or minimum_license_severity other than none). " +
-					"Deep Review is currently only available in the EU region.",
+					"or minimum_license_severity other than none).",
 			},
 			"post_deep_audit_inline_comments_min_severity": schema.StringAttribute{
 				Optional: true,
@@ -295,6 +296,15 @@ func (r *allPrChecksSettingsResource) Read(ctx context.Context, request resource
 		return
 	}
 
+	excludedRepos, err := getAllPRChecksExcludedRepos(ctx, r.client)
+	if err != nil {
+		response.Diagnostics.AddError("Error reading all-repos PR checks exclusions", err.Error())
+		return
+	}
+
+	// Prefer the server-side exclusion list so import and refresh recover it.
+	prior.ExcludedRepos = excludedRepos
+
 	settingsList, err := prChecksSettingsListFromCache(ctx, r.client)
 	if err != nil {
 		response.Diagnostics.AddError("Error reading PR checks settings list", err.Error())
@@ -312,6 +322,19 @@ func (r *allPrChecksSettingsResource) Read(ctx context.Context, request resource
 
 	// get the settings for those actual repositories to update. If no drift, return the prior state. If drift, return the settings for the drifted repository.
 	settings := keepAllPRChecksSettingsUnlessDrifted(settingsList, actualReposToUpdate, prior)
+
+	// On import, state only has id. If we could not load settings from any
+	// managed repo, refuse instead of saving empty required attributes.
+	if (prior.MinimumSeverity.IsNull() || prior.MinimumSeverity.IsUnknown()) &&
+		settings.MinimumSeverity.ValueString() == "" {
+		response.Diagnostics.AddError(
+			"Cannot read all-repos PR checks settings",
+			"No active GitHub repository managed by this resource has PR checks settings. "+
+				"Import and refresh need at least one non-excluded active GitHub repository with PR checks settings, "+
+				"or an existing Terraform state that already contains the settings.",
+		)
+		return
+	}
 
 	// set the state
 	response.Diagnostics.Append(response.State.Set(ctx, settings)...)
@@ -337,6 +360,33 @@ func (r *allPrChecksSettingsResource) Update(ctx context.Context, request resour
 // Delete is a no-op: the Aikido API has no delete endpoint for PR checks settings.
 // Destroy only removes the resource from Terraform state; remote settings are left unchanged.
 func (r *allPrChecksSettingsResource) Delete(context.Context, resource.DeleteRequest, *resource.DeleteResponse) {
+}
+
+func (r *allPrChecksSettingsResource) ImportState(ctx context.Context, request resource.ImportStateRequest, response *resource.ImportStateResponse) {
+	if request.ID != allRepoPRChecksSettingsResourceID {
+		response.Diagnostics.AddError(
+			"Invalid import ID",
+			fmt.Sprintf("Expected %q, got %q.", allRepoPRChecksSettingsResourceID, request.ID),
+		)
+		return
+	}
+
+	response.Diagnostics.Append(response.State.SetAttribute(ctx, path.Root("id"), allRepoPRChecksSettingsResourceID)...)
+}
+
+// allPrChecksBulkExcludedReposAPI is the GET response for workspace-level bulk PR-checks exclusions.
+type allPrChecksBulkExcludedReposAPI struct {
+	ExcludedRepos []int64 `json:"excluded_repos"`
+}
+
+// getAllPRChecksExcludedRepos loads exclusions for Read/import refresh.
+func getAllPRChecksExcludedRepos(ctx context.Context, apiClient *client.Client) ([]int64, error) {
+	var api allPrChecksBulkExcludedReposAPI
+	if err := apiClient.Do(ctx, "GET", allPrChecksSettingsPath+"/excluded_repos", nil, &api); err != nil {
+		return nil, err
+	}
+
+	return helpers.NormalizeIDs(api.ExcludedRepos), nil
 }
 
 func (r *allPrChecksSettingsResource) setAllPRChecksSettings(ctx context.Context, planned allPrChecksSettingsModel) (allPrChecksSettingsModel, error) {

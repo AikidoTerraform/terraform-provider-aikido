@@ -11,6 +11,8 @@ import (
 
 	"github.com/AikidoTerraform/terraform-provider-aikido/internal/repositories"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
@@ -270,7 +272,7 @@ func TestAllPRChecksSettingsStateFromPlan(t *testing.T) {
 	}
 }
 
-func TestSetAllPRChecksSettings_PostsThenUsesPlan(t *testing.T) {
+func TestSetAllPRChecksSettings_PostsThenKeepsPlanExclusions(t *testing.T) {
 	var posts int
 	var gotPath string
 	var gotBody map[string]any
@@ -283,7 +285,9 @@ func TestSetAllPRChecksSettings_PostsThenUsesPlan(t *testing.T) {
 			if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
 				t.Errorf("decode body: %v", err)
 			}
-			_, _ = io.WriteString(w, `{"success":1}`)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"status": "ok",
+			})
 
 		default:
 			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
@@ -331,7 +335,7 @@ func TestSetAllPRChecksSettings_PostsThenUsesPlan(t *testing.T) {
 		t.Errorf("id = %q, want %s", state.ID.ValueString(), allRepoPRChecksSettingsResourceID)
 	}
 	if !reflect.DeepEqual(state.ExcludedRepos, []int64{1234}) {
-		t.Errorf("state excluded_repos = %#v", state.ExcludedRepos)
+		t.Errorf("state excluded_repos = %#v, want plan [1234]", state.ExcludedRepos)
 	}
 	if state.MinimumSeverity.ValueString() != "critical" {
 		t.Errorf("minimum_severity = %q, want critical from plan", state.MinimumSeverity.ValueString())
@@ -344,7 +348,9 @@ func TestSetAllPRChecksSettings_InvalidatesListCache(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodPost && r.URL.Path == allPrChecksSettingsPath:
-			_, _ = io.WriteString(w, `{"success":1}`)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"status": "ok",
+			})
 
 		case r.Method == http.MethodGet && r.URL.Path == prChecksSettingsPath:
 			if r.URL.Query().Get("filter_code_repo_id") != "" {
@@ -600,6 +606,138 @@ func TestKeepAllPRChecksSettingsUnlessDrifted_SkipsInactiveNonGitHubAndSynthetic
 
 		if !load(t, rows) {
 			t.Fatal("expected match: skipped repos must not hide or create drift")
+		}
+	})
+}
+
+func TestAllPrChecksSettingsImportState(t *testing.T) {
+	var response resource.ImportStateResponse
+	(&allPrChecksSettingsResource{}).ImportState(
+		context.Background(),
+		resource.ImportStateRequest{ID: "wrong"},
+		&response,
+	)
+	if !response.Diagnostics.HasError() {
+		t.Fatal("expected error for unexpected import id")
+	}
+}
+
+func TestAllPrChecksSettingsRead_ErrorsWhenImportHasNoManagedRepos(t *testing.T) {
+	repos := []repositories.Repository{
+		{ID: 12, Provider: "github", Active: true, ExternalRepoID: "R_kgDOI5RlKA"},
+		{ID: 1234, Provider: "github", Active: true},
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == allPrChecksSettingsPath+"/excluded_repos":
+			_ = json.NewEncoder(w).Encode(allPrChecksBulkExcludedReposAPI{ExcludedRepos: []int64{12, 1234}})
+
+		case r.Method == http.MethodGet && r.URL.Path == prChecksSettingsPath:
+			_ = json.NewEncoder(w).Encode([]prChecksSettingsAPI{
+				{ID: 1, CodeRepoID: 12, MinimumSeverity: "low"},
+			})
+
+		case isCodeReposList(r):
+			writeReposList(t, w, repos...)
+
+		default:
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	res := &allPrChecksSettingsResource{client: testClient(srv)}
+	var schemaResp resource.SchemaResponse
+	res.Schema(context.Background(), resource.SchemaRequest{}, &schemaResp)
+
+	prior := allPrChecksSettingsModel{ID: types.StringValue(allRepoPRChecksSettingsResourceID)}
+	state := tfsdk.State{Schema: schemaResp.Schema}
+	if diags := state.Set(context.Background(), prior); diags.HasError() {
+		t.Fatalf("set prior: %v", diags)
+	}
+
+	var response resource.ReadResponse
+	response.State = state
+	res.Read(context.Background(), resource.ReadRequest{State: state}, &response)
+	if !response.Diagnostics.HasError() {
+		t.Fatal("expected error when import has no managed repositories to sample")
+	}
+}
+
+func TestAllPrChecksSettingsRead_ErrorsWhenImportHasManagedReposButNoSettingsRows(t *testing.T) {
+	repos := []repositories.Repository{
+		{ID: 12, Provider: "github", Active: true, ExternalRepoID: "R_kgDOI5RlKA"},
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == allPrChecksSettingsPath+"/excluded_repos":
+			_ = json.NewEncoder(w).Encode(allPrChecksBulkExcludedReposAPI{ExcludedRepos: []int64{}})
+
+		case r.Method == http.MethodGet && r.URL.Path == prChecksSettingsPath:
+			_ = json.NewEncoder(w).Encode([]prChecksSettingsAPI{})
+
+		case isCodeReposList(r):
+			writeReposList(t, w, repos...)
+
+		default:
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	res := &allPrChecksSettingsResource{client: testClient(srv)}
+	var schemaResp resource.SchemaResponse
+	res.Schema(context.Background(), resource.SchemaRequest{}, &schemaResp)
+
+	prior := allPrChecksSettingsModel{ID: types.StringValue(allRepoPRChecksSettingsResourceID)}
+	state := tfsdk.State{Schema: schemaResp.Schema}
+	if diags := state.Set(context.Background(), prior); diags.HasError() {
+		t.Fatalf("set prior: %v", diags)
+	}
+
+	var response resource.ReadResponse
+	response.State = state
+	res.Read(context.Background(), resource.ReadRequest{State: state}, &response)
+	if !response.Diagnostics.HasError() {
+		t.Fatal("expected error when import has managed repositories but no PR-checks settings rows")
+	}
+}
+
+func TestGetAllPRChecksExcludedRepos(t *testing.T) {
+	t.Run("reads persisted exclusions", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodGet || r.URL.Path != allPrChecksSettingsPath+"/excluded_repos" {
+				t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
+			_ = json.NewEncoder(w).Encode(allPrChecksBulkExcludedReposAPI{ExcludedRepos: []int64{9, 12}})
+		}))
+		t.Cleanup(srv.Close)
+
+		got, err := getAllPRChecksExcludedRepos(context.Background(), testClient(srv))
+		if err != nil {
+			t.Fatalf("getAllPRChecksExcludedRepos: %v", err)
+		}
+		if !reflect.DeepEqual(got, []int64{9, 12}) {
+			t.Errorf("excluded_repos = %#v, want [9 12]", got)
+		}
+	})
+
+	t.Run("returns error on not found", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = io.WriteString(w, `{"message":"not found"}`)
+		}))
+		t.Cleanup(srv.Close)
+
+		got, err := getAllPRChecksExcludedRepos(context.Background(), testClient(srv))
+		if err == nil {
+			t.Fatalf("getAllPRChecksExcludedRepos returned %#v, want error", got)
 		}
 	})
 }
