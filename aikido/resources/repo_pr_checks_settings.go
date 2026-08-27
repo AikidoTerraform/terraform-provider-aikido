@@ -511,7 +511,12 @@ func mergePRChecksSettingsAPIAndPrior(api prChecksSettingsAPI, prior *prChecksSe
 	}
 
 	// Deprecated no-op: never read from the API; keep config/state as-is.
-	state.PostDeepAuditInlineCommentsMinSeverity = prior.PostDeepAuditInlineCommentsMinSeverity
+	// Treat unknown as null (first apply with omitted Optional+Computed has no prior state).
+	if prior.PostDeepAuditInlineCommentsMinSeverity.IsUnknown() {
+		state.PostDeepAuditInlineCommentsMinSeverity = types.StringNull()
+	} else {
+		state.PostDeepAuditInlineCommentsMinSeverity = prior.PostDeepAuditInlineCommentsMinSeverity
+	}
 
 	return state
 }

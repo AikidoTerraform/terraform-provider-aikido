@@ -363,6 +363,31 @@ func TestMapAndMergePRChecksAPI(t *testing.T) {
 			t.Errorf("deep audit inline = %q, want prior high (deprecated noop)", state.PostDeepAuditInlineCommentsMinSeverity.ValueString())
 		}
 	})
+
+	t.Run("merge normalizes unknown deprecated deep audit field to null", func(t *testing.T) {
+		prior := prChecksSettingsModel{
+			PostDeepAuditInlineCommentsMinSeverity: types.StringUnknown(),
+		}
+		state := mergePRChecksSettingsAPIAndPrior(prChecksSettingsAPI{
+			ID:                            1,
+			CodeRepoID:                    123,
+			MinimumSeverity:               "high",
+			FailOnDependencyScan:          true,
+			FailOnSastScan:                true,
+			FailOnIacScan:                 true,
+			FailOnSecretsScan:             true,
+			FailOnMalwareScan:             true,
+			PostInlineCommentsMinSeverity: "none",
+			MinimumLicenseSeverity:        "none",
+			FailOnCodeQualityScan:         false,
+			EnableCodeQualityScan:         false,
+			RunDeepAuditPRScan:            false,
+		}, &prior)
+
+		if !state.PostDeepAuditInlineCommentsMinSeverity.IsNull() {
+			t.Errorf("deep audit inline = %#v, want null", state.PostDeepAuditInlineCommentsMinSeverity)
+		}
+	})
 }
 
 func TestSetPRChecksSettings_PostsThenFetches(t *testing.T) {
@@ -406,6 +431,8 @@ func TestSetPRChecksSettings_PostsThenFetches(t *testing.T) {
 		EnableCodeQualityScan:                    types.BoolValue(false),
 		PostCodeQualityInlineCommentsMinSeverity: types.StringNull(),
 		RunDeepAuditPRScan:                       types.BoolValue(false),
+		// Omitted Optional+Computed: UseStateForUnknown has no prior on first apply.
+		PostDeepAuditInlineCommentsMinSeverity: types.StringUnknown(),
 	}
 
 	state, err := (&prChecksSettingsResource{client: testClient(srv)}).setPRChecksSettings(context.Background(), plan)
@@ -424,5 +451,8 @@ func TestSetPRChecksSettings_PostsThenFetches(t *testing.T) {
 	}
 	if state.MinimumSeverity.ValueString() != "critical" {
 		t.Errorf("minimum_severity = %q", state.MinimumSeverity.ValueString())
+	}
+	if !state.PostDeepAuditInlineCommentsMinSeverity.IsNull() {
+		t.Errorf("post_deep_audit_inline_comments_min_severity = %#v, want null", state.PostDeepAuditInlineCommentsMinSeverity)
 	}
 }
