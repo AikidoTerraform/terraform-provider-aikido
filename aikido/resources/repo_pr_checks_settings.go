@@ -73,7 +73,6 @@ type prChecksSettingsAPI struct {
 	EnableCodeQualityScan                    bool    `json:"enable_code_quality_scan"`
 	PostCodeQualityInlineCommentsMinSeverity *string `json:"post_code_quality_inline_comments_min_severity"`
 	RunDeepAuditPRScan                       bool    `json:"run_deep_audit_pr_scan"`
-	PostDeepAuditInlineCommentsMinSeverity   string  `json:"post_deep_audit_inline_comments_min_severity"`
 }
 
 func (r *prChecksSettingsResource) Metadata(_ context.Context, request resource.MetadataRequest, response *resource.MetadataResponse) {
@@ -177,11 +176,14 @@ func (r *prChecksSettingsResource) Schema(_ context.Context, _ resource.SchemaRe
 			"post_deep_audit_inline_comments_min_severity": schema.StringAttribute{
 				Optional: true,
 				Computed: true,
-				Description: "Minimum severity for Deep Review inline comments. " +
-					"One of: none, low, medium, high, critical. " +
-					"Ignored when run_deep_audit_pr_scan is false and may be omitted.",
+				Description: "Deprecated: ignored and has no effect. Kept only for backward compatibility. " +
+					"One of: none, low, medium, high, critical.",
+				DeprecationMessage: "post_deep_audit_inline_comments_min_severity is ignored and has no effect. It can be removed from configuration.",
 				Validators: []validator.String{
 					stringvalidator.OneOf("none", "low", "medium", "high", "critical"),
+				},
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
 		},
@@ -403,12 +405,6 @@ func constructPRChecksSettingsBody(planned prChecksSettingsModel) map[string]any
 
 	if !planned.RunDeepAuditPRScan.IsNull() && !planned.RunDeepAuditPRScan.IsUnknown() {
 		body["run_deep_audit_pr_scan"] = planned.RunDeepAuditPRScan.ValueBool()
-
-		if planned.RunDeepAuditPRScan.ValueBool() &&
-			!planned.PostDeepAuditInlineCommentsMinSeverity.IsNull() &&
-			!planned.PostDeepAuditInlineCommentsMinSeverity.IsUnknown() {
-			body["post_deep_audit_inline_comments_min_severity"] = planned.PostDeepAuditInlineCommentsMinSeverity.ValueString()
-		}
 	}
 
 	if !planned.PostInlineCommentsMinSeverity.IsNull() && !planned.PostInlineCommentsMinSeverity.IsUnknown() {
@@ -484,7 +480,6 @@ func mapPRChecksSettingsAPIToModel(api prChecksSettingsAPI) prChecksSettingsMode
 		RunDeepAuditPRScan:                       types.BoolValue(api.RunDeepAuditPRScan),
 		MinimumLicenseSeverity:                   types.StringValue(api.MinimumLicenseSeverity),
 		PostInlineCommentsMinSeverity:            types.StringValue(api.PostInlineCommentsMinSeverity),
-		PostDeepAuditInlineCommentsMinSeverity:   types.StringValue(api.PostDeepAuditInlineCommentsMinSeverity),
 		PostCodeQualityInlineCommentsMinSeverity: types.StringNull(),
 	}
 
@@ -498,10 +493,6 @@ func mapPRChecksSettingsAPIToModel(api prChecksSettingsAPI) prChecksSettingsMode
 
 	if api.PostInlineCommentsMinSeverity == "" {
 		state.PostInlineCommentsMinSeverity = types.StringValue("none")
-	}
-
-	if api.PostDeepAuditInlineCommentsMinSeverity == "" {
-		state.PostDeepAuditInlineCommentsMinSeverity = types.StringNull()
 	}
 
 	return state
@@ -519,7 +510,11 @@ func mergePRChecksSettingsAPIAndPrior(api prChecksSettingsAPI, prior *prChecksSe
 		state.PostCodeQualityInlineCommentsMinSeverity = prior.PostCodeQualityInlineCommentsMinSeverity
 	}
 
-	if !api.RunDeepAuditPRScan {
+	// Deprecated no-op: never read from the API; keep config/state as-is.
+	// Treat unknown as null (first apply with omitted Optional+Computed has no prior state).
+	if prior.PostDeepAuditInlineCommentsMinSeverity.IsUnknown() {
+		state.PostDeepAuditInlineCommentsMinSeverity = types.StringNull()
+	} else {
 		state.PostDeepAuditInlineCommentsMinSeverity = prior.PostDeepAuditInlineCommentsMinSeverity
 	}
 

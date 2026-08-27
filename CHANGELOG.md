@@ -1,3 +1,9 @@
+## 1.3.1
+
+NOTES:
+
+- `aikido_repo_pr_checks_settings` and `aikido_all_repo_pr_checks_settings`: `post_deep_audit_inline_comments_min_severity` is deprecated and ignored (no-op). Existing configurations keep working; the argument can be removed.
+
 ## 1.3.0
 
 FEATURES:
