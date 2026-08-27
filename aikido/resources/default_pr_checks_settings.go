@@ -50,7 +50,6 @@ type defaultPRChecksSettingsModel struct {
 	EnableCodeQualityScan                    types.Bool   `tfsdk:"enable_code_quality_scan"`
 	PostCodeQualityInlineCommentsMinSeverity types.String `tfsdk:"post_code_quality_inline_comments_min_severity"`
 	RunDeepAuditPRScan                       types.Bool   `tfsdk:"run_deep_audit_pr_scan"`
-	PostDeepAuditInlineCommentsMinSeverity   types.String `tfsdk:"post_deep_audit_inline_comments_min_severity"`
 }
 
 type defaultPRChecksSettingsAPI struct {
@@ -67,7 +66,6 @@ type defaultPRChecksSettingsAPI struct {
 	EnableCodeQualityScan                    bool    `json:"enable_code_quality_scan"`
 	PostCodeQualityInlineCommentsMinSeverity string  `json:"post_code_quality_inline_comments_min_severity"`
 	RunDeepAuditPRScan                       bool    `json:"run_deep_audit_pr_scan"`
-	PostDeepAuditInlineCommentsMinSeverity   string  `json:"post_deep_audit_inline_comments_min_severity"`
 }
 
 func (r *defaultPRChecksSettingsResource) Metadata(_ context.Context, request resource.MetadataRequest, response *resource.MetadataResponse) {
@@ -159,16 +157,6 @@ func (r *defaultPRChecksSettingsResource) Schema(_ context.Context, _ resource.S
 					"(fail_on_dependency_scan, fail_on_sast_scan, fail_on_iac_scan, fail_on_secrets_scan, fail_on_malware_scan, " +
 					"or minimum_license_severity other than none). " +
 					"Only available in the EU region.",
-			},
-			"post_deep_audit_inline_comments_min_severity": schema.StringAttribute{
-				Optional: true,
-				Computed: true,
-				Description: "Minimum severity for Deep Review inline comments. " +
-					"One of: none, low, medium, high, critical. " +
-					"Ignored when run_deep_audit_pr_scan is false and may be omitted.",
-				Validators: []validator.String{
-					stringvalidator.OneOf("none", "low", "medium", "high", "critical"),
-				},
 			},
 		},
 	}
@@ -410,12 +398,6 @@ func constructDefaultPRChecksSettingsBody(planned defaultPRChecksSettingsModel) 
 
 	if !planned.RunDeepAuditPRScan.IsNull() && !planned.RunDeepAuditPRScan.IsUnknown() {
 		body["run_deep_audit_pr_scan"] = planned.RunDeepAuditPRScan.ValueBool()
-
-		if planned.RunDeepAuditPRScan.ValueBool() &&
-			!planned.PostDeepAuditInlineCommentsMinSeverity.IsNull() &&
-			!planned.PostDeepAuditInlineCommentsMinSeverity.IsUnknown() {
-			body["post_deep_audit_inline_comments_min_severity"] = planned.PostDeepAuditInlineCommentsMinSeverity.ValueString()
-		}
 	}
 
 	if !planned.PostInlineCommentsMinSeverity.IsNull() && !planned.PostInlineCommentsMinSeverity.IsUnknown() {
@@ -439,7 +421,6 @@ func mapDefaultPRChecksSettingsAPIToModel(api defaultPRChecksSettingsAPI) defaul
 		RunDeepAuditPRScan:                       types.BoolValue(api.RunDeepAuditPRScan),
 		MinimumLicenseSeverity:                   types.StringValue(api.MinimumLicenseSeverity),
 		PostInlineCommentsMinSeverity:            types.StringValue("none"),
-		PostDeepAuditInlineCommentsMinSeverity:   types.StringValue(api.PostDeepAuditInlineCommentsMinSeverity),
 		PostCodeQualityInlineCommentsMinSeverity: types.StringNull(),
 	}
 
@@ -457,11 +438,6 @@ func mapDefaultPRChecksSettingsAPIToModel(api defaultPRChecksSettingsAPI) defaul
 		state.MinimumLicenseSeverity = types.StringValue("none")
 	}
 
-	// GET still returns a UI default ("low") when deep audit is off / no row exists.
-	if !api.RunDeepAuditPRScan || api.PostDeepAuditInlineCommentsMinSeverity == "" {
-		state.PostDeepAuditInlineCommentsMinSeverity = types.StringNull()
-	}
-
 	return state
 }
 
@@ -475,16 +451,11 @@ func mergeDefaultPRChecksSettingsAPIAndPrior(api defaultPRChecksSettingsAPI, pri
 		state.MinimumSeverity = prior.MinimumSeverity
 		state.PostInlineCommentsMinSeverity = prior.PostInlineCommentsMinSeverity
 		state.PostCodeQualityInlineCommentsMinSeverity = prior.PostCodeQualityInlineCommentsMinSeverity
-		state.PostDeepAuditInlineCommentsMinSeverity = prior.PostDeepAuditInlineCommentsMinSeverity
 		return state
 	}
 
 	if !api.EnableCodeQualityScan {
 		state.PostCodeQualityInlineCommentsMinSeverity = prior.PostCodeQualityInlineCommentsMinSeverity
-	}
-
-	if !api.RunDeepAuditPRScan {
-		state.PostDeepAuditInlineCommentsMinSeverity = prior.PostDeepAuditInlineCommentsMinSeverity
 	}
 
 	return state

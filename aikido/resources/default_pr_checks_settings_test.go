@@ -21,7 +21,6 @@ func TestConstructDefaultPRChecksBody(t *testing.T) {
 		EnableCodeQualityScan:                    types.BoolValue(true),
 		PostCodeQualityInlineCommentsMinSeverity: types.StringValue("medium"),
 		RunDeepAuditPRScan:                       types.BoolValue(true),
-		PostDeepAuditInlineCommentsMinSeverity:   types.StringValue("high"),
 	}
 
 	body := constructDefaultPRChecksSettingsBody(model)
@@ -36,9 +35,6 @@ func TestConstructDefaultPRChecksBody(t *testing.T) {
 	}
 	if body["run_deep_audit_pr_scan"] != true {
 		t.Fatalf("unexpected run_deep_audit_pr_scan: %#v", body["run_deep_audit_pr_scan"])
-	}
-	if body["post_deep_audit_inline_comments_min_severity"] != "high" {
-		t.Fatalf("unexpected post_deep_audit_inline_comments_min_severity: %#v", body["post_deep_audit_inline_comments_min_severity"])
 	}
 }
 
@@ -56,7 +52,6 @@ func TestConstructDefaultPRChecksBody_OmitsOptionalNullFields(t *testing.T) {
 		EnableCodeQualityScan:                    types.BoolValue(false),
 		PostCodeQualityInlineCommentsMinSeverity: types.StringNull(),
 		RunDeepAuditPRScan:                       types.BoolNull(),
-		PostDeepAuditInlineCommentsMinSeverity:   types.StringNull(),
 	}
 
 	body := constructDefaultPRChecksSettingsBody(model)
@@ -64,7 +59,6 @@ func TestConstructDefaultPRChecksBody_OmitsOptionalNullFields(t *testing.T) {
 		"post_inline_comments_min_severity",
 		"post_code_quality_inline_comments_min_severity",
 		"run_deep_audit_pr_scan",
-		"post_deep_audit_inline_comments_min_severity",
 	} {
 		if _, ok := body[key]; ok {
 			t.Fatalf("did not expect %s in body", key)
@@ -74,25 +68,21 @@ func TestConstructDefaultPRChecksBody_OmitsOptionalNullFields(t *testing.T) {
 
 func TestConstructDefaultPRChecksBody_DeepAuditDisabledOmitsInlineSeverity(t *testing.T) {
 	model := defaultPRChecksSettingsModel{
-		MinimumSeverity:                        types.StringValue("high"),
-		FailOnDependencyScan:                   types.BoolValue(true),
-		FailOnSastScan:                         types.BoolValue(true),
-		FailOnIacScan:                          types.BoolValue(true),
-		FailOnSecretsScan:                      types.BoolValue(true),
-		FailOnMalwareScan:                      types.BoolValue(true),
-		MinimumLicenseSeverity:                 types.StringValue("none"),
-		FailOnCodeQualityScan:                  types.BoolValue(false),
-		EnableCodeQualityScan:                  types.BoolValue(false),
-		RunDeepAuditPRScan:                     types.BoolValue(false),
-		PostDeepAuditInlineCommentsMinSeverity: types.StringValue("high"),
+		MinimumSeverity:        types.StringValue("high"),
+		FailOnDependencyScan:   types.BoolValue(true),
+		FailOnSastScan:         types.BoolValue(true),
+		FailOnIacScan:          types.BoolValue(true),
+		FailOnSecretsScan:      types.BoolValue(true),
+		FailOnMalwareScan:      types.BoolValue(true),
+		MinimumLicenseSeverity: types.StringValue("none"),
+		FailOnCodeQualityScan:  types.BoolValue(false),
+		EnableCodeQualityScan:  types.BoolValue(false),
+		RunDeepAuditPRScan:     types.BoolValue(false),
 	}
 
 	body := constructDefaultPRChecksSettingsBody(model)
 	if body["run_deep_audit_pr_scan"] != false {
 		t.Fatalf("unexpected run_deep_audit_pr_scan: %#v", body["run_deep_audit_pr_scan"])
-	}
-	if _, ok := body["post_deep_audit_inline_comments_min_severity"]; ok {
-		t.Fatalf("did not expect post_deep_audit_inline_comments_min_severity in body when deep audit is disabled")
 	}
 }
 
@@ -116,7 +106,6 @@ func TestValidateDefaultPRChecksSettings(t *testing.T) {
 		EnableCodeQualityScan:                    types.BoolValue(true),
 		PostCodeQualityInlineCommentsMinSeverity: types.StringValue("medium"),
 		RunDeepAuditPRScan:                       types.BoolValue(false),
-		PostDeepAuditInlineCommentsMinSeverity:   types.StringNull(),
 	}
 
 	tests := []struct {
@@ -197,7 +186,6 @@ func TestMapDefaultPRChecksAPIToModel_NormalizesGetDefaults(t *testing.T) {
 		EnableCodeQualityScan:                    false,
 		PostCodeQualityInlineCommentsMinSeverity: "none",
 		RunDeepAuditPRScan:                       false,
-		PostDeepAuditInlineCommentsMinSeverity:   "",
 	}
 
 	state := mapDefaultPRChecksSettingsAPIToModel(api)
@@ -212,9 +200,6 @@ func TestMapDefaultPRChecksAPIToModel_NormalizesGetDefaults(t *testing.T) {
 	}
 	if state.MinimumLicenseSeverity.ValueString() != "none" {
 		t.Fatalf("minimum_license_severity = %q, want none", state.MinimumLicenseSeverity.ValueString())
-	}
-	if !state.PostDeepAuditInlineCommentsMinSeverity.IsNull() {
-		t.Fatalf("post_deep_audit_inline_comments_min_severity = %#v, want null", state.PostDeepAuditInlineCommentsMinSeverity)
 	}
 }
 
@@ -231,15 +216,11 @@ func TestMapDefaultPRChecksAPIToModel_IgnoresDeepAuditUIDefaultWhenDisabled(t *t
 		EnableCodeQualityScan:                    false,
 		PostCodeQualityInlineCommentsMinSeverity: "none",
 		RunDeepAuditPRScan:                       false,
-		PostDeepAuditInlineCommentsMinSeverity:   "low",
 	}
 
 	state := mapDefaultPRChecksSettingsAPIToModel(api)
 	if state.FailOnDependencyScan.ValueBool() {
 		t.Fatalf("fail_on_dependency_scan = true, want false")
-	}
-	if !state.PostDeepAuditInlineCommentsMinSeverity.IsNull() {
-		t.Fatalf("post_deep_audit_inline_comments_min_severity = %#v, want null", state.PostDeepAuditInlineCommentsMinSeverity)
 	}
 	if !state.PostCodeQualityInlineCommentsMinSeverity.IsNull() {
 		t.Fatalf("post_code_quality_inline_comments_min_severity = %#v, want null", state.PostCodeQualityInlineCommentsMinSeverity)
@@ -262,7 +243,6 @@ func TestMapDefaultPRChecksAPIToModel_CodeQualityEnabled(t *testing.T) {
 		EnableCodeQualityScan:                    true,
 		PostCodeQualityInlineCommentsMinSeverity: "medium",
 		RunDeepAuditPRScan:                       true,
-		PostDeepAuditInlineCommentsMinSeverity:   "critical",
 	}
 
 	state := mapDefaultPRChecksSettingsAPIToModel(api)
@@ -271,9 +251,6 @@ func TestMapDefaultPRChecksAPIToModel_CodeQualityEnabled(t *testing.T) {
 	}
 	if state.PostCodeQualityInlineCommentsMinSeverity.ValueString() != "medium" {
 		t.Fatalf("post_code_quality_inline_comments_min_severity = %q, want medium", state.PostCodeQualityInlineCommentsMinSeverity.ValueString())
-	}
-	if state.PostDeepAuditInlineCommentsMinSeverity.ValueString() != "critical" {
-		t.Fatalf("post_deep_audit_inline_comments_min_severity = %q, want critical", state.PostDeepAuditInlineCommentsMinSeverity.ValueString())
 	}
 }
 
@@ -291,19 +268,14 @@ func TestMergeDefaultPRChecksAPIAndPrior_PreservesIgnoredFields(t *testing.T) {
 		EnableCodeQualityScan:                    false,
 		PostCodeQualityInlineCommentsMinSeverity: "none",
 		RunDeepAuditPRScan:                       false,
-		PostDeepAuditInlineCommentsMinSeverity:   "low",
 	}
 	prior := defaultPRChecksSettingsModel{
 		PostCodeQualityInlineCommentsMinSeverity: types.StringValue("medium"),
-		PostDeepAuditInlineCommentsMinSeverity:   types.StringValue("high"),
 	}
 
 	state := mergeDefaultPRChecksSettingsAPIAndPrior(api, &prior)
 	if state.PostCodeQualityInlineCommentsMinSeverity.ValueString() != "medium" {
 		t.Fatalf("post_code_quality_inline_comments_min_severity = %q, want medium from prior", state.PostCodeQualityInlineCommentsMinSeverity.ValueString())
-	}
-	if state.PostDeepAuditInlineCommentsMinSeverity.ValueString() != "high" {
-		t.Fatalf("post_deep_audit_inline_comments_min_severity = %q, want high from prior", state.PostDeepAuditInlineCommentsMinSeverity.ValueString())
 	}
 }
 
@@ -324,7 +296,6 @@ func TestMergeDefaultPRChecksAPIAndPrior_DeletedRowKeepsSeverityPlaceholders(t *
 		EnableCodeQualityScan:                    false,
 		PostCodeQualityInlineCommentsMinSeverity: "none",
 		RunDeepAuditPRScan:                       false,
-		PostDeepAuditInlineCommentsMinSeverity:   "low",
 	}
 	prior := defaultPRChecksSettingsModel{
 		ID:                                       types.StringValue(defaultPRChecksSettingsResourceID),
@@ -340,7 +311,6 @@ func TestMergeDefaultPRChecksAPIAndPrior_DeletedRowKeepsSeverityPlaceholders(t *
 		EnableCodeQualityScan:                    types.BoolValue(false),
 		PostCodeQualityInlineCommentsMinSeverity: types.StringValue("medium"),
 		RunDeepAuditPRScan:                       types.BoolValue(false),
-		PostDeepAuditInlineCommentsMinSeverity:   types.StringValue("high"),
 	}
 
 	state := mergeDefaultPRChecksSettingsAPIAndPrior(api, &prior)
@@ -362,9 +332,6 @@ func TestMergeDefaultPRChecksAPIAndPrior_DeletedRowKeepsSeverityPlaceholders(t *
 	if state.PostCodeQualityInlineCommentsMinSeverity.ValueString() != "medium" {
 		t.Fatalf("post_code_quality_inline_comments_min_severity = %q, want medium from prior", state.PostCodeQualityInlineCommentsMinSeverity.ValueString())
 	}
-	if state.PostDeepAuditInlineCommentsMinSeverity.ValueString() != "high" {
-		t.Fatalf("post_deep_audit_inline_comments_min_severity = %q, want high from prior", state.PostDeepAuditInlineCommentsMinSeverity.ValueString())
-	}
 }
 
 func TestMergeDefaultPRChecksAPIAndPrior_DeletedRowWithoutPriorMapsGet(t *testing.T) {
@@ -382,7 +349,6 @@ func TestMergeDefaultPRChecksAPIAndPrior_DeletedRowWithoutPriorMapsGet(t *testin
 		EnableCodeQualityScan:                    false,
 		PostCodeQualityInlineCommentsMinSeverity: "none",
 		RunDeepAuditPRScan:                       false,
-		PostDeepAuditInlineCommentsMinSeverity:   "low",
 	}
 
 	state := mergeDefaultPRChecksSettingsAPIAndPrior(api, nil)
@@ -400,8 +366,5 @@ func TestMergeDefaultPRChecksAPIAndPrior_DeletedRowWithoutPriorMapsGet(t *testin
 	}
 	if !state.PostCodeQualityInlineCommentsMinSeverity.IsNull() {
 		t.Fatalf("post_code_quality_inline_comments_min_severity = %#v, want null", state.PostCodeQualityInlineCommentsMinSeverity)
-	}
-	if !state.PostDeepAuditInlineCommentsMinSeverity.IsNull() {
-		t.Fatalf("post_deep_audit_inline_comments_min_severity = %#v, want null (ignore GET UI default)", state.PostDeepAuditInlineCommentsMinSeverity)
 	}
 }

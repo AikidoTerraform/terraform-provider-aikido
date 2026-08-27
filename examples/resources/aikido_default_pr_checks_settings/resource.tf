@@ -14,6 +14,5 @@ resource "aikido_default_pr_checks_settings" "example" {
   enable_code_quality_scan                       = true
   post_code_quality_inline_comments_min_severity = "medium"
 
-  run_deep_audit_pr_scan                       = true
-  post_deep_audit_inline_comments_min_severity = "high"
+  run_deep_audit_pr_scan = true
 }
