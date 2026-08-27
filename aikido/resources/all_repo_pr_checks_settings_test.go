@@ -728,7 +728,7 @@ func TestGetAllPRChecksExcludedRepos(t *testing.T) {
 		}
 	})
 
-	t.Run("treats not found as empty exclusions", func(t *testing.T) {
+	t.Run("returns error on not found", func(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusNotFound)
 			_, _ = io.WriteString(w, `{"message":"not found"}`)
@@ -736,11 +736,8 @@ func TestGetAllPRChecksExcludedRepos(t *testing.T) {
 		t.Cleanup(srv.Close)
 
 		got, err := getAllPRChecksExcludedRepos(context.Background(), testClient(srv))
-		if err != nil {
-			t.Fatalf("getAllPRChecksExcludedRepos: %v", err)
-		}
-		if !reflect.DeepEqual(got, []int64{}) {
-			t.Errorf("excluded_repos = %#v, want empty", got)
+		if err == nil {
+			t.Fatalf("getAllPRChecksExcludedRepos returned %#v, want error", got)
 		}
 	})
 }
