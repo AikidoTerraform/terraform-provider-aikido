@@ -55,7 +55,6 @@ type prChecksSettingsModel struct {
 	EnableCodeQualityScan                    types.Bool   `tfsdk:"enable_code_quality_scan"`
 	PostCodeQualityInlineCommentsMinSeverity types.String `tfsdk:"post_code_quality_inline_comments_min_severity"`
 	RunDeepAuditPRScan                       types.Bool   `tfsdk:"run_deep_audit_pr_scan"`
-	PostDeepAuditInlineCommentsMinSeverity   types.String `tfsdk:"post_deep_audit_inline_comments_min_severity"`
 }
 
 type prChecksSettingsAPI struct {
@@ -73,7 +72,6 @@ type prChecksSettingsAPI struct {
 	EnableCodeQualityScan                    bool    `json:"enable_code_quality_scan"`
 	PostCodeQualityInlineCommentsMinSeverity *string `json:"post_code_quality_inline_comments_min_severity"`
 	RunDeepAuditPRScan                       bool    `json:"run_deep_audit_pr_scan"`
-	PostDeepAuditInlineCommentsMinSeverity   string  `json:"post_deep_audit_inline_comments_min_severity"`
 }
 
 func (r *prChecksSettingsResource) Metadata(_ context.Context, request resource.MetadataRequest, response *resource.MetadataResponse) {
@@ -173,16 +171,6 @@ func (r *prChecksSettingsResource) Schema(_ context.Context, _ resource.SchemaRe
 					"(fail_on_dependency_scan, fail_on_sast_scan, fail_on_iac_scan, fail_on_secrets_scan, fail_on_malware_scan, " +
 					"or minimum_license_severity other than none). " +
 					"Deep Review is currently only available in the EU region.",
-			},
-			"post_deep_audit_inline_comments_min_severity": schema.StringAttribute{
-				Optional: true,
-				Computed: true,
-				Description: "Minimum severity for Deep Review inline comments. " +
-					"One of: none, low, medium, high, critical. " +
-					"Ignored when run_deep_audit_pr_scan is false and may be omitted.",
-				Validators: []validator.String{
-					stringvalidator.OneOf("none", "low", "medium", "high", "critical"),
-				},
 			},
 		},
 	}
@@ -403,12 +391,6 @@ func constructPRChecksSettingsBody(planned prChecksSettingsModel) map[string]any
 
 	if !planned.RunDeepAuditPRScan.IsNull() && !planned.RunDeepAuditPRScan.IsUnknown() {
 		body["run_deep_audit_pr_scan"] = planned.RunDeepAuditPRScan.ValueBool()
-
-		if planned.RunDeepAuditPRScan.ValueBool() &&
-			!planned.PostDeepAuditInlineCommentsMinSeverity.IsNull() &&
-			!planned.PostDeepAuditInlineCommentsMinSeverity.IsUnknown() {
-			body["post_deep_audit_inline_comments_min_severity"] = planned.PostDeepAuditInlineCommentsMinSeverity.ValueString()
-		}
 	}
 
 	if !planned.PostInlineCommentsMinSeverity.IsNull() && !planned.PostInlineCommentsMinSeverity.IsUnknown() {
@@ -484,7 +466,6 @@ func mapPRChecksSettingsAPIToModel(api prChecksSettingsAPI) prChecksSettingsMode
 		RunDeepAuditPRScan:                       types.BoolValue(api.RunDeepAuditPRScan),
 		MinimumLicenseSeverity:                   types.StringValue(api.MinimumLicenseSeverity),
 		PostInlineCommentsMinSeverity:            types.StringValue(api.PostInlineCommentsMinSeverity),
-		PostDeepAuditInlineCommentsMinSeverity:   types.StringValue(api.PostDeepAuditInlineCommentsMinSeverity),
 		PostCodeQualityInlineCommentsMinSeverity: types.StringNull(),
 	}
 
@@ -500,10 +481,6 @@ func mapPRChecksSettingsAPIToModel(api prChecksSettingsAPI) prChecksSettingsMode
 		state.PostInlineCommentsMinSeverity = types.StringValue("none")
 	}
 
-	if api.PostDeepAuditInlineCommentsMinSeverity == "" {
-		state.PostDeepAuditInlineCommentsMinSeverity = types.StringNull()
-	}
-
 	return state
 }
 
@@ -517,10 +494,6 @@ func mergePRChecksSettingsAPIAndPrior(api prChecksSettingsAPI, prior *prChecksSe
 
 	if !api.EnableCodeQualityScan {
 		state.PostCodeQualityInlineCommentsMinSeverity = prior.PostCodeQualityInlineCommentsMinSeverity
-	}
-
-	if !api.RunDeepAuditPRScan {
-		state.PostDeepAuditInlineCommentsMinSeverity = prior.PostDeepAuditInlineCommentsMinSeverity
 	}
 
 	return state

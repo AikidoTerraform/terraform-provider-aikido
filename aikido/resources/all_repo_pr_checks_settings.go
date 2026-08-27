@@ -53,7 +53,6 @@ type allPrChecksSettingsModel struct {
 	EnableCodeQualityScan                    types.Bool   `tfsdk:"enable_code_quality_scan"`
 	PostCodeQualityInlineCommentsMinSeverity types.String `tfsdk:"post_code_quality_inline_comments_min_severity"`
 	RunDeepAuditPRScan                       types.Bool   `tfsdk:"run_deep_audit_pr_scan"`
-	PostDeepAuditInlineCommentsMinSeverity   types.String `tfsdk:"post_deep_audit_inline_comments_min_severity"`
 }
 
 func (r *allPrChecksSettingsResource) Metadata(_ context.Context, request resource.MetadataRequest, response *resource.MetadataResponse) {
@@ -152,16 +151,6 @@ func (r *allPrChecksSettingsResource) Schema(_ context.Context, _ resource.Schem
 					"(fail_on_dependency_scan, fail_on_sast_scan, fail_on_iac_scan, fail_on_secrets_scan, fail_on_malware_scan, " +
 					"or minimum_license_severity other than none). " +
 					"Deep Review is currently only available in the EU region.",
-			},
-			"post_deep_audit_inline_comments_min_severity": schema.StringAttribute{
-				Optional: true,
-				Computed: true,
-				Description: "Minimum severity for Deep Review inline comments. " +
-					"One of: none, low, medium, high, critical. " +
-					"Ignored when run_deep_audit_pr_scan is false and may be omitted.",
-				Validators: []validator.String{
-					stringvalidator.OneOf("none", "low", "medium", "high", "critical"),
-				},
 			},
 		},
 	}
@@ -371,12 +360,6 @@ func constructAllPRChecksSettingsBody(planned allPrChecksSettingsModel) map[stri
 
 	if !planned.RunDeepAuditPRScan.IsNull() && !planned.RunDeepAuditPRScan.IsUnknown() {
 		body["run_deep_audit_pr_scan"] = planned.RunDeepAuditPRScan.ValueBool()
-
-		if planned.RunDeepAuditPRScan.ValueBool() &&
-			!planned.PostDeepAuditInlineCommentsMinSeverity.IsNull() &&
-			!planned.PostDeepAuditInlineCommentsMinSeverity.IsUnknown() {
-			body["post_deep_audit_inline_comments_min_severity"] = planned.PostDeepAuditInlineCommentsMinSeverity.ValueString()
-		}
 	}
 
 	if !planned.PostInlineCommentsMinSeverity.IsNull() && !planned.PostInlineCommentsMinSeverity.IsUnknown() {
@@ -461,8 +444,7 @@ func allPRChecksSettingsEqual(currentSettings, previousSettings allPrChecksSetti
 		currentSettings.FailOnCodeQualityScan.Equal(previousSettings.FailOnCodeQualityScan) &&
 		currentSettings.EnableCodeQualityScan.Equal(previousSettings.EnableCodeQualityScan) &&
 		currentSettings.PostCodeQualityInlineCommentsMinSeverity.Equal(previousSettings.PostCodeQualityInlineCommentsMinSeverity) &&
-		currentSettings.RunDeepAuditPRScan.Equal(previousSettings.RunDeepAuditPRScan) &&
-		currentSettings.PostDeepAuditInlineCommentsMinSeverity.Equal(previousSettings.PostDeepAuditInlineCommentsMinSeverity)
+		currentSettings.RunDeepAuditPRScan.Equal(previousSettings.RunDeepAuditPRScan)
 }
 
 func allPRChecksSettingsFromAPI(api prChecksSettingsAPI, prior *allPrChecksSettingsModel) allPrChecksSettingsModel {
@@ -470,7 +452,6 @@ func allPRChecksSettingsFromAPI(api prChecksSettingsAPI, prior *allPrChecksSetti
 	if prior != nil {
 		perRepoPrior = &prChecksSettingsModel{
 			PostCodeQualityInlineCommentsMinSeverity: prior.PostCodeQualityInlineCommentsMinSeverity,
-			PostDeepAuditInlineCommentsMinSeverity:   prior.PostDeepAuditInlineCommentsMinSeverity,
 		}
 	}
 
@@ -489,7 +470,6 @@ func allPRChecksSettingsFromAPI(api prChecksSettingsAPI, prior *allPrChecksSetti
 		EnableCodeQualityScan:                    merged.EnableCodeQualityScan,
 		PostCodeQualityInlineCommentsMinSeverity: merged.PostCodeQualityInlineCommentsMinSeverity,
 		RunDeepAuditPRScan:                       merged.RunDeepAuditPRScan,
-		PostDeepAuditInlineCommentsMinSeverity:   merged.PostDeepAuditInlineCommentsMinSeverity,
 	}
 
 	if prior != nil {
@@ -514,14 +494,6 @@ func allPRChecksSettingsStateFromPlan(planned allPrChecksSettingsModel) allPrChe
 
 	if !state.EnableCodeQualityScan.ValueBool() && planned.PostCodeQualityInlineCommentsMinSeverity.IsUnknown() {
 		state.PostCodeQualityInlineCommentsMinSeverity = types.StringNull()
-	}
-
-	if planned.PostDeepAuditInlineCommentsMinSeverity.IsNull() || planned.PostDeepAuditInlineCommentsMinSeverity.IsUnknown() {
-		if state.RunDeepAuditPRScan.ValueBool() {
-			state.PostDeepAuditInlineCommentsMinSeverity = types.StringValue("none")
-		} else {
-			state.PostDeepAuditInlineCommentsMinSeverity = types.StringNull()
-		}
 	}
 
 	return state

@@ -42,7 +42,6 @@ func TestConstructPRChecksBody(t *testing.T) {
 				m.EnableCodeQualityScan = types.BoolValue(true)
 				m.PostCodeQualityInlineCommentsMinSeverity = types.StringValue("medium")
 				m.RunDeepAuditPRScan = types.BoolValue(true)
-				m.PostDeepAuditInlineCommentsMinSeverity = types.StringValue("high")
 			},
 			check: func(t *testing.T, body map[string]any) {
 				t.Helper()
@@ -58,9 +57,6 @@ func TestConstructPRChecksBody(t *testing.T) {
 				if body["run_deep_audit_pr_scan"] != true {
 					t.Errorf("deep audit = %#v", body["run_deep_audit_pr_scan"])
 				}
-				if body["post_deep_audit_inline_comments_min_severity"] != "high" {
-					t.Errorf("deep audit inline = %#v", body["post_deep_audit_inline_comments_min_severity"])
-				}
 			},
 		},
 		{
@@ -68,7 +64,6 @@ func TestConstructPRChecksBody(t *testing.T) {
 			mutate: func(m *prChecksSettingsModel) {
 				m.PostInlineCommentsMinSeverity = types.StringNull()
 				m.RunDeepAuditPRScan = types.BoolNull()
-				m.PostDeepAuditInlineCommentsMinSeverity = types.StringNull()
 			},
 			check: func(t *testing.T, body map[string]any) {
 				t.Helper()
@@ -76,7 +71,6 @@ func TestConstructPRChecksBody(t *testing.T) {
 					"post_inline_comments_min_severity",
 					"post_code_quality_inline_comments_min_severity",
 					"run_deep_audit_pr_scan",
-					"post_deep_audit_inline_comments_min_severity",
 				} {
 					if _, ok := body[key]; ok {
 						t.Errorf("did not expect %s in body", key)
@@ -108,15 +102,11 @@ func TestConstructPRChecksBody(t *testing.T) {
 			mutate: func(m *prChecksSettingsModel) {
 				m.MinimumLicenseSeverity = types.StringValue("none")
 				m.RunDeepAuditPRScan = types.BoolValue(false)
-				m.PostDeepAuditInlineCommentsMinSeverity = types.StringValue("high")
 			},
 			check: func(t *testing.T, body map[string]any) {
 				t.Helper()
 				if body["run_deep_audit_pr_scan"] != false {
 					t.Errorf("deep audit = %#v", body["run_deep_audit_pr_scan"])
-				}
-				if _, ok := body["post_deep_audit_inline_comments_min_severity"]; ok {
-					t.Error("did not expect deep audit inline when disabled")
 				}
 			},
 		},
@@ -152,7 +142,6 @@ func TestValidatePRChecksSettings(t *testing.T) {
 		EnableCodeQualityScan:                    types.BoolValue(true),
 		PostCodeQualityInlineCommentsMinSeverity: types.StringValue("medium"),
 		RunDeepAuditPRScan:                       types.BoolValue(false),
-		PostDeepAuditInlineCommentsMinSeverity:   types.StringNull(),
 	}
 
 	tests := []struct {
@@ -276,9 +265,6 @@ func TestMapAndMergePRChecksAPI(t *testing.T) {
 		if state.MinimumLicenseSeverity.ValueString() != "none" {
 			t.Errorf("license = %q, want none", state.MinimumLicenseSeverity.ValueString())
 		}
-		if !state.PostDeepAuditInlineCommentsMinSeverity.IsNull() {
-			t.Errorf("deep audit inline = %#v, want null", state.PostDeepAuditInlineCommentsMinSeverity)
-		}
 	})
 
 	t.Run("maps enabled code quality and deep audit", func(t *testing.T) {
@@ -298,7 +284,6 @@ func TestMapAndMergePRChecksAPI(t *testing.T) {
 			EnableCodeQualityScan:                    true,
 			PostCodeQualityInlineCommentsMinSeverity: &severity,
 			RunDeepAuditPRScan:                       true,
-			PostDeepAuditInlineCommentsMinSeverity:   "critical",
 		})
 
 		if state.ID.ValueString() != "1" {
@@ -307,38 +292,30 @@ func TestMapAndMergePRChecksAPI(t *testing.T) {
 		if state.PostCodeQualityInlineCommentsMinSeverity.ValueString() != "medium" {
 			t.Errorf("cq inline = %q", state.PostCodeQualityInlineCommentsMinSeverity.ValueString())
 		}
-		if state.PostDeepAuditInlineCommentsMinSeverity.ValueString() != "critical" {
-			t.Errorf("deep audit inline = %q", state.PostDeepAuditInlineCommentsMinSeverity.ValueString())
-		}
 	})
 
 	t.Run("merge keeps ignored fields when features disabled", func(t *testing.T) {
 		prior := prChecksSettingsModel{
 			PostCodeQualityInlineCommentsMinSeverity: types.StringValue("medium"),
-			PostDeepAuditInlineCommentsMinSeverity:   types.StringValue("high"),
 		}
 		state := mergePRChecksSettingsAPIAndPrior(prChecksSettingsAPI{
-			ID:                                     1,
-			CodeRepoID:                             123,
-			MinimumSeverity:                        "high",
-			FailOnDependencyScan:                   true,
-			FailOnSastScan:                         true,
-			FailOnIacScan:                          true,
-			FailOnSecretsScan:                      true,
-			FailOnMalwareScan:                      true,
-			PostInlineCommentsMinSeverity:          "none",
-			MinimumLicenseSeverity:                 "none",
-			FailOnCodeQualityScan:                  false,
-			EnableCodeQualityScan:                  false,
-			RunDeepAuditPRScan:                     false,
-			PostDeepAuditInlineCommentsMinSeverity: "low",
+			ID:                            1,
+			CodeRepoID:                    123,
+			MinimumSeverity:               "high",
+			FailOnDependencyScan:          true,
+			FailOnSastScan:                true,
+			FailOnIacScan:                 true,
+			FailOnSecretsScan:             true,
+			FailOnMalwareScan:             true,
+			PostInlineCommentsMinSeverity: "none",
+			MinimumLicenseSeverity:        "none",
+			FailOnCodeQualityScan:         false,
+			EnableCodeQualityScan:         false,
+			RunDeepAuditPRScan:            false,
 		}, &prior)
 
 		if state.PostCodeQualityInlineCommentsMinSeverity.ValueString() != "medium" {
 			t.Errorf("cq inline = %q, want prior medium", state.PostCodeQualityInlineCommentsMinSeverity.ValueString())
-		}
-		if state.PostDeepAuditInlineCommentsMinSeverity.ValueString() != "high" {
-			t.Errorf("deep audit inline = %q, want prior high", state.PostDeepAuditInlineCommentsMinSeverity.ValueString())
 		}
 	})
 
@@ -346,7 +323,6 @@ func TestMapAndMergePRChecksAPI(t *testing.T) {
 		severity := "critical"
 		prior := prChecksSettingsModel{
 			PostCodeQualityInlineCommentsMinSeverity: types.StringValue("low"),
-			PostDeepAuditInlineCommentsMinSeverity:   types.StringValue("high"),
 		}
 		state := mergePRChecksSettingsAPIAndPrior(prChecksSettingsAPI{
 			ID:                                       1,
@@ -363,14 +339,10 @@ func TestMapAndMergePRChecksAPI(t *testing.T) {
 			EnableCodeQualityScan:                    true,
 			PostCodeQualityInlineCommentsMinSeverity: &severity,
 			RunDeepAuditPRScan:                       true,
-			PostDeepAuditInlineCommentsMinSeverity:   "medium",
 		}, &prior)
 
 		if state.PostCodeQualityInlineCommentsMinSeverity.ValueString() != "critical" {
 			t.Errorf("cq inline = %q, want API critical", state.PostCodeQualityInlineCommentsMinSeverity.ValueString())
-		}
-		if state.PostDeepAuditInlineCommentsMinSeverity.ValueString() != "medium" {
-			t.Errorf("deep audit inline = %q, want API medium", state.PostDeepAuditInlineCommentsMinSeverity.ValueString())
 		}
 	})
 }
@@ -416,7 +388,6 @@ func TestSetPRChecksSettings_PostsThenFetches(t *testing.T) {
 		EnableCodeQualityScan:                    types.BoolValue(false),
 		PostCodeQualityInlineCommentsMinSeverity: types.StringNull(),
 		RunDeepAuditPRScan:                       types.BoolValue(false),
-		PostDeepAuditInlineCommentsMinSeverity:   types.StringNull(),
 	}
 
 	state, err := (&prChecksSettingsResource{client: testClient(srv)}).setPRChecksSettings(context.Background(), plan)

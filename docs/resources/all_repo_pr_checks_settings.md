@@ -43,8 +43,7 @@ resource "aikido_all_repo_pr_checks_settings" "example" {
   enable_code_quality_scan                       = false
   post_code_quality_inline_comments_min_severity = "low"
 
-  run_deep_audit_pr_scan                       = false
-  post_deep_audit_inline_comments_min_severity = "medium"
+  run_deep_audit_pr_scan = false
 }
 ```
 
@@ -67,7 +66,6 @@ resource "aikido_all_repo_pr_checks_settings" "example" {
 
 - `excluded_repos` (Set of Number) Repository IDs to exclude from the bulk configuration. Omitted or empty applies the settings to every active GitHub repository.
 - `post_code_quality_inline_comments_min_severity` (String) Minimum severity for code quality inline comments. Required when enable_code_quality_scan is true (one of: low, medium, high, critical). Ignored when enable_code_quality_scan is false and may be omitted.
-- `post_deep_audit_inline_comments_min_severity` (String) Minimum severity for Deep Review inline comments. One of: none, low, medium, high, critical. Ignored when run_deep_audit_pr_scan is false and may be omitted.
 - `post_inline_comments_min_severity` (String) Minimum severity for inline comments. Defaults to none when omitted. One of: none, low, medium, high, critical.
 - `run_deep_audit_pr_scan` (Boolean) Whether Deep Review is run on pull requests. Requires at least one vulnerability scan type to be enabled (fail_on_dependency_scan, fail_on_sast_scan, fail_on_iac_scan, fail_on_secrets_scan, fail_on_malware_scan, or minimum_license_severity other than none). Deep Review is currently only available in the EU region.
 
