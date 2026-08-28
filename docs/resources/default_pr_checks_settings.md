@@ -13,7 +13,7 @@ Manages the workspace default pull request checks configuration. This configurat
 There is exactly one default PR checks settings object per workspace, so define this resource at most once.
 When `enable_code_quality_scan` is `true`, `post_code_quality_inline_comments_min_severity` is required.
 When `enable_code_quality_scan` is `false`, `fail_on_code_quality_scan` must be `false`.
-Deep Review (`run_deep_audit_pr_scan`) requires at least one vulnerability scan type to be enabled and is only available in the EU region.
+Deep Review (`run_deep_audit_pr_scan`) requires at least one vulnerability scan type to be enabled.
 
 ## Example Usage
 
@@ -58,7 +58,7 @@ resource "aikido_default_pr_checks_settings" "example" {
 
 - `post_code_quality_inline_comments_min_severity` (String) Minimum severity for code quality inline comments. Required when enable_code_quality_scan is true (one of: low, medium, high, critical). Ignored when enable_code_quality_scan is false and may be omitted.
 - `post_inline_comments_min_severity` (String) Minimum severity for inline comments. Defaults to none when omitted. One of: none, low, medium, high, critical.
-- `run_deep_audit_pr_scan` (Boolean) Whether Deep Review is run on pull requests. Requires at least one vulnerability scan type to be enabled (fail_on_dependency_scan, fail_on_sast_scan, fail_on_iac_scan, fail_on_secrets_scan, fail_on_malware_scan, or minimum_license_severity other than none). Only available in the EU region.
+- `run_deep_audit_pr_scan` (Boolean) Whether Deep Review is run on pull requests. Requires at least one vulnerability scan type to be enabled (fail_on_dependency_scan, fail_on_sast_scan, fail_on_iac_scan, fail_on_secrets_scan, fail_on_malware_scan, or minimum_license_severity other than none).
 
 ### Read-Only
 

@@ -150,8 +150,7 @@ func (r *allPrChecksSettingsResource) Schema(_ context.Context, _ resource.Schem
 				Description: "Whether Deep Review is run on pull requests. " +
 					"Requires at least one vulnerability scan type to be enabled " +
 					"(fail_on_dependency_scan, fail_on_sast_scan, fail_on_iac_scan, fail_on_secrets_scan, fail_on_malware_scan, " +
-					"or minimum_license_severity other than none). " +
-					"Deep Review is currently only available in the EU region.",
+					"or minimum_license_severity other than none).",
 			},
 			"post_deep_audit_inline_comments_min_severity": schema.StringAttribute{
 				Optional: true,
