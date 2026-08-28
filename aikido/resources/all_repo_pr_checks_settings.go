@@ -156,11 +156,14 @@ func (r *allPrChecksSettingsResource) Schema(_ context.Context, _ resource.Schem
 			"post_deep_audit_inline_comments_min_severity": schema.StringAttribute{
 				Optional: true,
 				Computed: true,
-				Description: "Minimum severity for Deep Review inline comments. " +
-					"One of: none, low, medium, high, critical. " +
-					"Ignored when run_deep_audit_pr_scan is false and may be omitted.",
+				Description: "Deprecated: ignored and has no effect. Kept only for backward compatibility. " +
+					"One of: none, low, medium, high, critical.",
+				DeprecationMessage: "post_deep_audit_inline_comments_min_severity is ignored and has no effect. It can be removed from configuration.",
 				Validators: []validator.String{
 					stringvalidator.OneOf("none", "low", "medium", "high", "critical"),
+				},
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
 		},
@@ -371,12 +374,6 @@ func constructAllPRChecksSettingsBody(planned allPrChecksSettingsModel) map[stri
 
 	if !planned.RunDeepAuditPRScan.IsNull() && !planned.RunDeepAuditPRScan.IsUnknown() {
 		body["run_deep_audit_pr_scan"] = planned.RunDeepAuditPRScan.ValueBool()
-
-		if planned.RunDeepAuditPRScan.ValueBool() &&
-			!planned.PostDeepAuditInlineCommentsMinSeverity.IsNull() &&
-			!planned.PostDeepAuditInlineCommentsMinSeverity.IsUnknown() {
-			body["post_deep_audit_inline_comments_min_severity"] = planned.PostDeepAuditInlineCommentsMinSeverity.ValueString()
-		}
 	}
 
 	if !planned.PostInlineCommentsMinSeverity.IsNull() && !planned.PostInlineCommentsMinSeverity.IsUnknown() {
@@ -516,12 +513,9 @@ func allPRChecksSettingsStateFromPlan(planned allPrChecksSettingsModel) allPrChe
 		state.PostCodeQualityInlineCommentsMinSeverity = types.StringNull()
 	}
 
-	if planned.PostDeepAuditInlineCommentsMinSeverity.IsNull() || planned.PostDeepAuditInlineCommentsMinSeverity.IsUnknown() {
-		if state.RunDeepAuditPRScan.ValueBool() {
-			state.PostDeepAuditInlineCommentsMinSeverity = types.StringValue("none")
-		} else {
-			state.PostDeepAuditInlineCommentsMinSeverity = types.StringNull()
-		}
+	// Deprecated no-op: keep config value; treat unknown as null.
+	if planned.PostDeepAuditInlineCommentsMinSeverity.IsUnknown() {
+		state.PostDeepAuditInlineCommentsMinSeverity = types.StringNull()
 	}
 
 	return state

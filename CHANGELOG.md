@@ -2,7 +2,13 @@
 
 FEATURES:
 
-- **New Resource:** `aikido_default_pr_checks_settings` — manages the workspace default pull request checks settings applied to newly activated repositories. 
+- **New Resource:** `aikido_default_pr_checks_settings` — manages the workspace default pull request checks settings applied to newly activated repositories.
+
+## 1.3.1
+
+NOTES:
+
+- `aikido_repo_pr_checks_settings` and `aikido_all_repo_pr_checks_settings`: `post_deep_audit_inline_comments_min_severity` is deprecated and ignored (no-op). Existing configurations keep working; the argument can be removed.
 
 ## 1.3.0
 
