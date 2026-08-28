@@ -19,6 +19,7 @@ Deep Review (`run_deep_audit_pr_scan`) requires at least one vulnerability scan 
 
 ```terraform
 # Manages the workspace default pull request checks configuration for newly activated repositories.
+# Does not update existing repositories.
 resource "aikido_default_pr_checks_settings" "example" {
   minimum_severity                  = "high"
   fail_on_dependency_scan           = true
@@ -28,7 +29,7 @@ resource "aikido_default_pr_checks_settings" "example" {
   fail_on_malware_scan              = true
   post_inline_comments_min_severity = "critical"
 
-  minimum_license_severity = "high"
+  minimum_license_severity = "none"
 
   fail_on_code_quality_scan                      = true
   enable_code_quality_scan                       = true
@@ -50,7 +51,7 @@ resource "aikido_default_pr_checks_settings" "example" {
 - `fail_on_malware_scan` (Boolean) Whether CI checks fail for new malware issues.
 - `fail_on_sast_scan` (Boolean) Whether CI checks fail for new SAST issues.
 - `fail_on_secrets_scan` (Boolean) Whether CI checks fail for new secrets issues.
-- `minimum_license_severity` (String) Minimum license severity for failing CI checks. One of: none, high, critical. Set to none to disable license scanning.
+- `minimum_license_severity` (String) Minimum license severity for failing CI checks. One of: none, high, critical. Set to none to disable license scanning. High and critical are available on Pro or higher plans.
 - `minimum_severity` (String) Minimum severity of new issues for when the CI check fails. One of: low, medium, high, critical, always_pass_check.
 
 ### Optional

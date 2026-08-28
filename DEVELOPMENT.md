@@ -183,7 +183,7 @@ resource "aikido_default_pr_checks_settings" "example" {
   fail_on_malware_scan                            = true
   post_inline_comments_min_severity               = "critical"
 
-  minimum_license_severity                        = "high"
+  minimum_license_severity                        = "none"
 
   fail_on_code_quality_scan                       = true
   enable_code_quality_scan                        = true

@@ -125,7 +125,7 @@ func (r *defaultPRChecksSettingsResource) Schema(_ context.Context, _ resource.S
 			"minimum_license_severity": schema.StringAttribute{
 				Required: true,
 				Description: "Minimum license severity for failing CI checks. One of: none, high, critical. " +
-					"Set to none to disable license scanning.",
+					"Set to none to disable license scanning. High and critical are available on Pro or higher plans.",
 				Validators: []validator.String{
 					stringvalidator.OneOf("none", "high", "critical"),
 				},
@@ -359,6 +359,19 @@ func (r *defaultPRChecksSettingsResource) setDefaultPRChecksSettings(ctx context
 	apiSettings, err := getDefaultPRChecksSettings(ctx, r.client)
 	if err != nil {
 		return defaultPRChecksSettingsModel{}, err
+	}
+
+	requestedLicenseSeverity := planned.MinimumLicenseSeverity.ValueString()
+	appliedLicenseSeverity := apiSettings.MinimumLicenseSeverity
+	if appliedLicenseSeverity == "" {
+		appliedLicenseSeverity = "none"
+	}
+	if requestedLicenseSeverity != appliedLicenseSeverity {
+		return defaultPRChecksSettingsModel{}, fmt.Errorf(
+			"minimum_license_severity %q was not applied; Aikido returned %q; license scanning is available on Pro or higher plans; set minimum_license_severity to \"none\" or contact Aikido",
+			requestedLicenseSeverity,
+			appliedLicenseSeverity,
+		)
 	}
 
 	return mergeDefaultPRChecksSettingsAPIAndPrior(apiSettings, &planned), nil
