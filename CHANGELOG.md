@@ -1,3 +1,9 @@
+## 1.4.0
+
+FEATURES:
+
+- **New Resource:** `aikido_default_pr_checks_settings` — manages the workspace default pull request checks settings applied to newly activated repositories.
+
 ## 1.3.1
 
 NOTES:

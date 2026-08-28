@@ -123,6 +123,7 @@ func (p *aikidoProvider) Resources(_ context.Context) []func() resource.Resource
 		resources.NewAutofixPentestSettingsResource,
 		resources.NewRepoPRChecksSettingsResource,
 		resources.NewAllRepoPRChecksSettingsResource,
+		resources.NewDefaultPRChecksSettingsResource,
 	}
 }
 
