@@ -168,12 +168,9 @@ func (r *teamUserResource) Delete(ctx context.Context, request resource.DeleteRe
 		return
 	}
 
-	if err := r.removeMember(ctx, priorState.TeamID.ValueInt64(), priorState.UserID.ValueInt64()); err != nil {
-		if client.NotFound(err) {
-			return
-		}
-		response.Diagnostics.AddError("Error removing user from team", err.Error())
-	}
+	response.Diagnostics.Append(
+		r.deleteMembership(ctx, priorState.TeamID.ValueInt64(), priorState.UserID.ValueInt64())...,
+	)
 }
 
 // ImportState adopts an existing membership from a team_id:user_id pair. The
@@ -210,13 +207,18 @@ func (r *teamUserResource) createMembership(ctx context.Context, planned teamUse
 	}
 
 	if err := r.addMember(ctx, teamID, userID); err != nil {
-		// One 404 covers an unknown team and an unknown user, so name both.
-		diagnostics.AddError(
-			"Error adding user to team",
-			fmt.Sprintf("%s\n\nAikido answers the same error for a team it does not know and a user it does not know. "+
-				"Check that team %d exists and that user %d belongs to this workspace.", err, teamID, userID),
-		)
-		return teamUserModel{}, diagnostics
+		// The write may have committed before the response was lost. Adding
+		// someone who is already a member succeeds, so the membership itself is
+		// the authority on whether this failed.
+		users.InvalidateTeam(r.client, teamID)
+		found, readDiagnostics := r.readMembership(ctx, teamID, userID)
+		if readDiagnostics.HasError() || !found {
+			diagnostics.AddError(
+				"Error adding user to team",
+				fmt.Sprintf("%s\n\nCheck that team %d exists and that user %d belongs to this workspace.", err, teamID, userID),
+			)
+			return teamUserModel{}, diagnostics
+		}
 	}
 
 	return teamUserModel{
@@ -247,6 +249,34 @@ func (r *teamUserResource) readMembership(ctx context.Context, teamID, userID in
 	}
 
 	return false, diagnostics
+}
+
+// deleteMembership removes the user from the team, refusing first if the team is
+// owned by a Git provider. Aikido rejects that write as well; refusing here says
+// why, rather than surfacing a bare API error in the middle of a destroy.
+func (r *teamUserResource) deleteMembership(ctx context.Context, teamID, userID int64) diag.Diagnostics {
+	var diagnostics diag.Diagnostics
+
+	team, err := teams.ByID(ctx, r.client, teamID)
+	if err != nil {
+		// A team removed outside Terraform took its memberships with it.
+		if client.NotFound(err) {
+			return diagnostics
+		}
+		diagnostics.AddError("Error removing user from team", err.Error())
+		return diagnostics
+	}
+
+	diagnostics.Append(importedTeamMembershipDiagnostics(team)...)
+	if diagnostics.HasError() {
+		return diagnostics
+	}
+
+	if err := r.removeMember(ctx, teamID, userID); err != nil && !client.NotFound(err) {
+		diagnostics.AddError("Error removing user from team", err.Error())
+	}
+
+	return diagnostics
 }
 
 func (r *teamUserResource) addMember(ctx context.Context, teamID, userID int64) error {
