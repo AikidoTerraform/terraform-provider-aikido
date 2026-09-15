@@ -133,6 +133,7 @@ func (p *aikidoProvider) DataSources(_ context.Context) []func() datasource.Data
 	return []func() datasource.DataSource{
 		datasources.NewRepositoriesDataSource,
 		datasources.NewTeamsDataSource,
+		datasources.NewUsersDataSource,
 	}
 }
 
