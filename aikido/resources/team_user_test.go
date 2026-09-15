@@ -158,6 +158,123 @@ func TestCreateMembership(t *testing.T) {
 	})
 }
 
+// A lost response does not mean the add was refused, and adding someone who is
+// already a member succeeds, so the write can be confirmed by reading it back.
+func TestCreateMembership_ReconcilesAnAmbiguousAdd(t *testing.T) {
+	t.Run("an add that landed despite the error succeeds", func(t *testing.T) {
+		var member []users.User
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case teams.BasePath:
+				_ = json.NewEncoder(w).Encode([]teams.Team{manualTeam})
+			case users.BasePath:
+				_ = json.NewEncoder(w).Encode(member)
+			default:
+				// The write commits, then the response is lost.
+				member = []users.User{{ID: 456, Active: 1}}
+				w.WriteHeader(http.StatusInternalServerError)
+			}
+		}))
+		t.Cleanup(srv.Close)
+
+		res := &teamUserResource{client: testClient(srv)}
+		state, diagnostics := res.createMembership(context.Background(), teamUserModel{
+			TeamID: types.Int64Value(123),
+			UserID: types.Int64Value(456),
+		})
+
+		if diagnostics.HasError() {
+			t.Fatalf("got %v, want the membership to be recognised as created", diagnostics)
+		}
+		if state.ID != types.StringValue("123:456") {
+			t.Errorf("ID = %v, want \"123:456\"", state.ID)
+		}
+	})
+
+	t.Run("an add that did not land still fails", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case teams.BasePath:
+				_ = json.NewEncoder(w).Encode([]teams.Team{manualTeam})
+			case users.BasePath:
+				_ = json.NewEncoder(w).Encode([]users.User{})
+			default:
+				w.WriteHeader(http.StatusNotFound)
+				_, _ = io.WriteString(w, `{"reason_phrase":"The selected user id does not exist"}`)
+			}
+		}))
+		t.Cleanup(srv.Close)
+
+		res := &teamUserResource{client: testClient(srv)}
+		_, diagnostics := res.createMembership(context.Background(), teamUserModel{
+			TeamID: types.Int64Value(123),
+			UserID: types.Int64Value(456),
+		})
+
+		if !diagnostics.HasError() {
+			t.Fatal("an add that never landed produced no error")
+		}
+		if !strings.Contains(diagnostics.Errors()[0].Detail(), "The selected user id does not exist") {
+			t.Errorf("detail %q drops the API's reason", diagnostics.Errors()[0].Detail())
+		}
+	})
+}
+
+func TestDeleteMembership(t *testing.T) {
+	t.Run("removes the member from a manual team", func(t *testing.T) {
+		var calls []string
+		srv := membershipAPIServer(t, &calls, manualTeam, users.User{ID: 456, Active: 1})
+
+		res := &teamUserResource{client: testClient(srv)}
+		if diagnostics := res.deleteMembership(context.Background(), 123, 456); diagnostics.HasError() {
+			t.Fatalf("deleteMembership: %v", diagnostics)
+		}
+		if !slicesContains(calls, "POST "+teams.BasePath+"/123/removeUser") {
+			t.Errorf("calls = %v, want the removeUser POST", calls)
+		}
+	})
+
+	// Aikido rejects this write, so the request would fail anyway; refusing here
+	// says why instead of surfacing a bare API error during a destroy.
+	t.Run("an imported team is refused before the write", func(t *testing.T) {
+		var calls []string
+		srv := membershipAPIServer(t, &calls, teams.Team{ID: 123, Name: "Frontend developers", ExternalSource: "github"})
+
+		res := &teamUserResource{client: testClient(srv)}
+		diagnostics := res.deleteMembership(context.Background(), 123, 456)
+
+		if !diagnostics.HasError() {
+			t.Fatal("destroying a membership of an imported team produced no error")
+		}
+		for _, call := range calls {
+			if strings.Contains(call, "removeUser") {
+				t.Errorf("calls = %v, want no write", calls)
+			}
+		}
+	})
+
+	// A team deleted outside Terraform took its memberships with it, so there is
+	// nothing left to remove and nothing to report.
+	t.Run("a team that no longer exists is not an error", func(t *testing.T) {
+		var calls []string
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			calls = append(calls, r.Method+" "+r.URL.Path)
+			_ = json.NewEncoder(w).Encode([]teams.Team{})
+		}))
+		t.Cleanup(srv.Close)
+
+		res := &teamUserResource{client: testClient(srv)}
+		if diagnostics := res.deleteMembership(context.Background(), 123, 456); diagnostics.HasError() {
+			t.Fatalf("got %v, want no error", diagnostics)
+		}
+		for _, call := range calls {
+			if strings.Contains(call, "removeUser") {
+				t.Errorf("calls = %v, want no write", calls)
+			}
+		}
+	})
+}
+
 func TestReadMembership(t *testing.T) {
 	t.Run("a member is found", func(t *testing.T) {
 		var calls []string
