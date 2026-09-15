@@ -238,11 +238,11 @@ func TestCreateTeam_KeepsTheIDWhenLaterCallsFail(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			order = append(order, r.Method+" "+r.URL.Path)
 
-			switch {
-			case r.Method == http.MethodPost:
+			switch r.Method {
+			case http.MethodPost:
 				w.WriteHeader(http.StatusCreated)
 				_ = json.NewEncoder(w).Encode(map[string]int64{"id": 42})
-			case r.Method == http.MethodPut:
+			case http.MethodPut:
 				w.WriteHeader(http.StatusBadRequest)
 				_, _ = io.WriteString(w, `{"reason_phrase":"unknown repository"}`)
 			default:
