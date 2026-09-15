@@ -103,7 +103,11 @@ func (r *teamResource) Create(ctx context.Context, request resource.CreateReques
 
 	state, diagnostics := r.createTeam(ctx, planned)
 	response.Diagnostics.Append(diagnostics...)
-	if response.Diagnostics.HasError() {
+
+	// Save the state of a team that was created even when configuring it failed.
+	// Terraform keeps the state a failed Create returns, and dropping it here
+	// would orphan a real team.
+	if state.ID.IsNull() {
 		return
 	}
 	response.Diagnostics.Append(response.State.Set(ctx, state)...)
@@ -218,14 +222,17 @@ func (r *teamResource) createTeam(ctx context.Context, planned teamModel) (teamM
 		return teamModel{}, diagnostics
 	}
 
+	// The team exists from here on. Every later failure must still return a model
+	// carrying its ID: Terraform saves the state a failed Create returns, and
+	// without the ID the team is orphaned and the next apply creates another one.
 	if codeRepoIDs != nil {
 		if err := teams.Update(ctx, r.client, id, planned.Name.ValueString(), codeRepoIDs); err != nil {
 			diagnostics.AddError("Error setting team responsibilities", err.Error())
-			return teamModel{}, diagnostics
+			return r.readBack(ctx, id, planned, codeRepoIDs != nil, diagnostics)
 		}
 	}
 
-	return r.readBack(ctx, id, codeRepoIDs != nil, diagnostics)
+	return r.readBack(ctx, id, planned, codeRepoIDs != nil, diagnostics)
 }
 
 // updateTeam renames the team and replaces its responsibilities when they are
@@ -255,19 +262,32 @@ func (r *teamResource) updateTeam(ctx context.Context, id int64, planned teamMod
 		return teamModel{}, diagnostics
 	}
 
-	return r.readBack(ctx, id, codeRepoIDs != nil, diagnostics)
+	return r.readBack(ctx, id, planned, codeRepoIDs != nil, diagnostics)
 }
 
 // readBack re-reads the team after a write, so state holds what the API stored
-// rather than what was planned.
-func (r *teamResource) readBack(ctx context.Context, id int64, managesRepositories bool, diagnostics diag.Diagnostics) (teamModel, diag.Diagnostics) {
+// rather than what was planned. A failed read still yields the team's ID, so a
+// team that exists is never left out of state.
+func (r *teamResource) readBack(ctx context.Context, id int64, planned teamModel, managesRepositories bool, diagnostics diag.Diagnostics) (teamModel, diag.Diagnostics) {
 	team, err := teams.ByID(ctx, r.client, id)
 	if err != nil {
 		diagnostics.AddError("Error reading team back", err.Error())
-		return teamModel{}, diagnostics
+		return identityOnlyModel(id, planned), diagnostics
 	}
 
 	return teamModelFromAPI(team, managesRepositories), diagnostics
+}
+
+// identityOnlyModel records just enough for Terraform to keep managing a team
+// whose configuration could not be confirmed. The next plan reads it properly
+// and converges.
+func identityOnlyModel(id int64, planned teamModel) teamModel {
+	return teamModel{
+		ID:            types.StringValue(strconv.FormatInt(id, 10)),
+		Name:          planned.Name,
+		RepositoryIDs: types.SetNull(types.Int64Type),
+		Active:        types.BoolNull(),
+	}
 }
 
 // repositoryIDsFilter converts repository_ids into the value teams.Update

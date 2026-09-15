@@ -229,6 +229,78 @@ func TestCreateTeam(t *testing.T) {
 	})
 }
 
+// A team that was created but could not be fully configured still exists in
+// Aikido. Returning no state would orphan it: Terraform would create another one
+// on the next apply and never manage the first.
+func TestCreateTeam_KeepsTheIDWhenLaterCallsFail(t *testing.T) {
+	t.Run("responsibilities write fails", func(t *testing.T) {
+		var order []string
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			order = append(order, r.Method+" "+r.URL.Path)
+
+			switch {
+			case r.Method == http.MethodPost:
+				w.WriteHeader(http.StatusCreated)
+				_ = json.NewEncoder(w).Encode(map[string]int64{"id": 42})
+			case r.Method == http.MethodPut:
+				w.WriteHeader(http.StatusBadRequest)
+				_, _ = io.WriteString(w, `{"reason_phrase":"unknown repository"}`)
+			default:
+				_ = json.NewEncoder(w).Encode([]teams.Team{{ID: 42, Name: "Payments"}})
+			}
+		}))
+		t.Cleanup(srv.Close)
+
+		res := &teamResource{client: testClient(srv)}
+		state, diagnostics := res.createTeam(context.Background(), teamModel{
+			Name:          types.StringValue("Payments"),
+			RepositoryIDs: int64Set(4),
+		})
+
+		if !diagnostics.HasError() {
+			t.Fatal("failed responsibilities write produced no error")
+		}
+		if state.ID != types.StringValue("42") {
+			t.Errorf("ID = %v, want \"42\" so the created team stays tracked", state.ID)
+		}
+		// The team must not be deleted: the write may have partially applied, and
+		// a later apply converges on it.
+		for _, call := range order {
+			if strings.HasPrefix(call, http.MethodDelete) {
+				t.Errorf("call order = %v, want no rollback delete", order)
+			}
+		}
+	})
+
+	t.Run("read back fails", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == http.MethodPost {
+				w.WriteHeader(http.StatusCreated)
+				_ = json.NewEncoder(w).Encode(map[string]int64{"id": 42})
+				return
+			}
+			w.WriteHeader(http.StatusInternalServerError)
+		}))
+		t.Cleanup(srv.Close)
+
+		res := &teamResource{client: testClient(srv)}
+		state, diagnostics := res.createTeam(context.Background(), teamModel{
+			Name:          types.StringValue("Payments"),
+			RepositoryIDs: types.SetNull(types.Int64Type),
+		})
+
+		if !diagnostics.HasError() {
+			t.Fatal("failed read back produced no error")
+		}
+		if state.ID != types.StringValue("42") {
+			t.Errorf("ID = %v, want \"42\" so the created team stays tracked", state.ID)
+		}
+		if state.Name != types.StringValue("Payments") {
+			t.Errorf("Name = %v, want the planned name", state.Name)
+		}
+	})
+}
+
 func TestUpdateTeam_RefusesToDestroyUnrepresentableResponsibilities(t *testing.T) {
 	var order []string
 	srv := teamAPIServer(t, &order, teams.Team{ID: 42, Name: "Payments", Responsibilities: []teams.Responsibility{
