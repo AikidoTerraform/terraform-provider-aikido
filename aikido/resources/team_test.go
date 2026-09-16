@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 
@@ -128,25 +129,47 @@ func TestTeamGuardDiagnostics(t *testing.T) {
 		}
 	})
 
-	// A full replace cannot express these, so writing responsibilities would
-	// destroy them. Refuse instead.
-	t.Run("unrepresentable responsibilities are rejected only when managing them", func(t *testing.T) {
+	// The update endpoint never touches these, so managing repository_ids on a
+	// team that also owns them is safe.
+	t.Run("responsibilities other than code repositories pass", func(t *testing.T) {
 		team := teams.Team{ID: 1, Name: "Payments", Responsibilities: []teams.Responsibility{
-			{ID: 2, Type: teams.TypeCodeRepository, IncludedPaths: []string{"/client"}},
+			{ID: 2, Type: teams.TypeCodeRepository},
 			{ID: 3, Type: "cloud"},
+			{ID: 4, Type: "container_repository"},
+			{ID: 5, Type: "domain"},
+			{ID: 6, Type: "zen_app"},
 		}}
 
-		if diagnostics := teamGuardDiagnostics(team, false); diagnostics.HasError() {
+		diagnostics := teamGuardDiagnostics(team, true)
+		if diagnostics.HasError() {
+			t.Errorf("got %v, want none", diagnostics)
+		}
+		if len(diagnostics.Warnings()) != 0 {
+			t.Errorf("got warnings %v, want none", diagnostics.Warnings())
+		}
+	})
+
+	// Path filters survive an update, but repository_ids cannot show them, so
+	// state understates the team's real scope. Warn rather than refuse.
+	t.Run("path-limited repositories warn only when managing them", func(t *testing.T) {
+		team := teams.Team{ID: 1, Name: "Payments", Responsibilities: []teams.Responsibility{
+			{ID: 2, Type: teams.TypeCodeRepository, IncludedPaths: []string{"/client"}},
+		}}
+
+		if diagnostics := teamGuardDiagnostics(team, false); len(diagnostics) != 0 {
 			t.Errorf("got %v, want none when repository_ids is unmanaged", diagnostics)
 		}
 
 		diagnostics := teamGuardDiagnostics(team, true)
-		if !diagnostics.HasError() {
-			t.Fatal("unrepresentable responsibilities produced no error")
+		if diagnostics.HasError() {
+			t.Fatalf("path limits must not block the apply: %v", diagnostics)
 		}
-		detail := diagnostics.Errors()[0].Detail()
-		if !strings.Contains(detail, "cloud") || !strings.Contains(detail, "/client") {
-			t.Errorf("detail %q should name what would be destroyed", detail)
+		if len(diagnostics.Warnings()) != 1 {
+			t.Fatalf("got %d warnings, want 1", len(diagnostics.Warnings()))
+		}
+		detail := diagnostics.Warnings()[0].Detail()
+		if !strings.Contains(detail, "/client") {
+			t.Errorf("detail %q should name the limited paths", detail)
 		}
 	})
 }
@@ -301,25 +324,30 @@ func TestCreateTeam_KeepsTheIDWhenLaterCallsFail(t *testing.T) {
 	})
 }
 
-func TestUpdateTeam_RefusesToDestroyUnrepresentableResponsibilities(t *testing.T) {
+// The update endpoint diffs code repositories and leaves every other
+// responsibility type alone, so owning a cloud must not block the write.
+func TestUpdateTeam_ProceedsForTeamsOwningOtherResourceTypes(t *testing.T) {
 	var order []string
 	srv := teamAPIServer(t, &order, teams.Team{ID: 42, Name: "Payments", Responsibilities: []teams.Responsibility{
 		{ID: 3, Type: "cloud"},
+		{ID: 4, Type: teams.TypeCodeRepository},
 	}})
 
 	res := &teamResource{client: testClient(srv)}
-	_, diagnostics := res.updateTeam(context.Background(), 42, teamModel{
+	state, diagnostics := res.updateTeam(context.Background(), 42, teamModel{
 		ID:            types.StringValue("42"),
 		Name:          types.StringValue("Payments"),
 		RepositoryIDs: int64Set(4),
 	})
 
-	if !diagnostics.HasError() {
-		t.Fatal("update against a team with a cloud responsibility produced no error")
+	if diagnostics.HasError() {
+		t.Fatalf("updateTeam: %v", diagnostics)
 	}
-	for _, call := range order {
-		if strings.HasPrefix(call, http.MethodPut) {
-			t.Errorf("call order = %v, want the write refused before it is sent", order)
-		}
+	if !slices.Contains(order, http.MethodPut+" "+teams.BasePath+"/42") {
+		t.Errorf("call order = %v, want the responsibilities write sent", order)
+	}
+	// The cloud is invisible to repository_ids and must not leak into it.
+	if !state.RepositoryIDs.Equal(int64Set(4)) {
+		t.Errorf("RepositoryIDs = %v, want just the code repository", state.RepositoryIDs)
 	}
 }
