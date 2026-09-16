@@ -53,3 +53,5 @@ provider "aikido" {
 `aikido_team` and `aikido_team_user` manage teams created in Aikido. Teams synced from a Git provider are owned by that provider: it decides their name, their members and the repositories they cover, and Aikido rejects changes to them. Both resources refuse such a team with an explanatory error rather than attempting a write that a later synchronisation would undo.
 
 To give people access that their Git provider does not grant — security engineers who are not assigned to every repository, for instance — create an Aikido team for them and link the repositories to it. That access is independent of the Git provider and survives synchronisation.
+
+Membership only widens access for users whose role is `team_only`, since those see just the repositories of the teams they belong to. `default` and `admin` users already see every repository, so putting them on a team says who owns what rather than who may look at what.

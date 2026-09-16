@@ -38,8 +38,10 @@ data "aikido_repositories" "active" {
   active = true
 }
 
+# team_only users see only their teams' repositories, so this membership is what
+# grants access. Default users already see every repository.
 data "aikido_users" "security_engineers" {
-  role   = "default"
+  role   = "team_only"
   active = true
 }
 
