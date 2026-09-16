@@ -77,7 +77,7 @@ func (d *usersDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, 
 				Description: "Only return users whose full name is exactly this.",
 			},
 			"role": schema.StringAttribute{
-				Optional:    true,
+				Optional: true,
 				Description: "Only return users with this workspace role. " +
 					"`admin` administers the workspace, `default` sees every repository without administering it, " +
 					"and `team_only` sees only the repositories of the teams it belongs to. " +
@@ -114,10 +114,10 @@ func (d *usersDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, 
 							Description: "Full name of the user.",
 						},
 						"role": schema.StringAttribute{
-							Computed:    true,
+							Computed: true,
 							Description: "Workspace role of the user. " +
-							"`admin` administers the workspace, `default` sees every repository without administering it, " +
-							"and `team_only` sees only the repositories of the teams it belongs to.",
+								"`admin` administers the workspace, `default` sees every repository without administering it, " +
+								"and `team_only` sees only the repositories of the teams it belongs to.",
 						},
 						"auth_type": schema.StringAttribute{
 							Computed:    true,
