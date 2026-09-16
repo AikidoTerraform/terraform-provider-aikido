@@ -37,6 +37,7 @@ type repositoriesDataSourceModel struct {
 	Name         types.String      `tfsdk:"name"`
 	Branch       types.String      `tfsdk:"branch"`
 	Active       types.Bool        `tfsdk:"active"`
+	Labels       types.Set         `tfsdk:"labels"`
 	IDs          []types.Int64     `tfsdk:"ids"`
 	Repositories []repositoryModel `tfsdk:"repositories"`
 }
@@ -84,6 +85,13 @@ func (d *repositoriesDataSource) Schema(_ context.Context, _ datasource.SchemaRe
 			"active": schema.BoolAttribute{
 				Optional:    true,
 				Description: "Only return repositories with this activation state. Omit to return both active and inactive repositories.",
+			},
+			"labels": schema.SetAttribute{
+				Optional:    true,
+				ElementType: types.StringType,
+				Description: "Only return repositories carrying every one of these labels, matched exactly. " +
+					"Labels imported from GitHub topics (payments) or custom properties (product:payments) match the same as labels managed in Aikido. " +
+					"An empty set matches every repository; use Terraform expressions over the repositories attribute for OR and other conditions.",
 			},
 			"ids": schema.SetAttribute{
 				Computed:    true,
@@ -178,13 +186,19 @@ func (d *repositoriesDataSource) Read(ctx context.Context, request datasource.Re
 		return
 	}
 
+	wantedLabels, labelDiagnostics := labelFilter(ctx, config.Labels)
+	response.Diagnostics.Append(labelDiagnostics...)
+	if response.Diagnostics.HasError() {
+		return
+	}
+
 	allRepositories, err := repositories.All(ctx, d.client)
 	if err != nil {
 		response.Diagnostics.AddError("Error reading repositories", err.Error())
 		return
 	}
 
-	matched, matchedIDs := matchingRepositories(allRepositories, config)
+	matched, matchedIDs := matchingRepositories(allRepositories, config, wantedLabels)
 	config.Repositories = matched
 	config.IDs = matchedIDs
 
@@ -194,12 +208,12 @@ func (d *repositoriesDataSource) Read(ctx context.Context, request datasource.Re
 // matchingRepositories filters and maps in a single pass, so that ids stays
 // aligned with repositories entry for entry. Both are always non-nil, so that
 // no match yields an empty list rather than null.
-func matchingRepositories(allRepositories []repositories.Repository, config repositoriesDataSourceModel) ([]repositoryModel, []types.Int64) {
+func matchingRepositories(allRepositories []repositories.Repository, config repositoriesDataSourceModel, wantedLabels []string) ([]repositoryModel, []types.Int64) {
 	matched := make([]repositoryModel, 0, len(allRepositories))
 	matchedIDs := make([]types.Int64, 0, len(allRepositories))
 
 	for _, apiRepository := range allRepositories {
-		if !matchesFilters(apiRepository, config) {
+		if !matchesFilters(apiRepository, config, wantedLabels) {
 			continue
 		}
 		matched = append(matched, repositoryModelFromAPI(apiRepository))
@@ -222,6 +236,7 @@ func unknownFilterDiagnostics(config repositoriesDataSourceModel) diag.Diagnosti
 		{"name", config.Name.IsUnknown()},
 		{"branch", config.Branch.IsUnknown()},
 		{"active", config.Active.IsUnknown()},
+		{"labels", anyUnknown(config.Labels)},
 	}
 
 	for _, filter := range filters {
@@ -239,9 +254,26 @@ func unknownFilterDiagnostics(config repositoriesDataSourceModel) diag.Diagnosti
 	return diagnostics
 }
 
+// anyUnknown reports whether the set itself or any of its elements is unknown.
+// One unknown element is enough to widen the result, so it is treated the same
+// as an unknown set.
+func anyUnknown(set types.Set) bool {
+	if set.IsUnknown() {
+		return true
+	}
+	for _, element := range set.Elements() {
+		if element.IsUnknown() {
+			return true
+		}
+	}
+
+	return false
+}
+
 // matchesFilters reports whether a repository satisfies every set filter.
-// Unset filters never exclude anything.
-func matchesFilters(apiRepository repositories.Repository, config repositoriesDataSourceModel) bool {
+// Unset filters never exclude anything. wantedLabels comes from labelFilter, so
+// the set is converted once per read rather than once per repository.
+func matchesFilters(apiRepository repositories.Repository, config repositoriesDataSourceModel, wantedLabels []string) bool {
 	if !config.Name.IsNull() && apiRepository.Name != config.Name.ValueString() {
 		return false
 	}
@@ -251,8 +283,44 @@ func matchesFilters(apiRepository repositories.Repository, config repositoriesDa
 	if !config.Active.IsNull() && apiRepository.Active != config.Active.ValueBool() {
 		return false
 	}
+	if !hasAllLabels(apiRepository.Labels, wantedLabels) {
+		return false
+	}
 
 	return true
+}
+
+// hasAllLabels reports whether the repository carries every wanted label.
+// Multiple labels are an AND, so that narrowing a selection never widens it.
+func hasAllLabels(apiLabels []repositories.Label, wantedLabels []string) bool {
+	if len(wantedLabels) == 0 {
+		return true
+	}
+
+	present := make(map[string]struct{}, len(apiLabels))
+	for _, apiLabel := range apiLabels {
+		present[apiLabel.Name] = struct{}{}
+	}
+	for _, wanted := range wantedLabels {
+		if _, ok := present[wanted]; !ok {
+			return false
+		}
+	}
+
+	return true
+}
+
+// labelFilter converts the label filter into plain strings. A null or unknown
+// set yields no filter; unknown is already rejected by unknownFilterDiagnostics.
+func labelFilter(ctx context.Context, labels types.Set) ([]string, diag.Diagnostics) {
+	if labels.IsNull() || labels.IsUnknown() {
+		return nil, nil
+	}
+
+	var names []string
+	diagnostics := labels.ElementsAs(ctx, &names, false)
+
+	return names, diagnostics
 }
 
 func repositoryModelFromAPI(apiRepository repositories.Repository) repositoryModel {

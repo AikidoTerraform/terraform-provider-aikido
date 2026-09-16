@@ -82,6 +82,25 @@ func TestAll_AndByID_ShareOneCachedFetch(t *testing.T) {
 	}
 }
 
+func TestInvalidateCache_MakesTheNextReadRefetch(t *testing.T) {
+	var requestCount int
+	srv := listServer(t, &requestCount, Repository{ID: 1, Name: "payments", Active: true})
+	apiClient := testClient(srv)
+	ctx := context.Background()
+
+	if _, err := All(ctx, apiClient); err != nil {
+		t.Fatalf("All: %v", err)
+	}
+	InvalidateCache(apiClient)
+	if _, err := All(ctx, apiClient); err != nil {
+		t.Fatalf("All (after invalidate): %v", err)
+	}
+
+	if requestCount != 2 {
+		t.Errorf("list endpoint hit %d times, want 2", requestCount)
+	}
+}
+
 func TestAll_RequestsInactiveAndLabels(t *testing.T) {
 	var query string
 
