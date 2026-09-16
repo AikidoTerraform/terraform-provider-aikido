@@ -67,9 +67,10 @@ func (r *teamResource) Schema(_ context.Context, _ resource.SchemaRequest, respo
 				ElementType: types.Int64Type,
 				Description: "Numeric IDs of the code repositories this team is responsible for. " +
 					"When set, the list is authoritative: repositories removed from it are unlinked on the next apply, " +
-					"and an empty set unlinks every repository. Omit the attribute to leave the team's responsibilities untouched. " +
-					"Path limitations and responsibilities other than code repositories cannot be expressed here; " +
-					"a team carrying either is rejected rather than silently stripped of them.",
+					"and an empty set unlinks every repository. Omit the attribute to leave the team's repositories untouched. " +
+					"Only code repositories are covered — a team's clouds, container repositories, domains and Zen apps " +
+					"are left alone by this resource. Path limitations on a repository cannot be expressed here: " +
+					"they are preserved, but the team appears to cover the whole repository.",
 			},
 			"active": schema.BoolAttribute{
 				Computed:    true,
@@ -304,9 +305,8 @@ func repositoryIDsFilter(ctx context.Context, repositoryIDs types.Set) (*[]int64
 	return &ids, diagnostics
 }
 
-// teamGuardDiagnostics refuses the writes this resource cannot perform safely:
-// anything at all on an imported team, and a responsibilities replace that would
-// drop resources the update endpoint cannot express.
+// teamGuardDiagnostics refuses what this resource cannot do safely — anything at
+// all on an imported team — and warns about what it can do but cannot represent.
 func teamGuardDiagnostics(team teams.Team, managesRepositories bool) diag.Diagnostics {
 	var diagnostics diag.Diagnostics
 
@@ -321,15 +321,14 @@ func teamGuardDiagnostics(team teams.Team, managesRepositories bool) diag.Diagno
 	}
 
 	if managesRepositories {
-		if unrepresentable := teams.Unrepresentable(team); len(unrepresentable) > 0 {
-			diagnostics.AddError(
-				"Team has responsibilities this resource cannot manage",
+		if limited := teams.PathLimited(team); len(limited) > 0 {
+			diagnostics.AddWarning(
+				"Team has repositories limited to certain paths",
 				fmt.Sprintf("Team %q (ID %d) is responsible for %s. "+
-					"Writing repository_ids replaces the team's whole responsibility list, and the Aikido API accepts only "+
-					"code repositories without path limitations, so those would be removed. "+
-					"Remove repository_ids from this resource to leave the team's responsibilities untouched, "+
-					"or clear the unsupported responsibilities in Aikido first.",
-					team.Name, team.ID, describeResponsibilities(unrepresentable)),
+					"Aikido keeps those path filters, but repository_ids has no field for them, "+
+					"so Terraform shows the team as covering each repository in full. "+
+					"Removing such a repository from repository_ids unlinks it without clearing its filters.",
+					team.Name, team.ID, describeResponsibilities(limited)),
 			)
 		}
 	}
@@ -337,8 +336,8 @@ func teamGuardDiagnostics(team teams.Team, managesRepositories bool) diag.Diagno
 	return diagnostics
 }
 
-// describeResponsibilities names what a replace would destroy, so the error says
-// which resource to look at rather than just that one exists.
+// describeResponsibilities names the repositories a diagnostic is about, so it
+// says which one to look at rather than just that one exists.
 func describeResponsibilities(responsibilities []teams.Responsibility) string {
 	descriptions := make([]string, 0, len(responsibilities))
 	for _, responsibility := range responsibilities {

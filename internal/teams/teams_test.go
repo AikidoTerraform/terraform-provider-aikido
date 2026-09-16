@@ -275,36 +275,39 @@ func TestCodeRepoIDs_OnlyCodeRepositoriesSorted(t *testing.T) {
 	}
 }
 
-// A full replace can express neither non-code responsibilities nor path
-// limitations, so the resource must refuse rather than destroy them.
-func TestUnrepresentable(t *testing.T) {
+// The update endpoint diffs code repositories only, so path limitations are the
+// sole part of a team's responsibilities Terraform cannot see or manage.
+func TestPathLimited(t *testing.T) {
 	tests := []struct {
 		name  string
 		team  Team
 		count int
 	}{
 		{
-			name:  "plain code repositories are representable",
+			name:  "plain code repositories carry no limits",
 			team:  Team{Responsibilities: []Responsibility{{ID: 1, Type: TypeCodeRepository}}},
 			count: 0,
 		},
 		{
-			name: "a cloud responsibility is not",
+			name: "other responsibility types are untouched by an update",
 			team: Team{Responsibilities: []Responsibility{
 				{ID: 1, Type: TypeCodeRepository},
 				{ID: 2, Type: "cloud"},
+				{ID: 3, Type: "container_repository"},
+				{ID: 4, Type: "domain"},
+				{ID: 5, Type: "zen_app"},
 			}},
-			count: 1,
+			count: 0,
 		},
 		{
-			name: "included paths are not",
+			name: "included paths count",
 			team: Team{Responsibilities: []Responsibility{
 				{ID: 1, Type: TypeCodeRepository, IncludedPaths: []string{"/client"}},
 			}},
 			count: 1,
 		},
 		{
-			name: "excluded paths are not",
+			name: "excluded paths count",
 			team: Team{Responsibilities: []Responsibility{
 				{ID: 1, Type: TypeCodeRepository, ExcludedPaths: []string{"/vendor"}},
 			}},
@@ -314,8 +317,8 @@ func TestUnrepresentable(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if got := Unrepresentable(test.team); len(got) != test.count {
-				t.Errorf("Unrepresentable = %v, want %d entries", got, test.count)
+			if got := PathLimited(test.team); len(got) != test.count {
+				t.Errorf("PathLimited = %v, want %d entries", got, test.count)
 			}
 		})
 	}

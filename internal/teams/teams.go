@@ -108,11 +108,12 @@ type responsibilityWrite struct {
 	Type string `json:"type"`
 }
 
-// Update renames a team and, when codeRepoIDs is non-nil, replaces its
-// responsibilities with exactly those code repositories. An empty non-nil slice
-// unlinks every resource; nil omits the key, which the API reads as "no change".
-// The body is a map rather than a struct because a struct cannot distinguish an
-// empty list from an absent one.
+// Update renames a team and, when codeRepoIDs is non-nil, makes its linked code
+// repositories exactly those. The API diffs code repositories only, leaving
+// clouds, containers, domains and Zen apps alone, so an empty non-nil slice
+// unlinks every repository but no other resource; nil omits the key entirely,
+// which the API reads as "no change". The body is a map rather than a struct
+// because a struct cannot distinguish an empty list from an absent one.
 func Update(ctx context.Context, apiClient *client.Client, id int64, name string, codeRepoIDs *[]int64) error {
 	body := map[string]any{"name": name}
 
@@ -166,19 +167,23 @@ func CodeRepoIDs(team Team) []int64 {
 	return ids
 }
 
-// Unrepresentable returns the responsibilities a full replace would destroy:
-// non-code resources, which the update endpoint cannot express, and code
-// repositories carrying path limitations, which it has no field for.
-func Unrepresentable(team Team) []Responsibility {
-	var unrepresentable []Responsibility
+// PathLimited returns the code repositories the team is responsible for only
+// under a path filter. The update endpoint has no field for those paths, so
+// repository_ids records such a repository as if the team covered all of it.
+// The filters themselves survive an update; this is a fidelity limit, not a
+// destructive one.
+func PathLimited(team Team) []Responsibility {
+	var limited []Responsibility
 	for _, responsibility := range team.Responsibilities {
-		if responsibility.Type != TypeCodeRepository ||
-			len(responsibility.IncludedPaths) > 0 || len(responsibility.ExcludedPaths) > 0 {
-			unrepresentable = append(unrepresentable, responsibility)
+		if responsibility.Type != TypeCodeRepository {
+			continue
+		}
+		if len(responsibility.IncludedPaths) > 0 || len(responsibility.ExcludedPaths) > 0 {
+			limited = append(limited, responsibility)
 		}
 	}
 
-	return unrepresentable
+	return limited
 }
 
 // cachedByID fetches every team once per client and keys them by ID.

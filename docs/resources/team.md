@@ -89,7 +89,7 @@ resource "aikido_team" "product" {
 
 ### Optional
 
-- `repository_ids` (Set of Number) Numeric IDs of the code repositories this team is responsible for. When set, the list is authoritative: repositories removed from it are unlinked on the next apply, and an empty set unlinks every repository. Omit the attribute to leave the team's responsibilities untouched. Path limitations and responsibilities other than code repositories cannot be expressed here; a team carrying either is rejected rather than silently stripped of them.
+- `repository_ids` (Set of Number) Numeric IDs of the code repositories this team is responsible for. When set, the list is authoritative: repositories removed from it are unlinked on the next apply, and an empty set unlinks every repository. Omit the attribute to leave the team's repositories untouched. Only code repositories are covered — a team's clouds, container repositories, domains and Zen apps are left alone by this resource. Path limitations on a repository cannot be expressed here: they are preserved, but the team appears to cover the whole repository.
 
 ### Read-Only
 
