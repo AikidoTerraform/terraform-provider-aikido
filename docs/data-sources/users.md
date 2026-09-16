@@ -67,7 +67,7 @@ output "never_logged_in" {
 - `email` (String) Only return users with exactly this email address, compared without regard to case.
 - `full_name` (String) Only return users whose full name is exactly this.
 - `id` (Number) Only return the user with this Aikido user ID.
-- `role` (String) Only return users with this workspace role: admin, default or team_only.
+- `role` (String) Only return users with this workspace role. `admin` administers the workspace, `default` sees every repository without administering it, and `team_only` sees only the repositories of the teams it belongs to. Team membership widens access for `team_only` users; the other two already see everything.
 
 ### Read-Only
 
@@ -85,4 +85,4 @@ Read-Only:
 - `full_name` (String) Full name of the user.
 - `id` (Number) Aikido user ID.
 - `last_login_timestamp` (Number) Unix timestamp of the user's last login.
-- `role` (String) Workspace role of the user: admin, default or team_only.
+- `role` (String) Workspace role of the user. `admin` administers the workspace, `default` sees every repository without administering it, and `team_only` sees only the repositories of the teams it belongs to.
