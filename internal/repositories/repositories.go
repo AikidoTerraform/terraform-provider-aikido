@@ -104,6 +104,13 @@ func Detail(ctx context.Context, apiClient *client.Client, id int64) (Repository
 	return repo, nil
 }
 
+// InvalidateCache drops the cached list so the next read reflects a write.
+// Callers that mutate a repository must invoke it, otherwise a data source
+// reading later in the same apply still sees the pre-write list.
+func InvalidateCache(apiClient *client.Client) {
+	client.InvalidateCached(apiClient, cacheKey)
+}
+
 // cachedByID fetches every repository once per client and keys them by ID.
 func cachedByID(ctx context.Context, apiClient *client.Client) (map[int64]Repository, error) {
 	return client.LoadCached(apiClient, ctx, cacheKey, func(ctx context.Context) (map[int64]Repository, error) {
