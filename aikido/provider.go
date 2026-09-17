@@ -131,6 +131,7 @@ func (p *aikidoProvider) Resources(_ context.Context) []func() resource.Resource
 func (p *aikidoProvider) DataSources(_ context.Context) []func() datasource.DataSource {
 	return []func() datasource.DataSource{
 		datasources.NewRepositoriesDataSource,
+		datasources.NewTeamsDataSource,
 	}
 }
 
