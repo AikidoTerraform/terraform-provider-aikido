@@ -211,6 +211,15 @@ resource "aikido_all_repo_pr_checks_settings" "example" {
 
   run_deep_audit_pr_scan                          = false
 }
+
+resource "aikido_task_tracking_team_mapping" "linear" {
+  integration_id = 2
+
+  project_teams_map = {
+    "10000" = [1, 2, 3]
+    "10001" = [4, 6]
+  }
+}
 ```
 
 You can also start from [`examples/`](examples/) (`provider/` + `resources/aikido_repository/`), but wire credentials via env vars rather than committing them.
