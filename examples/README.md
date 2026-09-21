@@ -17,6 +17,7 @@ These are **fragments**, not a complete root module by themselves. Combine the p
 | [`resources/aikido_repo_pr_checks_settings/resource.tf`](resources/aikido_repo_pr_checks_settings/resource.tf) | `aikido_repo_pr_checks_settings` resource |
 | [`resources/aikido_default_pr_checks_settings/resource.tf`](resources/aikido_default_pr_checks_settings/resource.tf) | `aikido_default_pr_checks_settings` resource |
 | [`resources/aikido_all_repo_pr_checks_settings/resource.tf`](resources/aikido_all_repo_pr_checks_settings/resource.tf) | `aikido_all_repo_pr_checks_settings` resource |
+| [`resources/aikido_task_tracking_code_repo_mapping/resource.tf`](resources/aikido_task_tracking_code_repo_mapping/resource.tf) | `aikido_task_tracking_code_repo_mapping` resource |
 
 ## Prerequisites
 
@@ -147,6 +148,14 @@ resource "aikido_all_repo_pr_checks_settings" "example" {
 
   run_deep_audit_pr_scan                       = false
 }
+
+resource "aikido_task_tracking_code_repo_mapping" "linear" {
+  integration_id = 2
+
+  project_repos_map = {
+    "10000" = data.aikido_repositories.payments.ids
+  }
+}
 ```
 
 Then:
@@ -173,5 +182,6 @@ Prefer env vars for credentials so secrets are not committed. The provider block
 - `aikido_repo_pr_checks_settings` manages PR checks for one code repository (`code_repo_id`). When `enable_code_quality_scan` is `true`, `post_code_quality_inline_comments_min_severity` is required; when it is `false`, `fail_on_code_quality_scan` must be `false`. Deep Review (`run_deep_audit_pr_scan`) needs at least one vulnerability scan type enabled. Import by `code_repo_id`.
 - `aikido_default_pr_checks_settings` manages the single **workspace-wide** default PR checks configuration applied to newly activated repositories; define it at most once. When all checks are disabled or the resource is removed, the settings are deleted in Aikido for the workspace. Import with `default_pr_checks_settings`.
 - `aikido_all_repo_pr_checks_settings` applies the same PR checks settings to every active GitHub repository; define it at most once. Currently only GitHub is supported. Use `excluded_repos` to skip repositories that should keep their current settings. The same code-quality and Deep Review rules apply as for the per-repo resource. Destroy only removes the resource from Terraform state.
+- `aikido_task_tracking_code_repo_mapping` maps Aikido code repositories to task-tracker projects (Linear, Jira, …). Keys are tracker project IDs; values are Aikido repository IDs. This is repository mapping, not Aikido team mapping. Destroy only removes the resource from Terraform state.
 - After changing provider Go code locally, re-run `make install` before `terraform apply`.
 - Full local/staging setup: [`DEVELOPMENT.md`](../DEVELOPMENT.md)
