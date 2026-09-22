@@ -321,7 +321,10 @@ func TestWrite_AdminGetsEveryCapabilityRegardlessOfThePlan(t *testing.T) {
 	failOn(t, diagnostics)
 
 	// users.Effective overrides the plan, so the request matches what Aikido stores.
-	permissions := written["permissions"].(map[string]any)
+	permissions, isMap := written["permissions"].(map[string]any)
+	if !isMap {
+		t.Fatalf("permissions = %#v, want an object", written["permissions"])
+	}
 	for capability, value := range permissions {
 		if value != true {
 			t.Errorf("%s = %v, want true for an admin", capability, value)
