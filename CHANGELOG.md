@@ -3,6 +3,8 @@
 FEATURES:
 
 - **New Resource:** `aikido_task_tracking_team_mapping` — maps Aikido teams to task-tracker projects (Linear, Jira, and others) via the public `mapTeamsToProjects` API.
+- **New Resource:** `aikido_team` — manages a team created in Aikido and, optionally, the code repositories it is responsible for. Teams synced from a Git provider belong to that provider and are rejected.
+- **New Data Source:** `aikido_teams` — looks up Aikido teams, including those synced from a Git provider, and reports the code repositories each is responsible for.
 
 ENHANCEMENTS:
 
@@ -12,6 +14,10 @@ BUG FIXES:
 
 - `aikido_repository`: activation, sensitivity, connectivity and label writes now drop the cached repository list, so a data source reading later in the same apply sees the change.
 - Resources are no longer removed from Terraform state when a list request fails with a 404. Only a lookup that completes and finds the object absent does that.
+
+NOTES:
+
+- The minimum supported Terraform version is now 1.2, which the team examples require for `lifecycle` preconditions.
 
 ## 1.4.0
 
