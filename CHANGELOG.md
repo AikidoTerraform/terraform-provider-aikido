@@ -6,6 +6,7 @@ FEATURES:
 - **New Resource:** `aikido_team` — manages a team created in Aikido and, optionally, the code repositories it is responsible for. Teams synced from a Git provider belong to that provider and are rejected.
 - **New Data Source:** `aikido_teams` — looks up Aikido teams, including those synced from a Git provider, and reports the code repositories each is responsible for.
 - **New Data Source:** `aikido_users` — looks up workspace users, filtering by ID, email, full name, role, authentication type or activation state.
+- **New Resource:** `aikido_team_user` — manages one user's membership of a team created in Aikido. Memberships of teams synced from a Git provider are rejected.
 
 ENHANCEMENTS:
 
