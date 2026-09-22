@@ -129,7 +129,7 @@ func (r *teamResource) Read(ctx context.Context, request resource.ReadRequest, r
 
 	team, err := teams.ByID(ctx, r.client, id)
 	if err != nil {
-		if client.NotFound(err) {
+		if client.NotInList(err) {
 			response.State.RemoveResource(ctx)
 			return
 		}
@@ -182,7 +182,7 @@ func (r *teamResource) Delete(ctx context.Context, request resource.DeleteReques
 
 	team, err := teams.ByID(ctx, r.client, id)
 	if err != nil {
-		if client.NotFound(err) {
+		if client.NotInList(err) {
 			return
 		}
 		response.Diagnostics.AddError("Error deleting team", err.Error())

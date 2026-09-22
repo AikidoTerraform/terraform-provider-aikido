@@ -6,6 +6,7 @@ package teams
 import (
 	"cmp"
 	"context"
+	"fmt"
 	"net/http"
 	"slices"
 	"strconv"
@@ -78,12 +79,7 @@ func ByID(ctx context.Context, apiClient *client.Client, id int64) (Team, error)
 
 	cached, ok := byID[id]
 	if !ok {
-		return Team{}, &client.APIError{
-			StatusCode: http.StatusNotFound,
-			Method:     http.MethodGet,
-			Path:       DetailPath(id),
-			Body:       "team not found",
-		}
+		return Team{}, fmt.Errorf("%w: team %d", client.ErrNotInList, id)
 	}
 
 	return cached, nil
