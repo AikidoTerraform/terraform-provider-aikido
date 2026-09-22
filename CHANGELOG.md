@@ -4,6 +4,15 @@ FEATURES:
 
 - **New Resource:** `aikido_task_tracking_team_mapping` — maps Aikido teams to task-tracker projects (Linear, Jira, and others) via the public `mapTeamsToProjects` API.
 
+ENHANCEMENTS:
+
+- `aikido_repositories`: added a `labels` filter, returning repositories that carry every listed label. Labels imported from GitHub topics and custom properties match the same as labels managed in Aikido.
+
+BUG FIXES:
+
+- `aikido_repository`: activation, sensitivity, connectivity and label writes now drop the cached repository list, so a data source reading later in the same apply sees the change.
+- Resources are no longer removed from Terraform state when a list request fails with a 404. Only a lookup that completes and finds the object absent does that.
+
 ## 1.4.0
 
 FEATURES:
