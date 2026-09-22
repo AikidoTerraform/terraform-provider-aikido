@@ -1,8 +1,14 @@
-## 1.5.0
+## 1.6.0
 
 FEATURES:
 
 - **New Resource:** `aikido_task_tracking_code_repo_mapping` — maps Aikido code repositories to task-tracker projects (Linear, Jira, and others) via the public `mapCodeReposToProjects` API.
+
+## 1.5.0
+
+FEATURES:
+
+- **New Resource:** `aikido_task_tracking_team_mapping` — maps Aikido teams to task-tracker projects (Linear, Jira, and others) via the public `mapTeamsToProjects` API.
 
 ## 1.4.0
 
