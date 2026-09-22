@@ -163,7 +163,7 @@ func (r *repositoryResource) Read(ctx context.Context, request resource.ReadRequ
 	// get repository from list cache
 	apiRepository, err := repositories.ByID(ctx, r.client, id)
 	if err != nil {
-		if client.NotFound(err) {
+		if client.NotInList(err) {
 			response.State.RemoveResource(ctx)
 			return
 		}

@@ -213,7 +213,7 @@ func TestSetRepoConfig_DropsTheSharedListCache(t *testing.T) {
 	}
 }
 
-func TestRepositoryFromCache_NotFound(t *testing.T) {
+func TestRepositoryFromCache_NotInList(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !isCodeReposList(r) {
 			t.Errorf("unexpected path %s", r.URL.Path)
@@ -225,8 +225,25 @@ func TestRepositoryFromCache_NotFound(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	_, err := repositories.ByID(context.Background(), testClient(srv), 1)
-	if err == nil || !client.NotFound(err) {
-		t.Fatalf("err = %v, want NotFound", err)
+	if err == nil || !client.NotInList(err) {
+		t.Fatalf("err = %v, want NotInList", err)
+	}
+}
+
+// A 404 from the list request means the lookup failed, so the repository must
+// not be dropped from state.
+func TestRepositoryFromCache_FailedListIsNotAMissingRepository(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	t.Cleanup(srv.Close)
+
+	_, err := repositories.ByID(context.Background(), testClient(srv), 1)
+	if err == nil {
+		t.Fatal("want an error when the list request fails")
+	}
+	if client.NotInList(err) {
+		t.Errorf("err = %v, must not read as a repository that is gone", err)
 	}
 }
 

@@ -6,6 +6,7 @@ package repositories
 import (
 	"cmp"
 	"context"
+	"fmt"
 	"net/http"
 	"slices"
 	"strconv"
@@ -63,12 +64,7 @@ func ByID(ctx context.Context, apiClient *client.Client, id int64) (Repository, 
 
 	cached, ok := byID[id]
 	if !ok {
-		return Repository{}, &client.APIError{
-			StatusCode: http.StatusNotFound,
-			Method:     http.MethodGet,
-			Path:       DetailPath(id),
-			Body:       "repository not found",
-		}
+		return Repository{}, fmt.Errorf("%w: repository %d", client.ErrNotInList, id)
 	}
 
 	return cached, nil
