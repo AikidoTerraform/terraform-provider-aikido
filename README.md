@@ -136,6 +136,15 @@ resource "aikido_all_repo_pr_checks_settings" "example" {
   run_deep_audit_pr_scan                          = false
 }
 
+resource "aikido_task_tracking_code_repo_mapping" "linear" {
+  integration_id = 2
+
+  project_repos_map = {
+    "10000" = [12345, 67890]
+    "10001" = [11111]
+  }
+}
+
 resource "aikido_task_tracking_team_mapping" "linear" {
   integration_id = 2
 
