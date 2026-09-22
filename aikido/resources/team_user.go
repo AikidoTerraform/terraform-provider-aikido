@@ -290,13 +290,12 @@ func (r *teamUserResource) removeMember(ctx context.Context, teamID, userID int6
 // writeMembership posts a membership change and drops the team's cached member
 // list, so a read later in the same apply reflects the write.
 func (r *teamUserResource) writeMembership(ctx context.Context, teamID, userID int64, action string) error {
-	endpoint := teams.BasePath + "/" + strconv.FormatInt(teamID, 10) + "/" + action
-	if err := r.client.Do(ctx, http.MethodPost, endpoint, map[string]int64{"user_id": userID}, nil); err != nil {
-		return err
-	}
-	users.InvalidateTeam(r.client, teamID)
+	// Deferred: a call that fails may still have changed the membership.
+	defer users.InvalidateTeam(r.client, teamID)
 
-	return nil
+	endpoint := teams.BasePath + "/" + strconv.FormatInt(teamID, 10) + "/" + action
+
+	return r.client.Do(ctx, http.MethodPost, endpoint, map[string]int64{"user_id": userID}, nil)
 }
 
 // importedTeamMembershipDiagnostics refuses memberships on teams a Git provider

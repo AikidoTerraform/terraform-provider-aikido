@@ -413,3 +413,37 @@ func slicesContains(calls []string, want string) bool {
 
 	return false
 }
+
+// A membership write that reports failure may still have been applied, so the
+// cached member list must not survive it.
+func TestWriteMembership_InvalidatesTheCacheEvenWhenItFails(t *testing.T) {
+	var memberListCount int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case users.BasePath:
+			memberListCount++
+			_ = json.NewEncoder(w).Encode([]users.User{{ID: 456, Active: 1}})
+		default:
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	apiClient := testClient(srv)
+	res := &teamUserResource{client: apiClient}
+	ctx := context.Background()
+
+	if _, err := users.InTeam(ctx, apiClient, 123); err != nil {
+		t.Fatalf("InTeam: %v", err)
+	}
+	if err := res.removeMember(ctx, 123, 456); err == nil {
+		t.Fatal("want the write to fail")
+	}
+	if _, err := users.InTeam(ctx, apiClient, 123); err != nil {
+		t.Fatalf("InTeam (after the failed write): %v", err)
+	}
+
+	if memberListCount != 2 {
+		t.Errorf("member list fetched %d times, want 2: the failed write left a stale cache", memberListCount)
+	}
+}
