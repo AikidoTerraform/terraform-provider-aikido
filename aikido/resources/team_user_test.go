@@ -273,6 +273,20 @@ func TestDeleteMembership(t *testing.T) {
 			}
 		}
 	})
+
+	// A failed lookup is not proof the team is gone: reporting success here would
+	// leave the user on the team with nothing tracking it.
+	t.Run("a failing team lookup is an error, not a silent success", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusNotFound)
+		}))
+		t.Cleanup(srv.Close)
+
+		res := &teamUserResource{client: testClient(srv)}
+		if diagnostics := res.deleteMembership(context.Background(), 123, 456); !diagnostics.HasError() {
+			t.Fatal("a 404 from the team list must not be reported as a completed destroy")
+		}
+	})
 }
 
 func TestReadMembership(t *testing.T) {

@@ -120,7 +120,7 @@ func (r *teamUserResource) Read(ctx context.Context, request resource.ReadReques
 	team, err := teams.ByID(ctx, r.client, teamID)
 	if err != nil {
 		// A team removed outside Terraform takes its memberships with it.
-		if client.NotFound(err) {
+		if client.NotInList(err) {
 			response.State.RemoveResource(ctx)
 			return
 		}
@@ -260,7 +260,7 @@ func (r *teamUserResource) deleteMembership(ctx context.Context, teamID, userID 
 	team, err := teams.ByID(ctx, r.client, teamID)
 	if err != nil {
 		// A team removed outside Terraform took its memberships with it.
-		if client.NotFound(err) {
+		if client.NotInList(err) {
 			return diagnostics
 		}
 		diagnostics.AddError("Error removing user from team", err.Error())
