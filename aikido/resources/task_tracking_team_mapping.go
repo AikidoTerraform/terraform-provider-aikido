@@ -78,7 +78,7 @@ func (r *taskTrackingTeamMappingResource) Schema(_ context.Context, _ resource.S
 				Description: "Map of task-tracker project IDs to Aikido team IDs. " +
 					"Project IDs are those of the connected tracker (for example Linear team IDs or Jira project IDs). " +
 					"An empty team set unmaps that project. " +
-					"Projects omitted from the map are left unmapped in config; extra mapped projects in Aikido show as drift.",
+					"This is the complete mapping for the integration; omitting a mapped project removes its mapping.",
 			},
 		},
 	}
@@ -191,14 +191,20 @@ func (r *taskTrackingTeamMappingResource) applyMapping(ctx context.Context, plan
 		diags.AddError("Error reading task tracking team mapping", err.Error())
 		return taskTrackingTeamMappingModel{}, diags
 	}
+	if actual.MappingMode != mappingModeTeams {
+		diags.AddError(
+			"Error configuring task tracking team mapping",
+			"Set the task tracker integration's mapping mode to teams in Aikido before managing team mappings with Terraform.",
+		)
+		return taskTrackingTeamMappingModel{}, diags
+	}
 
 	if missing := missingIDMappings(plannedMap, teamsMapFromAPI(actual)); len(missing) > 0 {
 		diags.AddError(
 			"Error configuring task tracking team mapping",
 			fmt.Sprintf(
 				"Aikido did not persist the team mapping for: %s. "+
-					"Check that the project IDs belong to the task tracker integration and that the team IDs exist. "+
-					"If the workspace uses repository mapping, applying this resource switches it to team mapping.",
+					"Check that the project IDs belong to the task tracker integration and that the team IDs exist.",
 				formatMissingMappings(missing, "team"),
 			),
 		)

@@ -12,7 +12,7 @@ Maps Aikido teams to task-tracker projects (Linear, Jira, and others). This is t
 
 This resource writes `POST /task_tracking/mapTeamsToProjects` and reads [Get project mapping](https://apidocs.aikido.dev/reference/getprojectmapping). Project IDs are those of the connected tracker (for Linear, the Linear team/project IDs). Values are Aikido team IDs.
 
--> This configures **team** mapping (`mapping_mode = teams`). Applying this resource switches the integration to team mapping.
+-> Set the task tracker integration's mapping mode to **teams** in Aikido before using this resource. Applying this resource does not change the mapping mode.
 
 -> Destroy does **not** unmap projects in Aikido. It only removes the resource from Terraform state.
 
@@ -47,7 +47,7 @@ resource "aikido_task_tracking_team_mapping" "linear" {
 
 ### Required
 
-- `project_teams_map` (Map of Set of Number) Map of task-tracker project IDs to Aikido team IDs. Project IDs are those of the connected tracker (for example Linear team IDs or Jira project IDs). An empty team set unmaps that project. Projects omitted from the map are left unmapped in config; extra mapped projects in Aikido show as drift.
+- `project_teams_map` (Map of Set of Number) Map of task-tracker project IDs to Aikido team IDs. Project IDs are those of the connected tracker (for example Linear team IDs or Jira project IDs). An empty team set unmaps that project. This is the complete mapping for the integration; omitting a mapped project removes its mapping.
 
 ### Optional
 
