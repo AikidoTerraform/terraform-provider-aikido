@@ -127,6 +127,7 @@ func (p *aikidoProvider) Resources(_ context.Context) []func() resource.Resource
 		resources.NewTaskTrackingTeamMappingResource,
 		resources.NewTeamResource,
 		resources.NewTeamUserResource,
+		resources.NewUserPermissionsResource,
 	}
 }
 

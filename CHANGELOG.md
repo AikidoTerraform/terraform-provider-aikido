@@ -7,6 +7,7 @@ FEATURES:
 - **New Data Source:** `aikido_teams` — looks up Aikido teams, including those synced from a Git provider, and reports the code repositories each is responsible for.
 - **New Data Source:** `aikido_users` — looks up workspace users, filtering by ID, email, full name, role, authentication type or activation state.
 - **New Resource:** `aikido_team_user` — manages one user's membership of a team created in Aikido. Memberships of teams synced from a Git provider are rejected.
+- **New Resource:** `aikido_user_permissions` — manages the role and permissions of a user who already exists in Aikido. Capability attributes are authoritative; removing the resource leaves the user's permissions unchanged.
 
 ENHANCEMENTS:
 
