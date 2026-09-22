@@ -163,7 +163,7 @@ func (r *repositoryResource) Read(ctx context.Context, request resource.ReadRequ
 	// get repository from list cache
 	apiRepository, err := repositories.ByID(ctx, r.client, id)
 	if err != nil {
-		if client.NotFound(err) {
+		if client.NotInList(err) {
 			response.State.RemoveResource(ctx)
 			return
 		}
@@ -205,6 +205,8 @@ func (r *repositoryResource) Delete(ctx context.Context, request resource.Delete
 		return
 	}
 
+	defer repositories.InvalidateCache(r.client)
+
 	if err := r.setActive(ctx, priorState.ID.ValueString(), false); err != nil && !client.NotFound(err) {
 		response.Diagnostics.AddError("Error deactivating repository", err.Error())
 	}
@@ -218,6 +220,9 @@ func (r *repositoryResource) ImportState(ctx context.Context, request resource.I
 // setRepoConfig is shared by Create and Update.
 func (r *repositoryResource) setRepoConfig(ctx context.Context, plannedRepository repositoryModel) (repositoryModel, error) {
 	repositoryID := plannedRepository.ID.ValueString()
+
+	// Deferred: a call that fails partway may still have changed the repository.
+	defer repositories.InvalidateCache(r.client)
 
 	if err := r.setActive(ctx, repositoryID, plannedRepository.Active.ValueBool()); err != nil {
 		return repositoryModel{}, err

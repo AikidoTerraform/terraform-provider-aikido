@@ -6,6 +6,7 @@ package repositories
 import (
 	"cmp"
 	"context"
+	"fmt"
 	"net/http"
 	"slices"
 	"strconv"
@@ -63,12 +64,7 @@ func ByID(ctx context.Context, apiClient *client.Client, id int64) (Repository, 
 
 	cached, ok := byID[id]
 	if !ok {
-		return Repository{}, &client.APIError{
-			StatusCode: http.StatusNotFound,
-			Method:     http.MethodGet,
-			Path:       DetailPath(id),
-			Body:       "repository not found",
-		}
+		return Repository{}, fmt.Errorf("%w: repository %d", client.ErrNotInList, id)
 	}
 
 	return cached, nil
@@ -102,6 +98,13 @@ func Detail(ctx context.Context, apiClient *client.Client, id int64) (Repository
 	}
 
 	return repo, nil
+}
+
+// InvalidateCache drops the cached list so the next read reflects a write.
+// Callers that mutate a repository must invoke it, otherwise a data source
+// reading later in the same apply still sees the pre-write list.
+func InvalidateCache(apiClient *client.Client) {
+	client.InvalidateCached(apiClient, cacheKey)
 }
 
 // cachedByID fetches every repository once per client and keys them by ID.

@@ -82,6 +82,25 @@ func TestAll_AndByID_ShareOneCachedFetch(t *testing.T) {
 	}
 }
 
+func TestInvalidateCache_MakesTheNextReadRefetch(t *testing.T) {
+	var requestCount int
+	srv := listServer(t, &requestCount, Repository{ID: 1, Name: "payments", Active: true})
+	apiClient := testClient(srv)
+	ctx := context.Background()
+
+	if _, err := All(ctx, apiClient); err != nil {
+		t.Fatalf("All: %v", err)
+	}
+	InvalidateCache(apiClient)
+	if _, err := All(ctx, apiClient); err != nil {
+		t.Fatalf("All (after invalidate): %v", err)
+	}
+
+	if requestCount != 2 {
+		t.Errorf("list endpoint hit %d times, want 2", requestCount)
+	}
+}
+
 func TestAll_RequestsInactiveAndLabels(t *testing.T) {
 	var query string
 
@@ -102,7 +121,7 @@ func TestAll_RequestsInactiveAndLabels(t *testing.T) {
 	}
 }
 
-func TestByID_MissingRepositoryIsNotFound(t *testing.T) {
+func TestByID_MissingRepositoryIsNotInList(t *testing.T) {
 	var requestCount int
 	srv := listServer(t, &requestCount, Repository{ID: 1})
 
@@ -110,8 +129,13 @@ func TestByID_MissingRepositoryIsNotFound(t *testing.T) {
 	if err == nil {
 		t.Fatal("ByID: want error for missing repository, got nil")
 	}
-	if !client.NotFound(err) {
-		t.Errorf("err = %v, want a not-found API error", err)
+	if !client.NotInList(err) {
+		t.Errorf("err = %v, want a not-in-list error", err)
+	}
+	// Distinguishable from a failed request, which callers must not treat as
+	// proof the repository is gone.
+	if client.NotFound(err) {
+		t.Errorf("err = %v, must not also read as an API 404", err)
 	}
 }
 

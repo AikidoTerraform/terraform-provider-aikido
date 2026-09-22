@@ -166,7 +166,54 @@ func TestSetRepoConfig_UpdatesAndSkipsNulls(t *testing.T) {
 	})
 }
 
-func TestRepositoryFromCache_NotFound(t *testing.T) {
+// A label selector reading after a repository write must see the new labels,
+// not the list that was cached when the plan was refreshed.
+func TestSetRepoConfig_DropsTheSharedListCache(t *testing.T) {
+	labelName := "before"
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case isCodeReposList(r):
+			writeReposList(t, w, repositories.Repository{
+				ID:     9,
+				Active: true,
+				Labels: []repositories.Label{{ID: "l1", Name: labelName}},
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/public/v1/repositories/code/9":
+			_ = json.NewEncoder(w).Encode(repositories.Repository{ID: 9, Active: true})
+		default:
+			_, _ = io.WriteString(w, `{}`)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	apiClient := testClient(srv)
+	ctx := context.Background()
+
+	// Refresh populates the cache, then the resource writes, then a data source reads.
+	if _, err := repositories.All(ctx, apiClient); err != nil {
+		t.Fatalf("All: %v", err)
+	}
+
+	labelName = "after"
+	res := &repositoryResource{client: apiClient}
+	if _, err := res.setRepoConfig(ctx, repositoryModel{
+		ID:     types.StringValue("9"),
+		Active: types.BoolValue(true),
+	}); err != nil {
+		t.Fatalf("setRepoConfig: %v", err)
+	}
+
+	all, err := repositories.All(ctx, apiClient)
+	if err != nil {
+		t.Fatalf("All (after write): %v", err)
+	}
+	if got := all[0].Labels[0].Name; got != "after" {
+		t.Errorf("label = %q, want %q: the write left a stale list cached", got, "after")
+	}
+}
+
+func TestRepositoryFromCache_NotInList(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !isCodeReposList(r) {
 			t.Errorf("unexpected path %s", r.URL.Path)
@@ -178,8 +225,25 @@ func TestRepositoryFromCache_NotFound(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	_, err := repositories.ByID(context.Background(), testClient(srv), 1)
-	if err == nil || !client.NotFound(err) {
-		t.Fatalf("err = %v, want NotFound", err)
+	if err == nil || !client.NotInList(err) {
+		t.Fatalf("err = %v, want NotInList", err)
+	}
+}
+
+// A 404 from the list request means the lookup failed, so the repository must
+// not be dropped from state.
+func TestRepositoryFromCache_FailedListIsNotAMissingRepository(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	t.Cleanup(srv.Close)
+
+	_, err := repositories.ByID(context.Background(), testClient(srv), 1)
+	if err == nil {
+		t.Fatal("want an error when the list request fails")
+	}
+	if client.NotInList(err) {
+		t.Errorf("err = %v, must not read as a repository that is gone", err)
 	}
 }
 
