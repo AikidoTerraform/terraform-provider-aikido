@@ -343,3 +343,64 @@ func TestPathLimited(t *testing.T) {
 		})
 	}
 }
+
+// A write that fails may still have been applied, so the cached list must not
+// survive it.
+func TestWrites_InvalidateTheCacheEvenWhenTheyFail(t *testing.T) {
+	tests := []struct {
+		name  string
+		write func(context.Context, *client.Client) error
+	}{
+		{
+			name: "create",
+			write: func(ctx context.Context, apiClient *client.Client) error {
+				_, err := Create(ctx, apiClient, "Payments")
+				return err
+			},
+		},
+		{
+			name: "update",
+			write: func(ctx context.Context, apiClient *client.Client) error {
+				return Update(ctx, apiClient, 1, "Payments", nil)
+			},
+		},
+		{
+			name: "delete",
+			write: func(ctx context.Context, apiClient *client.Client) error {
+				return Delete(ctx, apiClient, 1)
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var listCount int
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == http.MethodGet {
+					listCount++
+					_ = json.NewEncoder(w).Encode([]Team{{ID: 1, Name: "Payments"}})
+					return
+				}
+				w.WriteHeader(http.StatusInternalServerError)
+			}))
+			t.Cleanup(srv.Close)
+
+			apiClient := testClient(srv)
+			ctx := context.Background()
+
+			if _, err := All(ctx, apiClient); err != nil {
+				t.Fatalf("All: %v", err)
+			}
+			if err := test.write(ctx, apiClient); err == nil {
+				t.Fatal("want the write to fail")
+			}
+			if _, err := All(ctx, apiClient); err != nil {
+				t.Fatalf("All (after the failed write): %v", err)
+			}
+
+			if listCount != 2 {
+				t.Errorf("list endpoint hit %d times, want 2: the failed write left a stale cache", listCount)
+			}
+		})
+	}
+}

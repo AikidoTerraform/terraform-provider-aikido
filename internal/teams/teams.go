@@ -88,13 +88,15 @@ func ByID(ctx context.Context, apiClient *client.Client, id int64) (Team, error)
 // Create adds a manual team and returns its new ID. Responsibilities need a
 // separate Update: the create endpoint takes a name only.
 func Create(ctx context.Context, apiClient *client.Client, name string) (int64, error) {
+	// Deferred: a call that fails may still have changed the team.
+	defer InvalidateCache(apiClient)
+
 	var created struct {
 		ID int64 `json:"id"`
 	}
 	if err := apiClient.Do(ctx, http.MethodPost, BasePath, map[string]string{"name": name}, &created); err != nil {
 		return 0, err
 	}
-	InvalidateCache(apiClient)
 
 	return created.ID, nil
 }
@@ -111,6 +113,9 @@ type responsibilityWrite struct {
 // which the API reads as "no change". The body is a map rather than a struct
 // because a struct cannot distinguish an empty list from an absent one.
 func Update(ctx context.Context, apiClient *client.Client, id int64, name string, codeRepoIDs *[]int64) error {
+	// Deferred: a call that fails may still have changed the team.
+	defer InvalidateCache(apiClient)
+
 	body := map[string]any{"name": name}
 
 	if codeRepoIDs != nil {
@@ -124,17 +129,18 @@ func Update(ctx context.Context, apiClient *client.Client, id int64, name string
 	if err := apiClient.Do(ctx, http.MethodPut, DetailPath(id), body, nil); err != nil {
 		return err
 	}
-	InvalidateCache(apiClient)
 
 	return nil
 }
 
 // Delete removes a manual team. The API rejects imported teams with a 400.
 func Delete(ctx context.Context, apiClient *client.Client, id int64) error {
+	// Deferred: a delete that reports failure may still have removed the team.
+	defer InvalidateCache(apiClient)
+
 	if err := apiClient.Do(ctx, http.MethodDelete, DetailPath(id), nil, nil); err != nil {
 		return err
 	}
-	InvalidateCache(apiClient)
 
 	return nil
 }
