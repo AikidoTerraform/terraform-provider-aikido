@@ -354,8 +354,22 @@ func setStateFromDetails(ctx context.Context, state *tfsdk.State, details users.
 	diagnostics.Append(state.SetAttribute(ctx, path.Root("read_only"), types.BoolValue(bool(details.ReadOnly)))...)
 
 	for _, capability := range users.Capabilities {
-		diagnostics.Append(state.SetAttribute(ctx, path.Root(capability), types.BoolValue(bool(details.Permissions[capability])))...)
+		diagnostics.Append(state.SetAttribute(ctx, path.Root(capability), types.BoolValue(reportedCapability(details, capability)))...)
 	}
 
 	return diagnostics
+}
+
+// reportedCapability reads one capability from a detail response, falling back
+// to the value the role fixes when the response omits it. The API sends every
+// capability, so the fallback only matters if that changes.
+func reportedCapability(details users.Details, capability string) bool {
+	if value, present := details.Permissions[capability]; present {
+		return bool(value)
+	}
+	if forcedValue, forced := users.ForcedCapability(details.Role, capability); forced {
+		return forcedValue
+	}
+
+	return false
 }

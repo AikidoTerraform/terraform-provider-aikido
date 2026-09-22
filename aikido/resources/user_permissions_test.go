@@ -175,10 +175,55 @@ func TestSetStateFromDetails(t *testing.T) {
 	if !readOnly.ValueBool() || !ignoreIssues.ValueBool() {
 		t.Errorf("read_only = %v, can_ignore_issues = %v", readOnly, ignoreIssues)
 	}
-	// Absent from the response, so recorded as false rather than left unknown.
+	// Absent from the response, and team_only does not grant it.
 	if manageTeams != types.BoolValue(false) {
 		t.Errorf("can_manage_teams = %v, want false", manageTeams)
 	}
+}
+
+// The API reports every capability, so this only matters if that changes: a
+// missing key must not contradict what the role guarantees.
+func TestSetStateFromDetails_MissingCapabilityFallsBackToTheRole(t *testing.T) {
+	ctx := context.Background()
+	resourceSchema := permissionsSchema(t)
+	state := emptyState(t, resourceSchema)
+
+	failOn(t, setStateFromDetails(ctx, state, users.Details{
+		ID:          42,
+		Role:        users.RoleAdmin,
+		Permissions: map[string]users.Flag{},
+	}))
+
+	for _, capability := range users.Capabilities {
+		var value types.Bool
+		failOn(t, state.GetAttribute(ctx, path.Root(capability), &value))
+		if value != types.BoolValue(true) {
+			t.Errorf("%s = %v, want true: an admin holds every capability", capability, value)
+		}
+	}
+}
+
+// detailResponse is a detail payload shaped like the API's: every capability is
+// present, as Aikido reports them.
+func detailResponse(t *testing.T, role string, granted bool) string {
+	t.Helper()
+
+	permissions := make(map[string]int, len(users.Capabilities))
+	for _, capability := range users.Capabilities {
+		if granted {
+			permissions[capability] = 1
+		} else {
+			permissions[capability] = 0
+		}
+	}
+	body, err := json.Marshal(map[string]any{
+		"id": 42, "role": role, "read_only": 0, "permissions": permissions,
+	})
+	if err != nil {
+		t.Fatalf("building detail response: %v", err)
+	}
+
+	return string(body)
 }
 
 // rightsServer answers the rights write and the detail read, recording the body
@@ -224,7 +269,7 @@ func TestWrite_SendsEffectivePermissionsAndStoresTheReadBack(t *testing.T) {
 	plan := tfsdk.Plan{Schema: resourceSchema, Raw: config.Raw}
 
 	var written map[string]any
-	srv := rightsServer(t, &written, `{"id":42,"role":"default","read_only":0,"permissions":{}}`)
+	srv := rightsServer(t, &written, detailResponse(t, users.RoleDefault, false))
 
 	res := &userPermissionsResource{client: testClient(srv)}
 	state := emptyState(t, resourceSchema)
@@ -268,7 +313,7 @@ func TestWrite_AdminGetsEveryCapabilityRegardlessOfThePlan(t *testing.T) {
 	plan := tfsdk.Plan{Schema: resourceSchema, Raw: rawConfig(t, planValues).Raw}
 
 	var written map[string]any
-	srv := rightsServer(t, &written, `{"id":42,"role":"admin","read_only":0,"permissions":{}}`)
+	srv := rightsServer(t, &written, detailResponse(t, users.RoleAdmin, true))
 
 	res := &userPermissionsResource{client: testClient(srv)}
 	var diagnostics diag.Diagnostics
