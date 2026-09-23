@@ -16,11 +16,7 @@ ENHANCEMENTS:
 BUG FIXES:
 
 - `aikido_repository`: activation, sensitivity, connectivity and label writes now drop the cached repository list, so a data source reading later in the same apply sees the change.
-- Resources are no longer removed from Terraform state when a list request fails with a 404. Only a lookup that completes and finds the object absent does that.
-
-NOTES:
-
-- The minimum supported Terraform version is now 1.2, which the team examples require for `lifecycle` preconditions.
+- `aikido_repository`: a failure while fetching the repository list no longer removes the resource from Terraform state. State is removed only when a successful response confirms that the repository is absent.
 
 ## 1.4.0
 

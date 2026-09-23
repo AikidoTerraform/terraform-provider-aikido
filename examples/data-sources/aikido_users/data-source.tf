@@ -5,8 +5,7 @@ data "aikido_users" "alice" {
 }
 
 output "alice_user_id" {
-  # one(...) fails the plan if the lookup matched no user, or more than one,
-  # rather than silently picking an account.
+  # one(...) returns null for no match and fails for multiple matches.
   value = one(data.aikido_users.alice.ids)
 }
 

@@ -61,7 +61,7 @@ func (d *usersDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, 
 			"Returns every user, active and inactive, unless filters narrow the result. " +
 			"Filters combine with AND; a filter that matches nothing yields an empty list rather than an error. " +
 			"No filter is guaranteed to identify exactly one account, not even email, so ids may hold zero or several entries: " +
-			"use one(...) where a single user is required and the configuration should fail otherwise. " +
+			"one(...) returns null for no matches and rejects multiple matches. " +
 			"The underlying endpoint returns the whole workspace in a single unpaginated response.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.Int64Attribute{

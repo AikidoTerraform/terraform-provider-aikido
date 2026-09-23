@@ -3,12 +3,12 @@
 page_title: "Aikido Users"
 subcategory: ""
 description: |-
-  Looks up users in the Aikido workspace. Returns every user, active and inactive, unless filters narrow the result. Filters combine with AND; a filter that matches nothing yields an empty list rather than an error. No filter is guaranteed to identify exactly one account, not even email, so ids may hold zero or several entries: use one(...) where a single user is required and the configuration should fail otherwise. The underlying endpoint returns the whole workspace in a single unpaginated response.
+  Looks up users in the Aikido workspace. Returns every user, active and inactive, unless filters narrow the result. Filters combine with AND; a filter that matches nothing yields an empty list rather than an error. No filter is guaranteed to identify exactly one account, not even email, so ids may hold zero or several entries: one(...) returns null for no matches and rejects multiple matches. The underlying endpoint returns the whole workspace in a single unpaginated response.
 ---
 
 # aikido_users (Data Source)
 
-Looks up users in the Aikido workspace. Returns every user, active and inactive, unless filters narrow the result. Filters combine with AND; a filter that matches nothing yields an empty list rather than an error. No filter is guaranteed to identify exactly one account, not even email, so ids may hold zero or several entries: use one(...) where a single user is required and the configuration should fail otherwise. The underlying endpoint returns the whole workspace in a single unpaginated response.
+Looks up users in the Aikido workspace. Returns every user, active and inactive, unless filters narrow the result. Filters combine with AND; a filter that matches nothing yields an empty list rather than an error. No filter is guaranteed to identify exactly one account, not even email, so ids may hold zero or several entries: one(...) returns null for no matches and rejects multiple matches. The underlying endpoint returns the whole workspace in a single unpaginated response.
 
 ## Example Usage
 
@@ -20,8 +20,7 @@ data "aikido_users" "alice" {
 }
 
 output "alice_user_id" {
-  # one(...) fails the plan if the lookup matched no user, or more than one,
-  # rather than silently picking an account.
+  # one(...) returns null for no match and fails for multiple matches.
   value = one(data.aikido_users.alice.ids)
 }
 

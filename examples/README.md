@@ -10,6 +10,8 @@ These are **fragments**, not a complete root module by themselves. Combine the p
 |------|---------|
 | [`provider/provider.tf`](provider/provider.tf) | `required_providers` + `provider "aikido"` block |
 | [`data-sources/aikido_repositories/data-source.tf`](data-sources/aikido_repositories/data-source.tf) | `aikido_repositories` data source: look up repositories by name instead of by numeric ID |
+| [`data-sources/aikido_teams/data-source.tf`](data-sources/aikido_teams/data-source.tf) | `aikido_teams` data source |
+| [`data-sources/aikido_users/data-source.tf`](data-sources/aikido_users/data-source.tf) | `aikido_users` data source |
 | [`resources/aikido_repository/resource.tf`](resources/aikido_repository/resource.tf) | `aikido_repository` resource |
 | [`resources/aikido_autofix_dependency_settings/resource.tf`](resources/aikido_autofix_dependency_settings/resource.tf) | `aikido_autofix_dependency_settings` resource |
 | [`resources/aikido_autofix_sast_settings/resource.tf`](resources/aikido_autofix_sast_settings/resource.tf) | `aikido_autofix_sast_settings` resource |
@@ -18,10 +20,13 @@ These are **fragments**, not a complete root module by themselves. Combine the p
 | [`resources/aikido_default_pr_checks_settings/resource.tf`](resources/aikido_default_pr_checks_settings/resource.tf) | `aikido_default_pr_checks_settings` resource |
 | [`resources/aikido_all_repo_pr_checks_settings/resource.tf`](resources/aikido_all_repo_pr_checks_settings/resource.tf) | `aikido_all_repo_pr_checks_settings` resource |
 | [`resources/aikido_task_tracking_team_mapping/resource.tf`](resources/aikido_task_tracking_team_mapping/resource.tf) | `aikido_task_tracking_team_mapping` resource |
+| [`resources/aikido_team/resource.tf`](resources/aikido_team/resource.tf) | `aikido_team` resource |
+| [`resources/aikido_team_user/resource.tf`](resources/aikido_team_user/resource.tf) | `aikido_team_user` resource |
+| [`resources/aikido_user_permissions/resource.tf`](resources/aikido_user_permissions/resource.tf) | `aikido_user_permissions` resource |
 
 ## Prerequisites
 
-- Terraform >= 1.0
+- Terraform >= 1.2
 - Aikido API credentials (`AIKIDO_CLIENT_ID` / `AIKIDO_CLIENT_SECRET`)
 - For a **local** provider build: install the binary and set a `dev_overrides` entry — see [`DEVELOPMENT.md`](../DEVELOPMENT.md)
 

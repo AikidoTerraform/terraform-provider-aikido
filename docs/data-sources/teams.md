@@ -24,9 +24,8 @@ output "aikido_managed_team_names" {
   value = [for team in data.aikido_teams.manual.teams : team.name]
 }
 
-# ids holds the numeric IDs that team_id attributes expect, in the same order as
-# teams. Use one(...) where a single team is required, so the plan fails on an
-# ambiguous or empty match rather than silently picking a team.
+# ids holds the numeric IDs that team_id attributes expect. one(...) returns
+# null for no match and fails for multiple matches.
 data "aikido_teams" "payments" {
   name = "Payments"
 }
