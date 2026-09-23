@@ -1,3 +1,9 @@
+## 1.5.1
+
+BUG FIXES:
+
+- `aikido_repository`: label updates now accept the numeric label IDs returned by the repository detail API.
+
 ## 1.5.0
 
 FEATURES:

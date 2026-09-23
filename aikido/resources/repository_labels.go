@@ -55,7 +55,7 @@ func (r *repositoryResource) applyLabels(ctx context.Context, repositoryID strin
 			continue
 		}
 
-		if err := r.deleteLabel(ctx, repositoryID, label.ID); err != nil {
+		if err := r.deleteLabel(ctx, repositoryID, label.ID.String()); err != nil {
 			return fmt.Errorf("deleting label %q: %w", label.Name, err)
 		}
 	}

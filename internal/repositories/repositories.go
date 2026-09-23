@@ -6,6 +6,7 @@ package repositories
 import (
 	"cmp"
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"slices"
@@ -43,9 +44,9 @@ type Repository struct {
 }
 
 type Label struct {
-	ID         string `json:"id"`
-	Name       string `json:"name"`
-	IsImported bool   `json:"is_imported"`
+	ID         json.Number `json:"id"`
+	Name       string      `json:"name"`
+	IsImported bool        `json:"is_imported"`
 }
 
 // DetailPath is the detail endpoint for a single repository.
