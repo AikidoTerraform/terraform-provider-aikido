@@ -177,7 +177,7 @@ func TestSetRepoConfig_DropsTheSharedListCache(t *testing.T) {
 			writeReposList(t, w, repositories.Repository{
 				ID:     9,
 				Active: true,
-				Labels: []repositories.Label{{ID: "1", Name: labelName}},
+				Labels: []repositories.Label{{ID: "l1", Name: labelName}},
 			})
 		case r.Method == http.MethodGet && r.URL.Path == "/public/v1/repositories/code/9":
 			_ = json.NewEncoder(w).Encode(repositories.Repository{ID: 9, Active: true})

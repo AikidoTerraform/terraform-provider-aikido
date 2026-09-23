@@ -2,7 +2,7 @@
 
 BUG FIXES:
 
-- `aikido_repository`: label updates now accept the numeric label IDs returned by the repository detail API.
+- `aikido_repository`: label updates no longer fail with `cannot unmarshal number into Label.labels.id` — label IDs now decode whether the API returns them as numbers or strings.
 
 ## 1.5.0
 

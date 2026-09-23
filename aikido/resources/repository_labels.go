@@ -55,7 +55,12 @@ func (r *repositoryResource) applyLabels(ctx context.Context, repositoryID strin
 			continue
 		}
 
-		if err := r.deleteLabel(ctx, repositoryID, label.ID.String()); err != nil {
+		// Without an ID the delete would hit the labels collection path.
+		if label.ID == "" {
+			return fmt.Errorf("deleting label %q: no id in API response", label.Name)
+		}
+
+		if err := r.deleteLabel(ctx, repositoryID, label.ID); err != nil {
 			return fmt.Errorf("deleting label %q: %w", label.Name, err)
 		}
 	}
