@@ -1,3 +1,9 @@
+## Unreleased
+
+FEATURES:
+
+- **New Resource:** `aikido_team_resource` — links one resource (code repository, cloud, container image, domain or Zen app) to a team created in Aikido, including optional repository path limitations, via the public `linkResourceToTeam` / `unlinkResourceFromTeam` APIs.
+
 ## 1.5.0
 
 FEATURES:
