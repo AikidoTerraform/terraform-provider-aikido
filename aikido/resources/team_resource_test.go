@@ -362,6 +362,43 @@ func TestUpdateLink_ClearsPathLimitationWhenOmitted(t *testing.T) {
 	}
 }
 
+func TestUpdateLink_KeepsTheIDWhenReadBackFails(t *testing.T) {
+	listed := []teams.Team{{
+		ID:   123,
+		Name: "Payments",
+		Responsibilities: []teams.Responsibility{
+			{ID: 4, Type: teams.TypeCodeRepository, IncludedPaths: []string{"/client/"}},
+		},
+	}}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == teams.BasePath {
+			_ = json.NewEncoder(w).Encode(listed)
+			return
+		}
+		listed = []teams.Team{{ID: 123, Name: "Payments"}}
+		_, _ = io.WriteString(w, `{"status":"ok"}`)
+	}))
+	t.Cleanup(srv.Close)
+
+	res := &teamLinkedResource{client: testClient(srv)}
+	state, diagnostics := res.updateLink(context.Background(), teamLinkedModel{
+		TeamID:             types.Int64Value(123),
+		RepoID:             types.Int64Value(4),
+		RepoPathLimitation: pathLimitation(teams.LimitationExclude, "/vendor/"),
+	}, teamLinkedModel{
+		TeamID:             types.Int64Value(123),
+		RepoID:             types.Int64Value(4),
+		RepoPathLimitation: pathLimitation(teams.LimitationInclude, "/client/"),
+	})
+
+	if !diagnostics.HasError() {
+		t.Fatal("a missing responsibility after the write produced no error")
+	}
+	if state.ID != types.StringValue("123:repo:4") {
+		t.Errorf("ID = %v, want \"123:repo:4\" so the written limitation stays tracked", state.ID)
+	}
+}
+
 func TestDeleteLink(t *testing.T) {
 	t.Run("unlinks the resource from a manual team", func(t *testing.T) {
 		var calls []string

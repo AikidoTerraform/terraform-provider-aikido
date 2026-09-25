@@ -237,7 +237,11 @@ func (r *teamLinkedResource) Update(ctx context.Context, request resource.Update
 
 	state, diagnostics := r.updateLink(ctx, planned, priorState)
 	response.Diagnostics.Append(diagnostics...)
-	if response.Diagnostics.HasError() {
+
+	// Save a link that was updated even when reading it back failed.
+	// Terraform keeps the prior state a failed Update returns, and dropping
+	// the written values here would leave Aikido and state out of sync.
+	if state.ID.IsNull() {
 		return
 	}
 	response.Diagnostics.Append(response.State.Set(ctx, state)...)
