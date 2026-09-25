@@ -499,7 +499,8 @@ func TestCreateLink_InvalidatesTheTeamCache(t *testing.T) {
 		t.Fatalf("createLink: %v", diagnostics)
 	}
 
-	if listCount != 2 {
-		t.Errorf("list requested %d times, want 2: the link must invalidate the cached team list", listCount)
+	// Warm ByID, then createLink's pre-write duplicate check, then read-back after Link.
+	if listCount != 3 {
+		t.Errorf("list requested %d times, want 3: the link must invalidate the cached team list", listCount)
 	}
 }

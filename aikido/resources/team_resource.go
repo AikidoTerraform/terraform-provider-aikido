@@ -287,6 +287,8 @@ func (r *teamLinkedResource) createLink(ctx context.Context, planned teamLinkedM
 	}
 
 	teamID := planned.TeamID.ValueInt64()
+	// Drop the cache so alreadyLinked is taken from a live list. A stale miss
+	// would treat an existing link as this create when the write is later rejected.
 	teams.InvalidateCache(r.client)
 	team, err := teams.ByID(ctx, r.client, teamID)
 	if err != nil {
