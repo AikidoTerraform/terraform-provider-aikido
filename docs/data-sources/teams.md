@@ -3,12 +3,12 @@
 page_title: "Aikido Teams"
 subcategory: ""
 description: |-
-  Looks up Aikido teams, both those created in Aikido and those synced from a Git provider. Filters combine with AND; a filter that matches nothing yields an empty list rather than an error. Teams synced from a Git provider cannot be managed by aikido_team or aikido_team_user, but they are readable here: use this data source to see which repositories they already cover, and to decide what an Aikido-managed team should cover on top.
+  Looks up Aikido teams, both those created in Aikido and those synced from a Git provider. Filters combine with AND; a filter that matches nothing yields an empty list rather than an error. Teams synced from a Git provider cannot be managed by aikido_team, aikido_team_user or aikido_team_resource, but they are readable here: use this data source to see which repositories they already cover, and to decide what an Aikido-managed team should cover on top.
 ---
 
 # aikido_teams (Data Source)
 
-Looks up Aikido teams, both those created in Aikido and those synced from a Git provider. Filters combine with AND; a filter that matches nothing yields an empty list rather than an error. Teams synced from a Git provider cannot be managed by aikido_team or aikido_team_user, but they are readable here: use this data source to see which repositories they already cover, and to decide what an Aikido-managed team should cover on top.
+Looks up Aikido teams, both those created in Aikido and those synced from a Git provider. Filters combine with AND; a filter that matches nothing yields an empty list rather than an error. Teams synced from a Git provider cannot be managed by aikido_team, aikido_team_user or aikido_team_resource, but they are readable here: use this data source to see which repositories they already cover, and to decide what an Aikido-managed team should cover on top.
 
 ## Example Usage
 
