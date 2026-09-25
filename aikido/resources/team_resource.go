@@ -287,6 +287,7 @@ func (r *teamLinkedResource) createLink(ctx context.Context, planned teamLinkedM
 	}
 
 	teamID := planned.TeamID.ValueInt64()
+	teams.InvalidateCache(r.client)
 	team, err := teams.ByID(ctx, r.client, teamID)
 	if err != nil {
 		diagnostics.AddError("Error reading team", err.Error())
