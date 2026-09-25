@@ -262,3 +262,22 @@ func TestApplyLabels_KeepsImportedAndSyncsNames(t *testing.T) {
 		t.Fatalf("omitted applyLabels: %v", err)
 	}
 }
+
+// A label with no ID must not fall through to a DELETE on the labels collection.
+func TestApplyLabels_RefusesToDeleteLabelWithoutID(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	t.Cleanup(srv.Close)
+
+	err := (&repositoryResource{client: testClient(srv)}).applyLabels(
+		context.Background(),
+		"1",
+		labelSet(),
+		[]repositories.Label{{Name: "payments"}},
+	)
+	if err == nil || !strings.Contains(err.Error(), "no id") {
+		t.Errorf("err = %v, want a missing-id error", err)
+	}
+}
