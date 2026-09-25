@@ -294,15 +294,27 @@ func (r *teamLinkedResource) createLink(ctx context.Context, planned teamLinkedM
 		return teamLinkedModel{}, diagnostics
 	}
 
+	_, alreadyLinked := teams.FindResponsibility(team, linked.Kind, linked.ID)
+
 	if err := teams.Link(ctx, r.client, teamID, linked, limitation); err != nil {
 		teams.InvalidateCache(r.client)
-		if _, found := r.lookup(ctx, teamID, linked); found {
+		// A rejected link may still have landed. Only a responsibility that was
+		// absent beforehand proves that it did: one the team already had says
+		// nothing about this write, and accepting it would report a path
+		// limitation as applied when the API never took it.
+		if _, found := r.lookup(ctx, teamID, linked); found && !alreadyLinked {
 			return r.readBack(ctx, teamID, linked, diagnostics)
 		}
-		diagnostics.AddError(
-			"Error linking resource to team",
-			fmt.Sprintf("%s\n\nCheck that team %d exists and that the %s %d belongs to this workspace.", err, teamID, linked.Kind, linked.ID),
-		)
+
+		hint := fmt.Sprintf("Check that team %d exists and that the %s %d belongs to this workspace.", teamID, linked.Kind, linked.ID)
+		if alreadyLinked {
+			hint = fmt.Sprintf(
+				"Team %d was already responsible for %s %d before this apply, so nothing in this resource was applied. "+
+					"Import the existing link with %q instead of creating it, and check that no aikido_team.repository_ids manages the same resource.",
+				teamID, linked.Kind, linked.ID, teamResourceID(teamID, linked.Kind, linked.ID),
+			)
+		}
+		diagnostics.AddError("Error linking resource to team", fmt.Sprintf("%s\n\n%s", err, hint))
 		return teamLinkedModel{}, diagnostics
 	}
 

@@ -203,6 +203,35 @@ func TestCreateLink_ReconcilesAnAmbiguousLink(t *testing.T) {
 		}
 	})
 
+	t.Run("a rejected link on an already linked resource fails", func(t *testing.T) {
+		linkedWithoutPaths := teams.Team{ID: 123, Name: "Payments", Responsibilities: []teams.Responsibility{
+			{ID: 4, Type: teams.TypeCodeRepository},
+		}}
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == teams.BasePath {
+				_ = json.NewEncoder(w).Encode([]teams.Team{linkedWithoutPaths})
+				return
+			}
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = io.WriteString(w, `{"reason_phrase":"repo already linked"}`)
+		}))
+		t.Cleanup(srv.Close)
+
+		res := &teamLinkedResource{client: testClient(srv)}
+		_, diagnostics := res.createLink(context.Background(), teamLinkedModel{
+			TeamID:             types.Int64Value(123),
+			RepoID:             types.Int64Value(4),
+			RepoPathLimitation: pathLimitation(teams.LimitationInclude, "/client/"),
+		})
+
+		if !diagnostics.HasError() {
+			t.Fatal("a rejected link whose responsibility predates the write produced no error")
+		}
+		if detail := diagnostics.Errors()[0].Detail(); !strings.Contains(detail, "123:repo:4") {
+			t.Errorf("detail %q does not point at the existing link", detail)
+		}
+	})
+
 	t.Run("a link that did not land still fails", func(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.URL.Path == teams.BasePath {
