@@ -344,6 +344,144 @@ func TestPathLimited(t *testing.T) {
 	}
 }
 
+func TestLink_PostsTheResourceFieldAndOptionalPathLimitation(t *testing.T) {
+	tests := []struct {
+		name       string
+		linked     LinkedResource
+		limitation *PathLimitation
+		wantBody   string
+		wantAbsent string
+	}{
+		{
+			name:       "a cloud is sent as cloud_id",
+			linked:     LinkedResource{Kind: KindCloud, ID: 12},
+			wantBody:   `"cloud_id":12`,
+			wantAbsent: "repo_path_limitation",
+		},
+		{
+			name:     "a container image is sent as image_id",
+			linked:   LinkedResource{Kind: KindImage, ID: 8},
+			wantBody: `"image_id":8`,
+		},
+		{
+			name:   "a repository can carry a path limitation",
+			linked: LinkedResource{Kind: KindRepo, ID: 4},
+			limitation: &PathLimitation{
+				Type:  LimitationInclude,
+				Paths: []string{"/client/", "/tests/client/"},
+			},
+			wantBody: `"repo_id":4`,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var gotMethod, gotPath, gotBody string
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				gotMethod, gotPath = r.Method, r.URL.Path
+				body, _ := io.ReadAll(r.Body)
+				gotBody = string(body)
+				_, _ = io.WriteString(w, `{"success":1}`)
+			}))
+			t.Cleanup(srv.Close)
+
+			if err := Link(context.Background(), testClient(srv), 5, test.linked, test.limitation); err != nil {
+				t.Fatalf("Link: %v", err)
+			}
+			if gotMethod != http.MethodPost || gotPath != BasePath+"/5/linkResource" {
+				t.Errorf("got %s %s, want POST %s/5/linkResource", gotMethod, gotPath, BasePath)
+			}
+			if !strings.Contains(gotBody, test.wantBody) {
+				t.Errorf("body = %s, want %s", gotBody, test.wantBody)
+			}
+			if test.wantAbsent != "" && strings.Contains(gotBody, test.wantAbsent) {
+				t.Errorf("body = %s, want no %s", gotBody, test.wantAbsent)
+			}
+			if test.limitation != nil && !strings.Contains(gotBody, `"limitation_type":"include"`) {
+				t.Errorf("body = %s, want the path limitation", gotBody)
+			}
+		})
+	}
+}
+
+func TestUnlink_PostsTheResourceField(t *testing.T) {
+	var gotMethod, gotPath, gotBody string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod, gotPath = r.Method, r.URL.Path
+		body, _ := io.ReadAll(r.Body)
+		gotBody = string(body)
+		_, _ = io.WriteString(w, `{"success":1}`)
+	}))
+	t.Cleanup(srv.Close)
+
+	if err := Unlink(context.Background(), testClient(srv), 5, LinkedResource{Kind: KindDomain, ID: 3}); err != nil {
+		t.Fatalf("Unlink: %v", err)
+	}
+	if gotMethod != http.MethodPost || gotPath != BasePath+"/5/unlinkResource" {
+		t.Errorf("got %s %s, want POST %s/5/unlinkResource", gotMethod, gotPath, BasePath)
+	}
+	if !strings.Contains(gotBody, `"domain_id":3`) {
+		t.Errorf("body = %s, want the domain id", gotBody)
+	}
+}
+
+func TestUpdatePathLimitation_CanClearFilters(t *testing.T) {
+	var gotBody string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != BasePath+"/5/updateRepoPathLimitation" {
+			t.Errorf("path = %s", r.URL.Path)
+		}
+		body, _ := io.ReadAll(r.Body)
+		gotBody = string(body)
+		_, _ = io.WriteString(w, `{"status":"ok"}`)
+	}))
+	t.Cleanup(srv.Close)
+
+	if err := UpdatePathLimitation(context.Background(), testClient(srv), 5, 4, PathLimitation{
+		Type:  LimitationExclude,
+		Paths: []string{},
+	}); err != nil {
+		t.Fatalf("UpdatePathLimitation: %v", err)
+	}
+	if !strings.Contains(gotBody, `"repo_id":4`) || !strings.Contains(gotBody, `"paths":[]`) {
+		t.Errorf("body = %s, want an empty paths list that clears the filter", gotBody)
+	}
+}
+
+func TestFindResponsibility(t *testing.T) {
+	team := Team{Responsibilities: []Responsibility{
+		{ID: 4, Type: TypeCodeRepository, IncludedPaths: []string{"/client"}},
+		{ID: 8, Type: TypeContainerRepository},
+	}}
+
+	found, ok := FindResponsibility(team, KindRepo, 4)
+	if !ok || found.ID != 4 {
+		t.Fatalf("FindResponsibility(repo, 4) = %v, %v", found, ok)
+	}
+	if _, ok := FindResponsibility(team, KindImage, 8); !ok {
+		t.Error("image 8 should be found as a container_repository")
+	}
+	if _, ok := FindResponsibility(team, KindCloud, 4); ok {
+		t.Error("a repo id must not match as a cloud")
+	}
+}
+
+func TestPathLimitationOf(t *testing.T) {
+	if got := PathLimitationOf(Responsibility{ID: 1, Type: TypeCodeRepository}); got != nil {
+		t.Errorf("plain repo = %v, want nil", got)
+	}
+
+	included := PathLimitationOf(Responsibility{IncludedPaths: []string{"/client"}})
+	if included == nil || included.Type != LimitationInclude || included.Paths[0] != "/client" {
+		t.Errorf("included = %v, want include /client", included)
+	}
+
+	excluded := PathLimitationOf(Responsibility{ExcludedPaths: []string{"/vendor"}})
+	if excluded == nil || excluded.Type != LimitationExclude {
+		t.Errorf("excluded = %v, want exclude", excluded)
+	}
+}
+
 // A write that fails may still have been applied, so the cached list must not
 // survive it.
 func TestWrites_InvalidateTheCacheEvenWhenTheyFail(t *testing.T) {
@@ -368,6 +506,18 @@ func TestWrites_InvalidateTheCacheEvenWhenTheyFail(t *testing.T) {
 			name: "delete",
 			write: func(ctx context.Context, apiClient *client.Client) error {
 				return Delete(ctx, apiClient, 1)
+			},
+		},
+		{
+			name: "link",
+			write: func(ctx context.Context, apiClient *client.Client) error {
+				return Link(ctx, apiClient, 1, LinkedResource{Kind: KindCloud, ID: 9}, nil)
+			},
+		},
+		{
+			name: "unlink",
+			write: func(ctx context.Context, apiClient *client.Client) error {
+				return Unlink(ctx, apiClient, 1, LinkedResource{Kind: KindCloud, ID: 9})
 			},
 		},
 	}

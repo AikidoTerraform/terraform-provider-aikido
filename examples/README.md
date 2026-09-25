@@ -21,6 +21,7 @@ These are **fragments**, not a complete root module by themselves. Combine the p
 | [`resources/aikido_all_repo_pr_checks_settings/resource.tf`](resources/aikido_all_repo_pr_checks_settings/resource.tf) | `aikido_all_repo_pr_checks_settings` resource |
 | [`resources/aikido_task_tracking_team_mapping/resource.tf`](resources/aikido_task_tracking_team_mapping/resource.tf) | `aikido_task_tracking_team_mapping` resource |
 | [`resources/aikido_team/resource.tf`](resources/aikido_team/resource.tf) | `aikido_team` resource |
+| [`resources/aikido_team_resource/resource.tf`](resources/aikido_team_resource/resource.tf) | `aikido_team_resource` resource |
 | [`resources/aikido_team_user/resource.tf`](resources/aikido_team_user/resource.tf) | `aikido_team_user` resource |
 | [`resources/aikido_user_permissions/resource.tf`](resources/aikido_user_permissions/resource.tf) | `aikido_user_permissions` resource |
 
