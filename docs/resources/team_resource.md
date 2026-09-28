@@ -70,7 +70,7 @@ resource "aikido_team_resource" "payments_frontend" {
 Required:
 
 - `limitation_type` (String) Whether paths are included or excluded. One of include, exclude.
-- `paths` (List of String) Repository paths to include or exclude, for example /client/.
+- `paths` (Set of String) Repository paths to include or exclude, for example /client/. Order is not significant.
 
 ## Import
 

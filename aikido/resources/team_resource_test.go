@@ -55,7 +55,7 @@ func pathLimitation(limitationType string, paths ...string) *repoPathLimitationM
 
 	return &repoPathLimitationModel{
 		LimitationType: types.StringValue(limitationType),
-		Paths:          types.ListValueMust(types.StringType, elements),
+		Paths:          types.SetValueMust(types.StringType, elements),
 	}
 }
 
@@ -397,6 +397,20 @@ func TestUpdateLink_UpdatesPathLimitation(t *testing.T) {
 	}
 	if state.RepoPathLimitation == nil || state.RepoPathLimitation.LimitationType != types.StringValue(teams.LimitationExclude) {
 		t.Errorf("RepoPathLimitation = %v, want exclude", state.RepoPathLimitation)
+	}
+}
+
+func TestPathLimitationToModel_IgnoresPathOrder(t *testing.T) {
+	// Aikido reports paths in no particular order, so a reordered response
+	// must read back equal to the configured value or every plan shows a diff.
+	got := pathLimitationToModel(&teams.PathLimitation{
+		Type:  teams.LimitationInclude,
+		Paths: []string{"/tests/client/", "/client/"},
+	})
+	want := pathLimitation(teams.LimitationInclude, "/client/", "/tests/client/")
+
+	if got == nil || !got.Paths.Equal(want.Paths) {
+		t.Errorf("Paths = %v, want %v regardless of order", got, want.Paths)
 	}
 }
 

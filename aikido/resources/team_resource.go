@@ -10,8 +10,8 @@ import (
 	"github.com/AikidoTerraform/terraform-provider-aikido/internal/repositories"
 	"github.com/AikidoTerraform/terraform-provider-aikido/internal/teams"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
-	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/objectvalidator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -54,7 +54,7 @@ type teamLinkedModel struct {
 
 type repoPathLimitationModel struct {
 	LimitationType types.String `tfsdk:"limitation_type"`
-	Paths          types.List   `tfsdk:"paths"`
+	Paths          types.Set    `tfsdk:"paths"`
 }
 
 func (r *teamLinkedResource) Metadata(_ context.Context, request resource.MetadataRequest, response *resource.MetadataResponse) {
@@ -144,12 +144,12 @@ func (r *teamLinkedResource) Schema(_ context.Context, _ resource.SchemaRequest,
 							stringvalidator.OneOf(teams.LimitationInclude, teams.LimitationExclude),
 						},
 					},
-					"paths": schema.ListAttribute{
+					"paths": schema.SetAttribute{
 						Required:    true,
 						ElementType: types.StringType,
-						Description: "Repository paths to include or exclude, for example /client/.",
-						Validators: []validator.List{
-							listvalidator.SizeAtLeast(1),
+						Description: "Repository paths to include or exclude, for example /client/. Order is not significant.",
+						Validators: []validator.Set{
+							setvalidator.SizeAtLeast(1),
 						},
 					},
 				},
@@ -523,7 +523,7 @@ func pathLimitationToModel(limitation *teams.PathLimitation) *repoPathLimitation
 
 	return &repoPathLimitationModel{
 		LimitationType: types.StringValue(limitation.Type),
-		Paths:          types.ListValueMust(types.StringType, elements),
+		Paths:          types.SetValueMust(types.StringType, elements),
 	}
 }
 
