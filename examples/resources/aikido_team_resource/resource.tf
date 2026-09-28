@@ -15,9 +15,8 @@ resource "aikido_team_resource" "payments_image" {
   image_id = 8
 }
 
-# A code repository can be limited to certain paths. Do not also list this
-# repository in aikido_team.repository_ids: that attribute replaces the team's
-# whole repository set and would unlink this resource.
+# A code repository can be limited to certain paths. When using repository
+# links like this, do not set repository_ids on aikido_team for the same team.
 resource "aikido_team_resource" "payments_frontend" {
   team_id = aikido_team.payments.id
   repo_id = 4

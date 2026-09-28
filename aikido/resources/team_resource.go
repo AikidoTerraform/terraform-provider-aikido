@@ -76,13 +76,10 @@ func (r *teamLinkedResource) Schema(_ context.Context, _ resource.SchemaRequest,
 	}
 
 	response.Schema = schema.Schema{
-		Description: "Links one resource to a team created in Aikido: a code repository, cloud, container image, domain or Zen app. " +
-			"A code repository can optionally be limited to included or excluded paths. " +
-			"Inactive code repositories are rejected on create: the link API accepts them, but the team list omits them, so Terraform cannot confirm the link and would drop it from state. " +
-			"Teams synced from a Git provider belong to that provider and are rejected; " +
-			"create a separate Aikido team instead of trying to link resources to an imported one. " +
-			"Do not manage the same code repository with both this resource and aikido_team.repository_ids: " +
-			"that attribute replaces the team's whole repository set and would unlink this resource.",
+		Description: "Links a code repository, cloud, container image, domain or Zen app to a team created in Aikido. " +
+			"Repository links can optionally include path limitations. Only active repositories and teams created in Aikido are supported. " +
+			"Do not combine aikido_team.repository_ids with aikido_team_resource repository links for the same team: " +
+			"repository_ids manages the team's complete repository set.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Computed:    true,
@@ -100,8 +97,8 @@ func (r *teamLinkedResource) Schema(_ context.Context, _ resource.SchemaRequest,
 			},
 			"repo_id": schema.Int64Attribute{
 				Optional: true,
-				Description: "Aikido code repository ID to link. Mutually exclusive with cloud_id, image_id, domain_id and zen_app_id. " +
-					"Inactive repositories are rejected on create, because the team list omits them and Terraform would drop the link from state.",
+				Description: "Aikido code repository ID to link. The repository must be active. " +
+					"Mutually exclusive with cloud_id, image_id, domain_id and zen_app_id.",
 				Validators:    idExactlyOneOf,
 				PlanModifiers: replaceOnChange,
 			},

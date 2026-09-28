@@ -3,12 +3,12 @@
 page_title: "Aikido Team Resource Link"
 subcategory: ""
 description: |-
-  Links one resource to a team created in Aikido: a code repository, cloud, container image, domain or Zen app. A code repository can optionally be limited to included or excluded paths. Inactive code repositories are rejected on create: the link API accepts them, but the team list omits them, so Terraform cannot confirm the link and would drop it from state. Teams synced from a Git provider belong to that provider and are rejected; create a separate Aikido team instead of trying to link resources to an imported one. Do not manage the same code repository with both this resource and aikido_team.repository_ids: that attribute replaces the team's whole repository set and would unlink this resource.
+  Links a code repository, cloud, container image, domain or Zen app to a team created in Aikido. Repository links can optionally include path limitations. Only active repositories and teams created in Aikido are supported. Do not combine aikido_team.repository_ids with aikido_team_resource repository links for the same team: repository_ids manages the team's complete repository set.
 ---
 
 # aikido_team_resource (Resource)
 
-Links one resource to a team created in Aikido: a code repository, cloud, container image, domain or Zen app. A code repository can optionally be limited to included or excluded paths. Inactive code repositories are rejected on create: the link API accepts them, but the team list omits them, so Terraform cannot confirm the link and would drop it from state. Teams synced from a Git provider belong to that provider and are rejected; create a separate Aikido team instead of trying to link resources to an imported one. Do not manage the same code repository with both this resource and aikido_team.repository_ids: that attribute replaces the team's whole repository set and would unlink this resource.
+Links a code repository, cloud, container image, domain or Zen app to a team created in Aikido. Repository links can optionally include path limitations. Only active repositories and teams created in Aikido are supported. Do not combine aikido_team.repository_ids with aikido_team_resource repository links for the same team: repository_ids manages the team's complete repository set.
 
 ## Example Usage
 
@@ -30,9 +30,8 @@ resource "aikido_team_resource" "payments_image" {
   image_id = 8
 }
 
-# A code repository can be limited to certain paths. Do not also list this
-# repository in aikido_team.repository_ids: that attribute replaces the team's
-# whole repository set and would unlink this resource.
+# A code repository can be limited to certain paths. When using repository
+# links like this, do not set repository_ids on aikido_team for the same team.
 resource "aikido_team_resource" "payments_frontend" {
   team_id = aikido_team.payments.id
   repo_id = 4
@@ -56,7 +55,7 @@ resource "aikido_team_resource" "payments_frontend" {
 - `cloud_id` (Number) Aikido cloud ID to link. Mutually exclusive with the other resource ID attributes.
 - `domain_id` (Number) Aikido domain ID to link. Mutually exclusive with the other resource ID attributes.
 - `image_id` (Number) Aikido container image ID to link. Mutually exclusive with the other resource ID attributes.
-- `repo_id` (Number) Aikido code repository ID to link. Mutually exclusive with cloud_id, image_id, domain_id and zen_app_id. Inactive repositories are rejected on create, because the team list omits them and Terraform would drop the link from state.
+- `repo_id` (Number) Aikido code repository ID to link. The repository must be active. Mutually exclusive with cloud_id, image_id, domain_id and zen_app_id.
 - `repo_path_limitation` (Attributes) Limits a linked code repository to certain paths. Only valid with repo_id. Omit it to cover the whole repository; removing it from the configuration clears any existing filter. (see [below for nested schema](#nestedatt--repo_path_limitation))
 - `zen_app_id` (Number) Aikido Zen app ID to link. Mutually exclusive with the other resource ID attributes.
 
