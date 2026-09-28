@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/AikidoTerraform/terraform-provider-aikido/internal/repositories"
 	"github.com/AikidoTerraform/terraform-provider-aikido/internal/teams"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -126,13 +127,16 @@ func TestCreateLink(t *testing.T) {
 			{ID: 4, Type: teams.TypeCodeRepository, IncludedPaths: []string{"/client/"}},
 		}}
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.URL.Path == teams.BasePath {
+			switch {
+			case r.URL.Path == teams.BasePath:
 				_ = json.NewEncoder(w).Encode([]teams.Team{listed})
-				return
+			case isCodeReposList(r):
+				writeReposList(t, w, repositories.Repository{ID: 4, Name: "payments", Active: true})
+			default:
+				body, _ := io.ReadAll(r.Body)
+				gotBody = string(body)
+				_, _ = io.WriteString(w, `{"success":1}`)
 			}
-			body, _ := io.ReadAll(r.Body)
-			gotBody = string(body)
-			_, _ = io.WriteString(w, `{"success":1}`)
 		}))
 		t.Cleanup(srv.Close)
 
@@ -172,6 +176,73 @@ func TestCreateLink(t *testing.T) {
 			}
 		}
 	})
+
+	t.Run("an inactive repository is rejected before the write", func(t *testing.T) {
+		var calls []string
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			calls = append(calls, r.Method+" "+r.URL.Path)
+			switch {
+			case r.URL.Path == teams.BasePath:
+				_ = json.NewEncoder(w).Encode([]teams.Team{{ID: 123, Name: "Payments"}})
+			case isCodeReposList(r):
+				writeReposList(t, w, repositories.Repository{ID: 4, Name: "legacy-batch", Active: false})
+			default:
+				_, _ = io.WriteString(w, `{"success":1}`)
+			}
+		}))
+		t.Cleanup(srv.Close)
+
+		res := &teamLinkedResource{client: testClient(srv)}
+		_, diagnostics := res.createLink(context.Background(), teamLinkedModel{
+			TeamID: types.Int64Value(123),
+			RepoID: types.Int64Value(4),
+		})
+
+		if !diagnostics.HasError() {
+			t.Fatal("linking an inactive repository produced no error")
+		}
+		if detail := diagnostics.Errors()[0].Detail(); !strings.Contains(detail, "legacy-batch") || !strings.Contains(detail, "inactive") {
+			t.Errorf("detail %q does not name the inactive repository", detail)
+		}
+		for _, call := range calls {
+			if strings.Contains(call, "linkResource") {
+				t.Errorf("calls = %v, want no write", calls)
+			}
+		}
+	})
+
+	t.Run("a repository absent from the list is still sent to the link API", func(t *testing.T) {
+		var calls []string
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			calls = append(calls, r.Method+" "+r.URL.Path)
+			switch {
+			case r.URL.Path == teams.BasePath:
+				_ = json.NewEncoder(w).Encode([]teams.Team{{ID: 123, Name: "Payments", Responsibilities: []teams.Responsibility{
+					{ID: 4, Type: teams.TypeCodeRepository},
+				}}})
+			case isCodeReposList(r):
+				writeReposList(t, w)
+			default:
+				_, _ = io.WriteString(w, `{"success":1}`)
+			}
+		}))
+		t.Cleanup(srv.Close)
+
+		res := &teamLinkedResource{client: testClient(srv)}
+		state, diagnostics := res.createLink(context.Background(), teamLinkedModel{
+			TeamID: types.Int64Value(123),
+			RepoID: types.Int64Value(4),
+		})
+		if diagnostics.HasError() {
+			t.Fatalf("createLink: %v", diagnostics)
+		}
+		if !slicesContains(calls, "POST "+teams.BasePath+"/123/linkResource") {
+			t.Errorf("calls = %v, want the linkResource POST", calls)
+		}
+		if state.ID != types.StringValue("123:repo:4") {
+			t.Errorf("ID = %v, want \"123:repo:4\"", state.ID)
+		}
+	})
 }
 
 func TestCreateLink_ReconcilesAnAmbiguousLink(t *testing.T) {
@@ -208,12 +279,15 @@ func TestCreateLink_ReconcilesAnAmbiguousLink(t *testing.T) {
 			{ID: 4, Type: teams.TypeCodeRepository},
 		}}
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.URL.Path == teams.BasePath {
+			switch {
+			case r.URL.Path == teams.BasePath:
 				_ = json.NewEncoder(w).Encode([]teams.Team{linkedWithoutPaths})
-				return
+			case isCodeReposList(r):
+				writeReposList(t, w, repositories.Repository{ID: 4, Name: "payments", Active: true})
+			default:
+				w.WriteHeader(http.StatusBadRequest)
+				_, _ = io.WriteString(w, `{"reason_phrase":"repo already linked"}`)
 			}
-			w.WriteHeader(http.StatusBadRequest)
-			_, _ = io.WriteString(w, `{"reason_phrase":"repo already linked"}`)
 		}))
 		t.Cleanup(srv.Close)
 

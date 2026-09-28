@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/AikidoTerraform/terraform-provider-aikido/internal/client"
+	"github.com/AikidoTerraform/terraform-provider-aikido/internal/repositories"
 	"github.com/AikidoTerraform/terraform-provider-aikido/internal/teams"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
@@ -77,6 +78,7 @@ func (r *teamLinkedResource) Schema(_ context.Context, _ resource.SchemaRequest,
 	response.Schema = schema.Schema{
 		Description: "Links one resource to a team created in Aikido: a code repository, cloud, container image, domain or Zen app. " +
 			"A code repository can optionally be limited to included or excluded paths. " +
+			"Inactive code repositories are rejected on create: the link API accepts them, but the team list omits them, so Terraform cannot confirm the link and would drop it from state. " +
 			"Teams synced from a Git provider belong to that provider and are rejected; " +
 			"create a separate Aikido team instead of trying to link resources to an imported one. " +
 			"Do not manage the same code repository with both this resource and aikido_team.repository_ids: " +
@@ -97,8 +99,9 @@ func (r *teamLinkedResource) Schema(_ context.Context, _ resource.SchemaRequest,
 				},
 			},
 			"repo_id": schema.Int64Attribute{
-				Optional:      true,
-				Description:   "Aikido code repository ID to link. Mutually exclusive with cloud_id, image_id, domain_id and zen_app_id.",
+				Optional: true,
+				Description: "Aikido code repository ID to link. Mutually exclusive with cloud_id, image_id, domain_id and zen_app_id. " +
+					"Inactive repositories are rejected on create, because the team list omits them and Terraform would drop the link from state.",
 				Validators:    idExactlyOneOf,
 				PlanModifiers: replaceOnChange,
 			},
@@ -302,6 +305,15 @@ func (r *teamLinkedResource) createLink(ctx context.Context, planned teamLinkedM
 	}
 
 	_, alreadyLinked := teams.FindResponsibility(team, linked.Kind, linked.ID)
+
+	// The link API accepts an inactive repository, but the team list omits it.
+	// A link that cannot be read back is removed from state on the next refresh.
+	if linked.Kind == teams.KindRepo {
+		diagnostics.Append(inactiveRepositoryDiagnostics(ctx, r.client, linked.ID)...)
+		if diagnostics.HasError() {
+			return teamLinkedModel{}, diagnostics
+		}
+	}
 
 	if err := teams.Link(ctx, r.client, teamID, linked, limitation); err != nil {
 		teams.InvalidateCache(r.client)
@@ -520,6 +532,35 @@ func limitationTypeForClear(priorState teamLinkedModel) string {
 		return priorState.RepoPathLimitation.LimitationType.ValueString()
 	}
 	return teams.LimitationInclude
+}
+
+// inactiveRepositoryDiagnostics refuses a code repository the team list will
+// not report. A repository missing from that list is left to the link API.
+func inactiveRepositoryDiagnostics(ctx context.Context, apiClient *client.Client, repoID int64) diag.Diagnostics {
+	var diagnostics diag.Diagnostics
+
+	repo, err := repositories.ByID(ctx, apiClient, repoID)
+	if client.NotInList(err) {
+		return diagnostics
+	}
+	if err != nil {
+		diagnostics.AddError("Error reading repository", err.Error())
+		return diagnostics
+	}
+	if repo.Active {
+		return diagnostics
+	}
+
+	diagnostics.AddError(
+		"Inactive repository cannot be linked",
+		fmt.Sprintf("Repository %q (ID %d) is inactive. "+
+			"Linking it succeeds, but the team list omits inactive repositories, "+
+			"so Terraform cannot confirm the link and would remove it from state. "+
+			"Activate the repository before linking it.",
+			repo.Name, repo.ID),
+	)
+
+	return diagnostics
 }
 
 func importedTeamResourceDiagnostics(team teams.Team) diag.Diagnostics {
