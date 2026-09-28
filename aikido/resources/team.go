@@ -69,8 +69,8 @@ func (r *teamResource) Schema(_ context.Context, _ resource.SchemaRequest, respo
 					"When set, the list is authoritative: repositories removed from it are unlinked on the next apply, " +
 					"and an empty set unlinks every repository. Omit the attribute to leave the team's repositories untouched. " +
 					"Only code repositories are covered — a team's clouds, container repositories, domains and Zen apps " +
-					"are left alone by this resource. Path limitations on a repository cannot be expressed here: " +
-					"they are preserved, but the team appears to cover the whole repository.",
+					"are left alone by this resource. Do not combine this attribute with aikido_team_resource repository links for the same team. " +
+					"To manage repository path limitations, omit repository_ids and use aikido_team_resource instead.",
 			},
 			"active": schema.BoolAttribute{
 				Computed:    true,
@@ -327,6 +327,7 @@ func teamGuardDiagnostics(team teams.Team, managesRepositories bool) diag.Diagno
 				fmt.Sprintf("Team %q (ID %d) is responsible for %s. "+
 					"Aikido keeps those path filters, but repository_ids has no field for them, "+
 					"so Terraform shows the team as covering each repository in full. "+
+					"To manage those filters, omit repository_ids and use aikido_team_resource with repo_path_limitation. "+
 					"Removing such a repository from repository_ids unlinks it without clearing its filters.",
 					team.Name, team.ID, describeResponsibilities(limited)),
 			)
