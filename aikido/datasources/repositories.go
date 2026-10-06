@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	"github.com/AikidoTerraform/terraform-provider-aikido/internal/client"
+	"github.com/AikidoTerraform/terraform-provider-aikido/internal/labels"
 	"github.com/AikidoTerraform/terraform-provider-aikido/internal/repositories"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
@@ -292,7 +293,7 @@ func matchesFilters(apiRepository repositories.Repository, config repositoriesDa
 
 // hasAllLabels reports whether the repository carries every wanted label.
 // Multiple labels are an AND, so that narrowing a selection never widens it.
-func hasAllLabels(apiLabels []repositories.Label, wantedLabels []string) bool {
+func hasAllLabels(apiLabels []labels.Label, wantedLabels []string) bool {
 	if len(wantedLabels) == 0 {
 		return true
 	}
@@ -350,7 +351,7 @@ func nullIfEmpty(value string) types.String {
 
 // sortedLabelNames returns label names in a fixed order, so that a change in the
 // order the API happens to return labels does not churn dependent resources.
-func sortedLabelNames(apiLabels []repositories.Label) []types.String {
+func sortedLabelNames(apiLabels []labels.Label) []types.String {
 	names := make([]string, 0, len(apiLabels))
 	for _, apiLabel := range apiLabels {
 		names = append(names, apiLabel.Name)

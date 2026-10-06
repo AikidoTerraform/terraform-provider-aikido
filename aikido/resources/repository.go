@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/AikidoTerraform/terraform-provider-aikido/internal/client"
+	"github.com/AikidoTerraform/terraform-provider-aikido/internal/labels"
 	"github.com/AikidoTerraform/terraform-provider-aikido/internal/repositories"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -109,7 +110,7 @@ func (r *repositoryResource) Schema(_ context.Context, _ resource.SchemaRequest,
 				Computed:    true,
 				Description: "Repository ID from the Git provider.",
 			},
-			"labels": labelsSchemaAttribute(),
+			"labels": labelsSchemaAttribute("repository"),
 		},
 	}
 }
@@ -251,7 +252,7 @@ func (r *repositoryResource) setRepoConfig(ctx context.Context, plannedRepositor
 		return repositoryModel{}, err
 	}
 
-	if err := r.applyLabels(ctx, repositoryID, plannedRepository.Labels, apiRepository.Labels); err != nil {
+	if err := applyLabels(ctx, r.client, basePath, repositoryID, plannedRepository.Labels, apiRepository.Labels); err != nil {
 		return repositoryModel{}, err
 	}
 
@@ -311,7 +312,7 @@ func repositoryModelFromAPI(apiRepository repositories.Repository) repositoryMod
 
 // labelNamesFromAPI maps API labels into Terraform state (names only).
 // Always returns a non-nil slice so a managed empty set differs from omitted (nil).
-func labelNamesFromAPI(apiLabels []repositories.Label) []types.String {
+func labelNamesFromAPI(apiLabels []labels.Label) []types.String {
 	names := make([]types.String, 0, len(apiLabels))
 	for _, apiLabel := range apiLabels {
 		names = append(names, types.StringValue(apiLabel.Name))
