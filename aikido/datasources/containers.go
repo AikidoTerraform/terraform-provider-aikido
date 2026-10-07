@@ -37,6 +37,7 @@ type containersDataSourceModel struct {
 	RegistryID       types.Int64      `tfsdk:"registry_id"`
 	RegistryName     types.String     `tfsdk:"registry_name"`
 	CloudID          types.Int64      `tfsdk:"cloud_id"`
+	TagFilter        types.String     `tfsdk:"tag_filter"`
 	Active           types.Bool       `tfsdk:"active"`
 	Labels           types.Set        `tfsdk:"labels"`
 	IDs              []types.Int64    `tfsdk:"ids"`
@@ -98,6 +99,12 @@ func (d *containersDataSource) Schema(_ context.Context, _ datasource.SchemaRequ
 			"cloud_id": schema.Int64Attribute{
 				Optional:    true,
 				Description: "Only return containers discovered through this cloud.",
+			},
+			"tag_filter": schema.StringAttribute{
+				Optional: true,
+				Description: "Only return containers whose tag filter is exactly this, compared as a literal string. " +
+					"prod-* selects containers whose tag filter is prod-*, not containers whose scanned tag matches prod-*. " +
+					"Use the empty string to select containers that scan their newest image.",
 			},
 			"active": schema.BoolAttribute{
 				Optional:    true,
@@ -274,6 +281,7 @@ func unknownContainerFilterDiagnostics(config containersDataSourceModel) diag.Di
 		{"registry_id", config.RegistryID.IsUnknown()},
 		{"registry_name", config.RegistryName.IsUnknown()},
 		{"cloud_id", config.CloudID.IsUnknown()},
+		{"tag_filter", config.TagFilter.IsUnknown()},
 		{"active", config.Active.IsUnknown()},
 		{"labels", anyUnknown(config.Labels)},
 	}
@@ -310,6 +318,9 @@ func containerMatchesFilters(apiContainer containers.Container, config container
 		return false
 	}
 	if !config.CloudID.IsNull() && !matchesOptionalID(apiContainer.CloudID, config.CloudID) {
+		return false
+	}
+	if !config.TagFilter.IsNull() && apiContainer.TagFilter != config.TagFilter.ValueString() {
 		return false
 	}
 	if !config.Active.IsNull() && apiContainer.Active != config.Active.ValueBool() {

@@ -25,6 +25,10 @@ func TestLinkedCodeRepoID_DecodesNumbersStringsAndNull(t *testing.T) {
 		{"quoted number", `{"id":1,"linked_code_repo_id":"67"}`, ptr(int64(67))},
 		{"null", `{"id":1,"linked_code_repo_id":null}`, nil},
 		{"absent", `{"id":1}`, nil},
+		// The API stores "not linked" as a non-positive sentinel rather than null.
+		{"unlink sentinel", `{"id":1,"linked_code_repo_id":-1}`, nil},
+		{"zero sentinel", `{"id":1,"linked_code_repo_id":0}`, nil},
+		{"quoted sentinel", `{"id":1,"linked_code_repo_id":"-1"}`, nil},
 	}
 
 	for _, tt := range tests {
@@ -64,8 +68,9 @@ func TestNullableIDs_StayNil(t *testing.T) {
 	}
 }
 
-// The documented provider enum and the documented example disagree (aws versus
-// aws_ecr). An unexpected value must reach state rather than fail the decode.
+// The provider value is derived from a registry kind, a cloud type or a fallback,
+// so the set is open ended. An unexpected value must reach state rather than fail
+// the decode.
 func TestUndocumentedProviderValueDecodes(t *testing.T) {
 	var container Container
 

@@ -53,6 +53,21 @@ func TestContainerMatchesFilters(t *testing.T) {
 			want:   false,
 		},
 		{
+			name:   "tag_filter matches",
+			config: containersDataSourceModel{TagFilter: types.StringValue("prod-*")},
+			want:   true,
+		},
+		{
+			name:   "a different tag_filter excludes",
+			config: containersDataSourceModel{TagFilter: types.StringValue("dev-*")},
+			want:   false,
+		},
+		{
+			name:   "tag_filter is not a substring match",
+			config: containersDataSourceModel{TagFilter: types.StringValue("prod")},
+			want:   false,
+		},
+		{
 			name:   "registry_name matches",
 			config: containersDataSourceModel{RegistryName: types.StringValue("111222333444")},
 			want:   true,
@@ -153,6 +168,24 @@ func TestMatchingContainers_DisambiguatesIdenticalNamesByRegistry(t *testing.T) 
 	})
 }
 
+// An empty tag_filter selects the containers scanning their newest image, which
+// is the same meaning the attribute carries on aikido_container.
+func TestMatchingContainers_EmptyTagFilterSelectsNewestImageContainers(t *testing.T) {
+	all := []containers.Container{
+		{ID: 1, Name: "filtered", TagFilter: "prod-*"},
+		{ID: 2, Name: "newest-image", TagFilter: ""},
+	}
+
+	matched, ids := matchingContainers(all, containersDataSourceModel{TagFilter: types.StringValue("")}, nil)
+
+	if len(matched) != 1 || len(ids) != 1 {
+		t.Fatalf("matched %d containers and %d ids, want 1 and 1", len(matched), len(ids))
+	}
+	if ids[0].ValueInt64() != 2 {
+		t.Errorf("id = %d, want 2", ids[0].ValueInt64())
+	}
+}
+
 func TestMatchingContainers_IDsStayAlignedAfterFiltering(t *testing.T) {
 	all := []containers.Container{
 		{ID: 1, Name: "keep", Active: true},
@@ -250,6 +283,11 @@ func TestUnknownContainerFilterDiagnostics(t *testing.T) {
 		{
 			name:      "an unknown active is refused",
 			config:    containersDataSourceModel{Active: types.BoolUnknown()},
+			wantError: true,
+		},
+		{
+			name:      "an unknown tag_filter is refused",
+			config:    containersDataSourceModel{TagFilter: types.StringUnknown()},
 			wantError: true,
 		},
 	}

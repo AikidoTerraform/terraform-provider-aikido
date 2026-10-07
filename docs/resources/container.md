@@ -42,7 +42,7 @@ resource "aikido_container" "development" {
 
 ### Required
 
-- `active` (Boolean) Whether the container is activated for scanning in Aikido.
+- `active` (Boolean) Whether the container is activated for scanning in Aikido. Public images and self-managed SBOM uploads, whose registry_provider is docker-hub or custom_upload, cannot be deactivated: Aikido rejects the request and they have to be deleted instead.
 - `id` (String) Aikido container ID.
 
 ### Optional
@@ -51,7 +51,7 @@ resource "aikido_container" "development" {
 - `labels` (Set of String) Label names managed by this resource. When set, Terraform creates/deletes labels to match. Omitting labels leaves Aikido labels untouched. An empty set deletes all labels currently on the container.
 - `linked_code_repo_id` (Number) Aikido code repository ID to link to this container. Written only when set; removing it from the configuration leaves the existing link in place rather than unlinking.
 - `sensitivity` (String) Sensitivity level of the container. One of: extreme, sensitive, normal, not_sensitive, no_data.
-- `tag_filter` (String) Tag filter deciding which image is scanned. Supports * wildcards, for example prod-*, and the special value semver-production. Omit it to scan the newest image: this attribute is authoritative, so removing it from the configuration resets the filter.
+- `tag_filter` (String) Tag filter deciding which image is scanned. Supports * wildcards, for example prod-*, and the special value semver-production. Omit it to scan the newest image: this attribute is authoritative, so removing it from the configuration resets the filter. Aikido rejects a tag filter on public images and on self-managed SBOM uploads, and on a container whose clone in the same region already carries the same filter.
 
 ### Read-Only
 

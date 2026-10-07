@@ -80,6 +80,12 @@ func (c *Container) UnmarshalJSON(data []byte) error {
 	if err != nil {
 		return fmt.Errorf("linked_code_repo_id: %w", err)
 	}
+	// A container with no linked code repository reports a non-positive sentinel
+	// rather than null, and a sentinel read as an ID would name a repository the
+	// container is not linked to.
+	if id != nil && *id <= 0 {
+		id = nil
+	}
 	c.LinkedCodeRepoID = id
 
 	return nil

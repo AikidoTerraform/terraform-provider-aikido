@@ -74,14 +74,18 @@ func (r *containerResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 				},
 			},
 			"active": schema.BoolAttribute{
-				Required:    true,
-				Description: "Whether the container is activated for scanning in Aikido.",
+				Required: true,
+				Description: "Whether the container is activated for scanning in Aikido. " +
+					"Public images and self-managed SBOM uploads, whose registry_provider is docker-hub or custom_upload, " +
+					"cannot be deactivated: Aikido rejects the request and they have to be deleted instead.",
 			},
 			"tag_filter": schema.StringAttribute{
 				Optional: true,
 				Description: "Tag filter deciding which image is scanned. " +
 					"Supports * wildcards, for example prod-*, and the special value semver-production. " +
-					"Omit it to scan the newest image: this attribute is authoritative, so removing it from the configuration resets the filter.",
+					"Omit it to scan the newest image: this attribute is authoritative, so removing it from the configuration resets the filter. " +
+					"Aikido rejects a tag filter on public images and on self-managed SBOM uploads, " +
+					"and on a container whose clone in the same region already carries the same filter.",
 				Validators: []validator.String{
 					stringvalidator.LengthAtLeast(1),
 				},

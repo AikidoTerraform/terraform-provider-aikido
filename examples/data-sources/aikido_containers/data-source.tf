@@ -56,10 +56,12 @@ locals {
   }
 }
 
+# An empty tag_filter selects the containers that scan their newest image. A
+# returned container reports that same state as a null tag_filter.
+data "aikido_containers" "newest_image" {
+  tag_filter = ""
+}
+
 output "containers_scanning_the_newest_image" {
-  description = "Containers with no tag filter, which scan the newest image."
-  value = [
-    for container in data.aikido_containers.all.containers :
-    container.name if container.tag_filter == null
-  ]
+  value = data.aikido_containers.newest_image.ids
 }

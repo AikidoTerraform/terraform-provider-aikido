@@ -71,12 +71,14 @@ locals {
   }
 }
 
+# An empty tag_filter selects the containers that scan their newest image. A
+# returned container reports that same state as a null tag_filter.
+data "aikido_containers" "newest_image" {
+  tag_filter = ""
+}
+
 output "containers_scanning_the_newest_image" {
-  description = "Containers with no tag filter, which scan the newest image."
-  value = [
-    for container in data.aikido_containers.all.containers :
-    container.name if container.tag_filter == null
-  ]
+  value = data.aikido_containers.newest_image.ids
 }
 ```
 
@@ -92,6 +94,7 @@ output "containers_scanning_the_newest_image" {
 - `registry_id` (Number) Only return containers held by this registry.
 - `registry_name` (String) Only return containers whose registry name is exactly this. For AWS the registry name is the account ID, which distinguishes identically named repositories in different accounts.
 - `registry_provider` (String) Only return containers hosted by this registry provider, for example aws, acr or docker-hub.
+- `tag_filter` (String) Only return containers whose tag filter is exactly this, compared as a literal string. prod-* selects containers whose tag filter is prod-*, not containers whose scanned tag matches prod-*. Use the empty string to select containers that scan their newest image.
 
 ### Read-Only
 
