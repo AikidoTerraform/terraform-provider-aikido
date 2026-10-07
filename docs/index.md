@@ -48,6 +48,12 @@ provider "aikido" {
 - `client_secret` (String, Sensitive) Aikido API client secret. Falls back to the AIKIDO_CLIENT_SECRET environment variable.
 - `requests_per_minute` (Number) Client-side rate limit for outbound API requests, in requests per minute. Defaults to 20 (the standard API limit). Only raise this if the Aikido team has increased your workspace's API rate limit accordingly; otherwise requests will be throttled with HTTP 429 responses.
 
+## Rate limits and large configurations
+
+Reads are cheap: every resource and data source of one type shares a single paginated listing per run, so refreshing a workspace costs roughly one request per 100 objects regardless of how many resources are managed.
+
+Writes are not. Each attribute the API accepts has its own endpoint, so a resource that has drifted costs one request per changed attribute, and a first apply that activates thousands of objects costs at least one request each. At the default 20 requests per minute that is hours rather than minutes. Raise `requests_per_minute` to the limit the Aikido team has granted your workspace before a large initial apply, and expect subsequent runs to be far cheaper because the provider sends no request for an attribute that already holds the configured value.
+
 ## Teams and Git provider synchronisation
 
 `aikido_team`, `aikido_team_user` and `aikido_team_resource` support teams created in Aikido. Teams synced from a Git provider are read-only in the Terraform provider.

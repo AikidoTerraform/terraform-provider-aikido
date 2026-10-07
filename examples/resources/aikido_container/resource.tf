@@ -15,8 +15,15 @@ resource "aikido_container" "example" {
   linked_code_repo_id = 67
 }
 
-# Omitting tag_filter scans the newest image.
+# Omitting tag_filter leaves the container's filter alone.
 resource "aikido_container" "development" {
   id     = "12346"
   active = true
+}
+
+# The empty string scans the newest image.
+resource "aikido_container" "staging" {
+  id         = "12347"
+  active     = true
+  tag_filter = ""
 }

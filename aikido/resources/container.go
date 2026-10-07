@@ -81,14 +81,12 @@ func (r *containerResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 			},
 			"tag_filter": schema.StringAttribute{
 				Optional: true,
+				Computed: true,
 				Description: "Tag filter deciding which image is scanned. " +
 					"Supports * wildcards, for example prod-*, and the special value semver-production. " +
-					"Omit it to scan the newest image: this attribute is authoritative, so removing it from the configuration resets the filter. " +
+					"Omitting it leaves the container's current filter alone; set it to the empty string to scan the newest image instead. " +
 					"Aikido rejects a tag filter on public images and on self-managed SBOM uploads, " +
 					"and on a container whose clone in the same region already carries the same filter.",
-				Validators: []validator.String{
-					stringvalidator.LengthAtLeast(1),
-				},
 			},
 			"sensitivity": schema.StringAttribute{
 				Optional:    true,
@@ -268,59 +266,28 @@ func (r *containerResource) setContainerConfig(ctx context.Context, planned cont
 		return containerModel{}, err
 	}
 
-	// Deferred: a call that fails partway may still have changed the container.
-	defer containers.InvalidateCache(r.client)
-
-	// Activation first, so the remaining writes land on an active container.
-	if err := r.setActive(ctx, id, planned.Active.ValueBool()); err != nil {
-		return containerModel{}, err
-	}
-
-	// Read before writing: the tag filter write is skipped when nothing changed,
-	// and the labels need their current IDs.
-	current, err := containers.Detail(ctx, r.client, id)
+	// Read before writing, so every write can be skipped when the container
+	// already holds the planned value. The shared list is the read that carries
+	// sensitivity and connectivity, which the detail endpoint omits, and it costs
+	// one paginated fetch across every container in the plan.
+	current, err := containers.ByID(ctx, r.client, id)
 	if err != nil {
 		return containerModel{}, err
 	}
 
-	if tagFilterChanged(planned.TagFilter, current.TagFilter) {
-		if err := r.setTagFilter(ctx, id, planned.TagFilter); err != nil {
-			return containerModel{}, fmt.Errorf("updating tag filter: %w", err)
-		}
-	}
+	updated, err := r.writeContainerChanges(ctx, id, planned, current)
+	if err != nil {
+		// A write that failed partway may still have changed the container, so the
+		// list is dropped rather than refreshed from the plan.
+		containers.InvalidateCache(r.client)
 
-	if isManaged(planned.Sensitivity) {
-		body := map[string]string{"sensitivity": planned.Sensitivity.ValueString()}
-		if err := r.client.Do(ctx, http.MethodPut, containers.DetailPath(id)+"/sensitivity", body, nil); err != nil {
-			return containerModel{}, fmt.Errorf("updating sensitivity: %w", err)
-		}
-	}
-	if isManaged(planned.Connectivity) {
-		body := map[string]string{"internet_exposed": planned.Connectivity.ValueString()}
-		if err := r.client.Do(ctx, http.MethodPut, containers.DetailPath(id)+"/internetConnection", body, nil); err != nil {
-			return containerModel{}, fmt.Errorf("updating connectivity: %w", err)
-		}
-	}
-	if isManagedInt64(planned.LinkedCodeRepoID) {
-		body := map[string]int64{
-			"container_repo_id": id,
-			"code_repo_id":      planned.LinkedCodeRepoID.ValueInt64(),
-		}
-		if err := r.client.Do(ctx, http.MethodPost, containers.BasePath+"/linkCodeRepo", body, nil); err != nil {
-			return containerModel{}, fmt.Errorf("linking code repository: %w", err)
-		}
-	}
-
-	if err := applyLabels(ctx, r.client, containerBasePath, planned.ID.ValueString(), planned.Labels, current.Labels); err != nil {
 		return containerModel{}, err
 	}
+	containers.StoreCached(r.client, updated)
 
-	// current predates the writes, so attributes this resource just set come from
-	// the plan. The rest are unaffected by these endpoints.
-	state := containerModelFromAPI(current)
-	state.Active = planned.Active
+	state := containerModelFromAPI(updated)
 	state.Labels = planned.Labels
-	if !planned.TagFilter.IsUnknown() {
+	if isManaged(planned.TagFilter) {
 		state.TagFilter = planned.TagFilter
 	}
 	state.Sensitivity = firstKnownString(state.Sensitivity, planned.Sensitivity)
@@ -330,6 +297,118 @@ func (r *containerResource) setContainerConfig(ctx context.Context, planned cont
 	}
 
 	return state, nil
+}
+
+// writeContainerChanges sends only the writes the container actually needs and
+// returns it as it now stands.
+//
+// A write the container does not need is not free. Aikido stamps
+// manually_toggled_active_at before it checks whether activation changes
+// anything, and that stamp excludes the container from auto-deactivation for
+// good; relinking a code repository makes it redo the associated issues and
+// AutoFix metadata.
+func (r *containerResource) writeContainerChanges(
+	ctx context.Context,
+	id int64,
+	planned containerModel,
+	current containers.Container,
+) (containers.Container, error) {
+	updated := current
+
+	// Activation first, so the remaining writes land on an active container.
+	if planned.Active.ValueBool() != current.Active {
+		if err := r.setActive(ctx, id, planned.Active.ValueBool()); err != nil {
+			return updated, err
+		}
+		updated.Active = planned.Active.ValueBool()
+	}
+
+	if tagFilterChanged(planned.TagFilter, current.TagFilter) {
+		if err := r.setTagFilter(ctx, id, planned.TagFilter); err != nil {
+			return updated, fmt.Errorf("updating tag filter: %w", err)
+		}
+		updated.TagFilter = planned.TagFilter.ValueString()
+	}
+
+	if changedString(planned.Sensitivity, current.Sensitivity) {
+		body := map[string]string{"sensitivity": planned.Sensitivity.ValueString()}
+		if err := r.client.Do(ctx, http.MethodPut, containers.DetailPath(id)+"/sensitivity", body, nil); err != nil {
+			return updated, fmt.Errorf("updating sensitivity: %w", err)
+		}
+		updated.Sensitivity = planned.Sensitivity.ValueString()
+	}
+	if changedString(planned.Connectivity, current.Connectivity) {
+		body := map[string]string{"internet_exposed": planned.Connectivity.ValueString()}
+		if err := r.client.Do(ctx, http.MethodPut, containers.DetailPath(id)+"/internetConnection", body, nil); err != nil {
+			return updated, fmt.Errorf("updating connectivity: %w", err)
+		}
+		updated.Connectivity = planned.Connectivity.ValueString()
+	}
+	if changedInt64(planned.LinkedCodeRepoID, current.LinkedCodeRepoID) {
+		body := map[string]int64{
+			"container_repo_id": id,
+			"code_repo_id":      planned.LinkedCodeRepoID.ValueInt64(),
+		}
+		if err := r.client.Do(ctx, http.MethodPost, containers.BasePath+"/linkCodeRepo", body, nil); err != nil {
+			return updated, fmt.Errorf("linking code repository: %w", err)
+		}
+		linked := planned.LinkedCodeRepoID.ValueInt64()
+		updated.LinkedCodeRepoID = &linked
+	}
+
+	if err := applyLabels(ctx, r.client, containerBasePath, planned.ID.ValueString(), planned.Labels, current.Labels); err != nil {
+		return updated, err
+	}
+	updated.Labels = reconciledLabels(planned.Labels, current.Labels)
+
+	return updated, nil
+}
+
+// changedString reports whether a managed string attribute differs from what the
+// container holds. An unmanaged attribute changes nothing.
+func changedString(planned types.String, current string) bool {
+	return isManaged(planned) && planned.ValueString() != current
+}
+
+func changedInt64(planned types.Int64, current *int64) bool {
+	return isManagedInt64(planned) && (current == nil || *current != planned.ValueInt64())
+}
+
+// reconciledLabels is the set applyLabels leaves behind: the planned names,
+// carrying the IDs of those that already existed, plus the imported labels it
+// never deletes. A name created in this call has no ID yet, and only names are
+// read back.
+func reconciledLabels(planned []types.String, current []containers.Label) []containers.Label {
+	if planned == nil {
+		return current
+	}
+
+	currentByName := make(map[string]containers.Label, len(current))
+	for _, label := range current {
+		currentByName[label.Name] = label
+	}
+
+	plannedNames := make(map[string]struct{}, len(planned))
+	reconciled := make([]containers.Label, 0, len(planned)+len(current))
+	for _, name := range planned {
+		plannedNames[name.ValueString()] = struct{}{}
+		if existing, ok := currentByName[name.ValueString()]; ok {
+			reconciled = append(reconciled, existing)
+			continue
+		}
+		reconciled = append(reconciled, containers.Label{Name: name.ValueString()})
+	}
+	for _, label := range current {
+		if !label.IsImported {
+			continue
+		}
+		if _, isPlanned := plannedNames[label.Name]; isPlanned {
+			continue
+		}
+		reconciled = append(reconciled, label)
+	}
+
+	return reconciled
 }
 
 // containerReadState composes the state for a refresh. Labels omitted from the
@@ -368,42 +447,27 @@ func (r *containerResource) setActive(ctx context.Context, id int64, isActive bo
 	return r.client.Do(ctx, http.MethodPost, endpoint, map[string]int64{"container_repo_id": id}, nil)
 }
 
-// setTagFilter writes the tag filter, sending JSON null when the attribute is
-// omitted. Null is what tells the API to scan the newest image.
+// setTagFilter writes the tag filter. Null is what tells the API to scan the
+// newest image.
 func (r *containerResource) setTagFilter(ctx context.Context, id int64, tagFilter types.String) error {
 	body := struct {
 		ContainerRepoID int64   `json:"container_repo_id"`
 		TagFilter       *string `json:"tag_filter"`
 	}{ContainerRepoID: id}
 
-	if isManaged(tagFilter) {
-		value := tagFilter.ValueString()
+	if value := tagFilter.ValueString(); value != "" {
 		body.TagFilter = &value
 	}
 
 	return r.client.Do(ctx, http.MethodPost, containers.BasePath+"/updateTagFilter", body, nil)
 }
 
-// tagFilterChanged reports whether the planned filter differs from the stored
-// one. A null attribute and an empty stored filter both mean newest-image.
-//
-// The write is skipped when they agree because Aikido rejects updateTagFilter on
-// public images, on custom SBOM uploads, and when a sibling clone in the same
-// region already scans the tag — guards that fire on a no-op write too, and would
-// otherwise fail every apply for a container that never asked for a filter.
-// An unknown value is never a change: resolving it to the empty string would
-// reset a live filter to newest-image.
+// tagFilterChanged reports whether the configuration asks for a filter the
+// container does not already carry. Aikido rejects updateTagFilter on public
+// images, on custom SBOM uploads, and when a sibling clone in the same region
+// already scans the tag, and those guards fire on a no-op write too.
 func tagFilterChanged(planned types.String, current string) bool {
-	if planned.IsUnknown() {
-		return false
-	}
-
-	wanted := ""
-	if !planned.IsNull() {
-		wanted = planned.ValueString()
-	}
-
-	return wanted != current
+	return isManaged(planned) && planned.ValueString() != current
 }
 
 // isManaged reports whether a string attribute carries a value to write.
@@ -443,7 +507,7 @@ func containerModelFromAPI(apiContainer containers.Container) containerModel {
 	return containerModel{
 		ID:                types.StringValue(strconv.FormatInt(apiContainer.ID, 10)),
 		Active:            types.BoolValue(apiContainer.Active),
-		TagFilter:         nullIfEmptyString(apiContainer.TagFilter),
+		TagFilter:         types.StringValue(apiContainer.TagFilter),
 		Sensitivity:       nullIfEmptyString(apiContainer.Sensitivity),
 		Connectivity:      nullIfEmptyString(apiContainer.Connectivity),
 		LinkedCodeRepoID:  nullableInt64(apiContainer.LinkedCodeRepoID),

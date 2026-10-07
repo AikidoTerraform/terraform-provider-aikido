@@ -168,6 +168,19 @@ func TestMatchingContainers_DisambiguatesIdenticalNamesByRegistry(t *testing.T) 
 	})
 }
 
+// Newest-image scanning reads back as the empty string, the same value the
+// filter and aikido_container.tag_filter use for it.
+func TestContainerModelFromAPI_NewestImageTagFilterIsTheEmptyString(t *testing.T) {
+	model := containerModelFromAPI(containers.Container{ID: 1, TagFilter: ""})
+
+	if model.TagFilter.IsNull() {
+		t.Error("tag_filter is null; newest-image is reported as the empty string")
+	}
+	if model.TagFilter.ValueString() != "" {
+		t.Errorf("tag_filter = %q, want the empty string", model.TagFilter.ValueString())
+	}
+}
+
 // An empty tag_filter selects the containers scanning their newest image, which
 // is the same meaning the attribute carries on aikido_container.
 func TestMatchingContainers_EmptyTagFilterSelectsNewestImageContainers(t *testing.T) {

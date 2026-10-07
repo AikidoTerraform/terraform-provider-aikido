@@ -195,6 +195,65 @@ func TestInvalidateCache_MakesTheNextReadRefetch(t *testing.T) {
 	}
 }
 
+// A resource that writes one container must not cost every other resource a
+// fresh paginated list, so a write refreshes the cached entry in place.
+func TestStoreCached_RefreshesOneEntryWithoutRefetching(t *testing.T) {
+	var requestCount int
+	srv := listServer(t, &requestCount,
+		Container{ID: 1, Name: "compression", TagFilter: "", Active: false},
+		Container{ID: 2, Name: "decompression", Active: true},
+	)
+	apiClient := testClient(srv)
+	ctx := context.Background()
+
+	if _, err := ByID(ctx, apiClient, 1); err != nil {
+		t.Fatalf("ByID: %v", err)
+	}
+
+	StoreCached(apiClient, Container{ID: 1, Name: "compression", TagFilter: "prod-*", Active: true})
+
+	updated, err := ByID(ctx, apiClient, 1)
+	if err != nil {
+		t.Fatalf("ByID (after store): %v", err)
+	}
+	if updated.TagFilter != "prod-*" || !updated.Active {
+		t.Errorf("container 1 = %+v, want tag filter prod-* and active", updated)
+	}
+
+	untouched, err := ByID(ctx, apiClient, 2)
+	if err != nil {
+		t.Fatalf("ByID 2: %v", err)
+	}
+	if untouched.Name != "decompression" {
+		t.Errorf("container 2 = %+v, want it left alone", untouched)
+	}
+
+	if requestCount != 1 {
+		t.Errorf("list endpoint hit %d times, want 1", requestCount)
+	}
+}
+
+// Nothing cached means the next read fetches fresh data, so a store before any
+// read must not seed a one-container list that hides every other container.
+func TestStoreCached_DoesNotSeedAnEmptyCache(t *testing.T) {
+	var requestCount int
+	srv := listServer(t, &requestCount, Container{ID: 1, Name: "compression"}, Container{ID: 2, Name: "decompression"})
+	apiClient := testClient(srv)
+
+	StoreCached(apiClient, Container{ID: 1, Name: "renamed"})
+
+	all, err := All(context.Background(), apiClient)
+	if err != nil {
+		t.Fatalf("All: %v", err)
+	}
+	if len(all) != 2 {
+		t.Fatalf("containers = %d, want 2", len(all))
+	}
+	if all[0].Name != "compression" {
+		t.Errorf("container 1 = %q, want the value the API returned", all[0].Name)
+	}
+}
+
 // Every opt-in group must be requested. filter_status defaults to active, and
 // labels, sensitivity and connectivity are omitted unless asked for; a missing
 // flag makes the resource read back nulls and churn on every plan.
@@ -271,28 +330,6 @@ func TestByID_MissingContainerIsNotInList(t *testing.T) {
 	// proof the container is gone.
 	if client.NotFound(err) {
 		t.Errorf("err = %v, must not also read as an API 404", err)
-	}
-}
-
-func TestDetail_UsesDetailPath(t *testing.T) {
-	var path string
-
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		path = r.URL.Path
-		_ = json.NewEncoder(w).Encode(Container{ID: 42, Name: "compression", Active: true})
-	}))
-	t.Cleanup(srv.Close)
-
-	container, err := Detail(context.Background(), testClient(srv), 42)
-	if err != nil {
-		t.Fatalf("Detail: %v", err)
-	}
-
-	if path != BasePath+"/42" {
-		t.Errorf("path = %s, want %s/42", path, BasePath)
-	}
-	if container.ID != 42 || !container.Active {
-		t.Errorf("container = %#v", container)
 	}
 }
 

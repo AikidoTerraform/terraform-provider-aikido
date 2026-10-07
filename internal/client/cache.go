@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 )
@@ -41,6 +42,37 @@ func LoadCached[T any](apiClient *Client, ctx context.Context, key string, load 
 	}
 
 	return value, nil
+}
+
+var errNotCached = errors.New("aikido cache: nothing cached")
+
+// UpdateCached replaces the cached result for key with update(cached), so a write
+// to one member of a cached collection does not discard the whole thing. A key
+// with nothing cached is a no-op. update must return a new value rather than
+// mutate the one it receives: readers hold the old value unsynchronized.
+func UpdateCached[T any](apiClient *Client, key string, update func(T) T) {
+	apiClient.cacheUpdate.Lock()
+	defer apiClient.cacheUpdate.Unlock()
+
+	cached, err := LoadCached(apiClient, context.Background(), key, func(context.Context) (T, error) {
+		var empty T
+
+		return empty, errNotCached
+	})
+	if err != nil {
+		return
+	}
+
+	apiClient.cache.Store(key, settledEntry(update(cached)))
+}
+
+// settledEntry holds an already-computed value, so LoadCached returns it without
+// running load.
+func settledEntry(value any) *cacheEntry {
+	entry := &cacheEntry{value: value}
+	entry.once.Do(func() {})
+
+	return entry
 }
 
 // InvalidateCached drops the cached result for key so the next LoadCached runs load again.

@@ -30,10 +30,17 @@ resource "aikido_container" "example" {
   linked_code_repo_id = 67
 }
 
-# Omitting tag_filter scans the newest image.
+# Omitting tag_filter leaves the container's filter alone.
 resource "aikido_container" "development" {
   id     = "12346"
   active = true
+}
+
+# The empty string scans the newest image.
+resource "aikido_container" "staging" {
+  id         = "12347"
+  active     = true
+  tag_filter = ""
 }
 ```
 
@@ -51,7 +58,7 @@ resource "aikido_container" "development" {
 - `labels` (Set of String) Label names managed by this resource. When set, Terraform creates/deletes labels to match. Omitting labels leaves Aikido labels untouched. An empty set deletes all labels currently on the container.
 - `linked_code_repo_id` (Number) Aikido code repository ID to link to this container. Written only when set; removing it from the configuration leaves the existing link in place rather than unlinking.
 - `sensitivity` (String) Sensitivity level of the container. One of: extreme, sensitive, normal, not_sensitive, no_data.
-- `tag_filter` (String) Tag filter deciding which image is scanned. Supports * wildcards, for example prod-*, and the special value semver-production. Omit it to scan the newest image: this attribute is authoritative, so removing it from the configuration resets the filter. Aikido rejects a tag filter on public images and on self-managed SBOM uploads, and on a container whose clone in the same region already carries the same filter.
+- `tag_filter` (String) Tag filter deciding which image is scanned. Supports * wildcards, for example prod-*, and the special value semver-production. Omitting it leaves the container's current filter alone; set it to the empty string to scan the newest image instead. Aikido rejects a tag filter on public images and on self-managed SBOM uploads, and on a container whose clone in the same region already carries the same filter.
 
 ### Read-Only
 

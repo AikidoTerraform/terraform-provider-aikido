@@ -8,7 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
+	"maps"
 	"slices"
 	"strconv"
 
@@ -132,16 +132,17 @@ func All(ctx context.Context, apiClient *client.Client) ([]Container, error) {
 	return all, nil
 }
 
-// Detail loads one container via GET /containers/{id}. Use after writes so state
-// reflects the API rather than a possibly stale list cache. The detail endpoint is
-// not documented to return sensitivity or connectivity; callers compose those.
-func Detail(ctx context.Context, apiClient *client.Client, id int64) (Container, error) {
-	var container Container
-	if err := apiClient.Do(ctx, http.MethodGet, DetailPath(id), nil, &container); err != nil {
-		return Container{}, err
-	}
+// StoreCached refreshes one container in the shared list, so a write does not
+// cost every later reader a fresh paginated fetch. Callers that cannot describe
+// the container they just wrote use InvalidateCache instead.
+func StoreCached(apiClient *client.Client, updated Container) {
+	client.UpdateCached(apiClient, cacheKey, func(byID map[int64]Container) map[int64]Container {
+		next := make(map[int64]Container, len(byID))
+		maps.Copy(next, byID)
+		next[updated.ID] = updated
 
-	return container, nil
+		return next
+	})
 }
 
 // InvalidateCache drops the cached list so the next read reflects a write.

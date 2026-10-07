@@ -34,10 +34,11 @@ const (
 )
 
 type Client struct {
-	http    *http.Client
-	baseURL string
-	limiter *rate.Limiter
-	cache   sync.Map
+	http        *http.Client
+	baseURL     string
+	limiter     *rate.Limiter
+	cache       sync.Map
+	cacheUpdate sync.Mutex
 }
 
 // Option configures a Client.

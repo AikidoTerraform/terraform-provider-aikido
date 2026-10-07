@@ -12,8 +12,10 @@ import (
 	"github.com/AikidoTerraform/terraform-provider-aikido/internal/client"
 	"github.com/AikidoTerraform/terraform-provider-aikido/internal/containers"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
@@ -60,7 +62,7 @@ func TestContainerSchema_AttributeModes(t *testing.T) {
 	}{
 		{name: "id", required: true},
 		{name: "active", required: true},
-		{name: "tag_filter", optional: true},
+		{name: "tag_filter", optional: true, computed: true},
 		{name: "sensitivity", optional: true, computed: true},
 		{name: "connectivity", optional: true, computed: true},
 		{name: "labels", optional: true},
@@ -96,10 +98,13 @@ func TestContainerSchema_AttributeModes(t *testing.T) {
 	}
 }
 
-// tag_filter is Optional without Computed on purpose: null means newest-image and
-// must stay writable. An empty string would mean the same thing, so only null may
-// express it.
-func TestContainerSchema_TagFilterRejectsTheEmptyString(t *testing.T) {
+// Every other optional attribute on this resource treats omission as unmanaged,
+// and tag_filter decides which image is scanned. Optional+Computed is what makes
+// an omitted attribute arrive unknown rather than null, so a configuration that
+// manages only a label cannot reset a filter it never mentioned. Resetting to
+// newest-image is then asked for with the empty string, which the validator must
+// therefore allow.
+func TestContainerSchema_TagFilterIsUnmanagedWhenOmitted(t *testing.T) {
 	response := &resource.SchemaResponse{}
 	NewContainerResource().Schema(context.Background(), resource.SchemaRequest{}, response)
 
@@ -107,20 +112,97 @@ func TestContainerSchema_TagFilterRejectsTheEmptyString(t *testing.T) {
 	if !ok {
 		t.Fatal("tag_filter missing from the schema")
 	}
-	if attribute.IsComputed() {
-		t.Error("tag_filter must not be Computed: a null config value has to reach the API")
+	if !attribute.IsOptional() || !attribute.IsComputed() {
+		t.Errorf("tag_filter optional=%v computed=%v, want both: an omitted value must arrive unknown",
+			attribute.IsOptional(), attribute.IsComputed())
 	}
 
 	stringAttribute, ok := attribute.(schema.StringAttribute)
 	if !ok {
 		t.Fatalf("tag_filter is %T, want schema.StringAttribute", attribute)
 	}
-	if len(stringAttribute.Validators) == 0 {
-		t.Error("tag_filter needs a validator rejecting the empty string")
+	for _, v := range stringAttribute.Validators {
+		request := validator.StringRequest{
+			Path:        path.Root("tag_filter"),
+			ConfigValue: types.StringValue(""),
+		}
+		validatorResponse := &validator.StringResponse{}
+		v.ValidateString(context.Background(), request, validatorResponse)
+		if validatorResponse.Diagnostics.HasError() {
+			t.Errorf("the empty string is rejected by %T, but it is how a reset is requested", v)
+		}
+	}
+}
+
+// Omitting tag_filter leaves the container's filter alone. Managing a label or a
+// code repo link must not change which image Aikido scans.
+func TestSetContainerConfig_OmittedTagFilterLeavesTheFilterAlone(t *testing.T) {
+	api := &containerAPI{current: []containers.Container{{ID: 1, Active: true, TagFilter: "prod-*"}}}
+	srv := api.server(t)
+
+	state, err := (&containerResource{client: testClient(srv)}).setContainerConfig(
+		context.Background(),
+		containerModel{
+			ID:        types.StringValue("1"),
+			Active:    types.BoolValue(true),
+			TagFilter: types.StringUnknown(),
+		},
+	)
+	if err != nil {
+		t.Fatalf("setContainerConfig: %v", err)
+	}
+
+	if len(api.tagFilters) != 0 {
+		t.Errorf("tagFilters = %v, want no write", api.tagFilters)
+	}
+	if state.TagFilter.ValueString() != "prod-*" {
+		t.Errorf("state.TagFilter = %v, want the filter the container already had", state.TagFilter)
+	}
+}
+
+// The empty string is how a configuration asks for newest-image scanning, which
+// the API expects as null.
+func TestSetContainerConfig_EmptyTagFilterResetsToNewestImage(t *testing.T) {
+	api := &containerAPI{current: []containers.Container{{ID: 1, Active: true, TagFilter: "prod-*"}}}
+	srv := api.server(t)
+
+	state, err := (&containerResource{client: testClient(srv)}).setContainerConfig(
+		context.Background(),
+		containerModel{
+			ID:        types.StringValue("1"),
+			Active:    types.BoolValue(true),
+			TagFilter: types.StringValue(""),
+		},
+	)
+	if err != nil {
+		t.Fatalf("setContainerConfig: %v", err)
+	}
+
+	if len(api.tagFilters) != 1 || string(api.tagFilters[0]) != "null" {
+		t.Errorf("tagFilters = %v, want [null]", api.tagFilters)
+	}
+	if state.TagFilter.ValueString() != "" || state.TagFilter.IsNull() {
+		t.Errorf("state.TagFilter = %v, want the empty string the configuration asked for", state.TagFilter)
+	}
+}
+
+// A refresh has no configuration to compare against, so a container scanning its
+// newest image has to read back as the empty string. Reading it back as null
+// would diff forever against a configuration that spells the reset out.
+func TestContainerReadState_NewestImageReadsBackAsTheEmptyString(t *testing.T) {
+	state := containerReadState(containers.Container{ID: 1, TagFilter: ""}, nil)
+
+	if state.TagFilter.IsNull() {
+		t.Error("tag_filter is null; an explicit tag_filter = \"\" would diff on every plan")
+	}
+	if state.TagFilter.ValueString() != "" {
+		t.Errorf("tag_filter = %q, want the empty string", state.TagFilter.ValueString())
 	}
 }
 
 // containerAPI records what the write path sent and serves plausible responses.
+// current is served from the list endpoint, which is where the write path reads:
+// the detail endpoint omits sensitivity and connectivity.
 type containerAPI struct {
 	activated    []int64
 	deactivated  []int64
@@ -128,7 +210,30 @@ type containerAPI struct {
 	sensitivity  []string
 	connectivity []string
 	linkedRepos  []int64
-	detail       containers.Container
+	listCalls    int
+	current      []containers.Container
+}
+
+// containerListPayload re-adds linked_code_repo_id, which Container decodes but
+// never marshals, so a fixture can serve it the way the API does.
+func containerListPayload(items []containers.Container) []map[string]any {
+	payload := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		encoded, err := json.Marshal(item)
+		if err != nil {
+			continue
+		}
+		var fields map[string]any
+		if err := json.Unmarshal(encoded, &fields); err != nil {
+			continue
+		}
+		if item.LinkedCodeRepoID != nil {
+			fields["linked_code_repo_id"] = *item.LinkedCodeRepoID
+		}
+		payload = append(payload, fields)
+	}
+
+	return payload
 }
 
 func (api *containerAPI) server(t *testing.T) *httptest.Server {
@@ -183,8 +288,9 @@ func (api *containerAPI) server(t *testing.T) *httptest.Server {
 			api.linkedRepos = append(api.linkedRepos, body.CodeRepoID)
 			_, _ = io.WriteString(w, `{"success":1}`)
 
-		case r.Method == http.MethodGet && r.URL.Path == "/public/v1/containers/1":
-			_ = json.NewEncoder(w).Encode(api.detail)
+		case r.Method == http.MethodGet && r.URL.Path == "/public/v1/containers":
+			api.listCalls++
+			_ = json.NewEncoder(w).Encode(containerListPayload(api.current))
 
 		default:
 			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
@@ -197,12 +303,12 @@ func (api *containerAPI) server(t *testing.T) *httptest.Server {
 }
 
 func TestSetContainerConfig_WritesEveryManagedAttribute(t *testing.T) {
-	api := &containerAPI{detail: containers.Container{
+	api := &containerAPI{current: []containers.Container{{
 		ID:       1,
 		Name:     "pied-piper/compression",
 		Provider: "aws",
-		Active:   true,
-	}}
+		Active:   false,
+	}}}
 	srv := api.server(t)
 
 	state, err := (&containerResource{client: testClient(srv)}).setContainerConfig(
@@ -263,7 +369,7 @@ func TestSetContainerConfig_SkipsTheTagFilterWriteWhenUnchanged(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			api := &containerAPI{detail: containers.Container{ID: 1, Active: true, TagFilter: tt.current}}
+			api := &containerAPI{current: []containers.Container{{ID: 1, Active: true, TagFilter: tt.current}}}
 			srv := api.server(t)
 
 			_, err := (&containerResource{client: testClient(srv)}).setContainerConfig(
@@ -285,35 +391,36 @@ func TestSetContainerConfig_SkipsTheTagFilterWriteWhenUnchanged(t *testing.T) {
 	}
 }
 
-// Removing tag_filter from a container that has one is a real change: it resets
-// the container to scanning the newest image, which the API expects as null.
-func TestSetContainerConfig_ResetsTheTagFilterToNewestImage(t *testing.T) {
-	api := &containerAPI{detail: containers.Container{ID: 1, Active: true, TagFilter: "prod-*"}}
+// A null tag_filter is unmanaged, like an unknown one. Only the empty string
+// resets a container to scanning its newest image.
+func TestSetContainerConfig_NullTagFilterLeavesTheFilterAlone(t *testing.T) {
+	api := &containerAPI{current: []containers.Container{{ID: 1, Active: true, TagFilter: "prod-*"}}}
 	srv := api.server(t)
 
 	state, err := (&containerResource{client: testClient(srv)}).setContainerConfig(
 		context.Background(),
 		containerModel{
-			ID:     types.StringValue("1"),
-			Active: types.BoolValue(true),
+			ID:        types.StringValue("1"),
+			Active:    types.BoolValue(true),
+			TagFilter: types.StringNull(),
 		},
 	)
 	if err != nil {
 		t.Fatalf("setContainerConfig: %v", err)
 	}
 
-	if len(api.tagFilters) != 1 || string(api.tagFilters[0]) != "null" {
-		t.Errorf("tagFilters = %v, want [null]", api.tagFilters)
+	if len(api.tagFilters) != 0 {
+		t.Errorf("tagFilters = %v, want no write", api.tagFilters)
 	}
-	if !state.TagFilter.IsNull() {
-		t.Errorf("state.TagFilter = %v, want null", state.TagFilter)
+	if state.TagFilter.ValueString() != "prod-*" {
+		t.Errorf("state.TagFilter = %v, want the filter the container already had", state.TagFilter)
 	}
 }
 
 // sensitivity, connectivity and the code repo link are unmanaged when null, so a
 // null config must send nothing at all for them.
 func TestSetContainerConfig_SkipsUnmanagedAttributes(t *testing.T) {
-	api := &containerAPI{detail: containers.Container{ID: 1, Active: true}}
+	api := &containerAPI{current: []containers.Container{{ID: 1, Active: true}}}
 	srv := api.server(t)
 
 	_, err := (&containerResource{client: testClient(srv)}).setContainerConfig(
@@ -338,10 +445,10 @@ func TestSetContainerConfig_SkipsUnmanagedAttributes(t *testing.T) {
 	}
 }
 
-// GET /containers/{id} does not return sensitivity or connectivity, so state
-// takes the value that was just written.
-func TestSetContainerConfig_StateFallsBackToThePlanWhenDetailOmitsFields(t *testing.T) {
-	api := &containerAPI{detail: containers.Container{ID: 1, Active: true}}
+// A container Aikido reports without a sensitivity or connectivity still has to
+// read back what was just written, never unknown.
+func TestSetContainerConfig_StateFallsBackToThePlanWhenTheAPIOmitsFields(t *testing.T) {
+	api := &containerAPI{current: []containers.Container{{ID: 1, Active: true}}}
 	srv := api.server(t)
 
 	state, err := (&containerResource{client: testClient(srv)}).setContainerConfig(
@@ -366,7 +473,7 @@ func TestSetContainerConfig_StateFallsBackToThePlanWhenDetailOmitsFields(t *test
 }
 
 func TestSetContainerConfig_UnmanagedComputedAttributesBecomeNullNotUnknown(t *testing.T) {
-	api := &containerAPI{detail: containers.Container{ID: 1, Active: true}}
+	api := &containerAPI{current: []containers.Container{{ID: 1, Active: true}}}
 	srv := api.server(t)
 
 	state, err := (&containerResource{client: testClient(srv)}).setContainerConfig(
@@ -397,7 +504,7 @@ func TestSetContainerConfig_UnmanagedComputedAttributesBecomeNullNotUnknown(t *t
 }
 
 func TestSetContainerConfig_DeactivatesWhenActiveIsFalse(t *testing.T) {
-	api := &containerAPI{detail: containers.Container{ID: 1, Active: false}}
+	api := &containerAPI{current: []containers.Container{{ID: 1, Active: true}}}
 	srv := api.server(t)
 
 	_, err := (&containerResource{client: testClient(srv)}).setContainerConfig(
@@ -419,10 +526,10 @@ func TestSetContainerConfig_DeactivatesWhenActiveIsFalse(t *testing.T) {
 	}
 }
 
-// Activation comes first so that the remaining writes land on an active
-// container, and the detail read comes before the tag filter write so the write
-// can be skipped when nothing changed.
-func TestSetContainerConfig_ActivatesThenReadsThenWrites(t *testing.T) {
+// Every write is conditional on the container not already holding the planned
+// value, so the read has to come first. Activation still precedes the remaining
+// writes, so those land on an active container.
+func TestSetContainerConfig_ReadsBeforeWriting(t *testing.T) {
 	var order []string
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -430,7 +537,7 @@ func TestSetContainerConfig_ActivatesThenReadsThenWrites(t *testing.T) {
 		order = append(order, r.Method+" "+r.URL.Path)
 
 		if r.Method == http.MethodGet {
-			_ = json.NewEncoder(w).Encode(containers.Container{ID: 1, Active: true})
+			_ = json.NewEncoder(w).Encode([]containers.Container{{ID: 1, Active: false}})
 			return
 		}
 		_, _ = io.WriteString(w, `{"success":1}`)
@@ -451,17 +558,198 @@ func TestSetContainerConfig_ActivatesThenReadsThenWrites(t *testing.T) {
 	}
 
 	if len(order) < 3 {
-		t.Fatalf("calls = %v, want at least activate, detail, tag filter", order)
+		t.Fatalf("calls = %v, want at least the list read, activate, tag filter", order)
 	}
-	if !strings.HasSuffix(order[0], "/containers/activate") {
-		t.Errorf("first call = %q, want the activate endpoint", order[0])
+	if order[0] != "GET /public/v1/containers" {
+		t.Errorf("first call = %q, want the list read", order[0])
 	}
-	if order[1] != "GET /public/v1/containers/1" {
-		t.Errorf("second call = %q, want the detail read", order[1])
+	if !strings.HasSuffix(order[1], "/containers/activate") {
+		t.Errorf("second call = %q, want the activate endpoint", order[1])
 	}
 	if order[2] != "POST /public/v1/containers/updateTagFilter" {
 		t.Errorf("third call = %q, want the tag filter write", order[2])
 	}
+}
+
+// Aikido stamps manually_toggled_active_at before it checks whether the state
+// already matches, and that stamp excludes the container from auto-deactivation
+// for good. Adopting a container that already holds the planned state must not
+// change how Aikido treats it.
+func TestSetContainerConfig_SkipsActivationWhenTheStateAlreadyMatches(t *testing.T) {
+	tests := []struct {
+		name   string
+		active bool
+	}{
+		{"already active", true},
+		{"already inactive", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			api := &containerAPI{current: []containers.Container{{ID: 1, Active: tt.active}}}
+			srv := api.server(t)
+
+			_, err := (&containerResource{client: testClient(srv)}).setContainerConfig(
+				context.Background(),
+				containerModel{
+					ID:     types.StringValue("1"),
+					Active: types.BoolValue(tt.active),
+				},
+			)
+			if err != nil {
+				t.Fatalf("setContainerConfig: %v", err)
+			}
+
+			if len(api.activated) != 0 {
+				t.Errorf("activated = %v, want no call", api.activated)
+			}
+			if len(api.deactivated) != 0 {
+				t.Errorf("deactivated = %v, want no call", api.deactivated)
+			}
+		})
+	}
+}
+
+// Reposting a value the container already holds makes Aikido redo the work
+// behind it — relinking a code repository updates the associated issues and
+// AutoFix metadata again — and costs a request against the rate limit.
+func TestSetContainerConfig_SkipsWritesThatChangeNothing(t *testing.T) {
+	api := &containerAPI{current: []containers.Container{{
+		ID:               1,
+		Active:           true,
+		TagFilter:        "prod-*",
+		Sensitivity:      "sensitive",
+		Connectivity:     "connected",
+		LinkedCodeRepoID: ptrTo(int64(67)),
+	}}}
+	srv := api.server(t)
+
+	_, err := (&containerResource{client: testClient(srv)}).setContainerConfig(
+		context.Background(),
+		containerModel{
+			ID:               types.StringValue("1"),
+			Active:           types.BoolValue(true),
+			TagFilter:        types.StringValue("prod-*"),
+			Sensitivity:      types.StringValue("sensitive"),
+			Connectivity:     types.StringValue("connected"),
+			LinkedCodeRepoID: types.Int64Value(67),
+		},
+	)
+	if err != nil {
+		t.Fatalf("setContainerConfig: %v", err)
+	}
+
+	for name, sent := range map[string]int{
+		"activate":     len(api.activated),
+		"tagFilter":    len(api.tagFilters),
+		"sensitivity":  len(api.sensitivity),
+		"connectivity": len(api.connectivity),
+		"linkCodeRepo": len(api.linkedRepos),
+	} {
+		if sent != 0 {
+			t.Errorf("%s written %d times, want none", name, sent)
+		}
+	}
+}
+
+// The write path reads the shared list, so adopting many containers costs one
+// paginated list rather than a detail GET each.
+func TestSetContainerConfig_SharesOneListAcrossContainers(t *testing.T) {
+	api := &containerAPI{current: []containers.Container{
+		{ID: 1, Active: false},
+		{ID: 2, Active: false},
+	}}
+	srv := api.server(t)
+	resource := &containerResource{client: testClient(srv)}
+
+	for _, id := range []string{"1", "2"} {
+		if _, err := resource.setContainerConfig(context.Background(), containerModel{
+			ID:     types.StringValue(id),
+			Active: types.BoolValue(true),
+		}); err != nil {
+			t.Fatalf("setContainerConfig(%s): %v", id, err)
+		}
+	}
+
+	if api.listCalls != 1 {
+		t.Errorf("list endpoint hit %d times, want 1", api.listCalls)
+	}
+}
+
+// A data source reading later in the same apply must see what was written, and
+// must not pay for a fresh list to get it.
+func TestSetContainerConfig_RefreshesTheCachedContainerAfterAWrite(t *testing.T) {
+	api := &containerAPI{current: []containers.Container{
+		{ID: 1, Active: false, TagFilter: ""},
+		{ID: 2, Active: true, Name: "untouched"},
+	}}
+	srv := api.server(t)
+	apiClient := testClient(srv)
+
+	if _, err := (&containerResource{client: apiClient}).setContainerConfig(
+		context.Background(),
+		containerModel{
+			ID:        types.StringValue("1"),
+			Active:    types.BoolValue(true),
+			TagFilter: types.StringValue("prod-*"),
+		},
+	); err != nil {
+		t.Fatalf("setContainerConfig: %v", err)
+	}
+
+	all, err := containers.All(context.Background(), apiClient)
+	if err != nil {
+		t.Fatalf("All: %v", err)
+	}
+	if len(all) != 2 {
+		t.Fatalf("containers = %d, want 2", len(all))
+	}
+	if all[0].TagFilter != "prod-*" || !all[0].Active {
+		t.Errorf("container 1 = %+v, want the written tag filter and active", all[0])
+	}
+	if all[1].Name != "untouched" {
+		t.Errorf("container 2 = %+v, want it left alone", all[1])
+	}
+	if api.listCalls != 1 {
+		t.Errorf("list endpoint hit %d times, want 1", api.listCalls)
+	}
+}
+
+// A write that failed may still have changed the container, so the cached list
+// cannot be patched from the plan; it has to be dropped.
+func TestSetContainerConfig_DropsTheCachedListWhenAWriteFails(t *testing.T) {
+	var listCalls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer r.Body.Close()
+
+		if r.Method == http.MethodGet && r.URL.Path == "/public/v1/containers" {
+			listCalls++
+			_ = json.NewEncoder(w).Encode([]containers.Container{{ID: 1, Active: false}})
+			return
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = io.WriteString(w, "boom")
+	}))
+	t.Cleanup(srv.Close)
+	apiClient := testClient(srv)
+
+	if _, err := (&containerResource{client: apiClient}).setContainerConfig(
+		context.Background(),
+		containerModel{ID: types.StringValue("1"), Active: types.BoolValue(true)},
+	); err == nil {
+		t.Fatal("setContainerConfig: want an error from the failed activation")
+	}
+
+	if _, err := containers.All(context.Background(), apiClient); err != nil {
+		t.Fatalf("All: %v", err)
+	}
+	if listCalls != 2 {
+		t.Errorf("list endpoint hit %d times, want 2: the cache must be dropped", listCalls)
+	}
+}
+
+func ptrTo[T any](value T) *T {
+	return &value
 }
 
 func TestParseContainerID_RejectsNonNumeric(t *testing.T) {
@@ -678,7 +966,7 @@ func TestDeactivationFailureDetail(t *testing.T) {
 // fill it. Unknown must not be written to the API, and must not survive into
 // state, which Terraform rejects after apply.
 func TestSetContainerConfig_OmittedComputedAttributesArriveUnknown(t *testing.T) {
-	api := &containerAPI{detail: containers.Container{ID: 1, Active: true}}
+	api := &containerAPI{current: []containers.Container{{ID: 1, Active: true}}}
 	srv := api.server(t)
 
 	state, err := (&containerResource{client: testClient(srv)}).setContainerConfig(
@@ -712,10 +1000,9 @@ func TestSetContainerConfig_OmittedComputedAttributesArriveUnknown(t *testing.T)
 	}
 }
 
-// An unknown tag_filter must not be read as newest-image: that would reset a
-// real filter. tag_filter is Optional without Computed, so this should not occur
-// at apply time, but the comparison must not silently treat it as empty.
-func TestTagFilterChanged_TreatsUnknownAsNoChange(t *testing.T) {
+// An unmanaged tag_filter must not be read as newest-image: that would reset a
+// real filter. Only the empty string asks for newest-image.
+func TestTagFilterChanged_TreatsUnmanagedAsNoChange(t *testing.T) {
 	tests := []struct {
 		name    string
 		planned types.String
@@ -724,10 +1011,12 @@ func TestTagFilterChanged_TreatsUnknownAsNoChange(t *testing.T) {
 	}{
 		{"unknown over an existing filter", types.StringUnknown(), "prod-*", false},
 		{"unknown over an empty filter", types.StringUnknown(), "", false},
-		{"null over an existing filter", types.StringNull(), "prod-*", true},
+		{"null over an existing filter", types.StringNull(), "prod-*", false},
 		{"null over an empty filter", types.StringNull(), "", false},
 		{"new value", types.StringValue("prod-*"), "", true},
 		{"same value", types.StringValue("prod-*"), "prod-*", false},
+		{"empty string over an existing filter", types.StringValue(""), "prod-*", true},
+		{"empty string over an empty filter", types.StringValue(""), "", false},
 	}
 
 	for _, tt := range tests {
@@ -789,14 +1078,14 @@ func TestFirstKnownString(t *testing.T) {
 }
 
 // firstKnownString relies on never receiving a known-empty API value, which
-// nullIfEmptyString guarantees for every string containerModelFromAPI maps.
+// nullIfEmptyString guarantees for every string it maps. tag_filter is excluded:
+// its empty value is the newest-image state, not an absent one.
 func TestContainerModelFromAPI_EmptyStringsBecomeNull(t *testing.T) {
 	model := containerModelFromAPI(containers.Container{ID: 1})
 
 	for name, value := range map[string]types.String{
 		"sensitivity":         model.Sensitivity,
 		"connectivity":        model.Connectivity,
-		"tag_filter":          model.TagFilter,
 		"registry_name":       model.RegistryName,
 		"distro":              model.Distro,
 		"distro_version":      model.DistroVersion,

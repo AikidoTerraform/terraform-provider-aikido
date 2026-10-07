@@ -1,8 +1,9 @@
-# The same repository name can exist in several registries. For AWS the registry
-# name is the account ID, so it selects one of two identically named repositories.
+# A repository is cloned once per tag filter, so a name can match several
+# containers in one registry. For AWS the registry name is the account ID.
 data "aikido_containers" "compression" {
   name          = "pied-piper/compression"
   registry_name = "111222333444"
+  tag_filter    = "prod-*"
 }
 
 # ids is numeric, so the match feeds image_id with no conversion.
@@ -11,10 +12,10 @@ resource "aikido_team_resource" "compression" {
   image_id = one(data.aikido_containers.compression.ids)
 }
 
+# An omitted tag_filter leaves the container's filter alone.
 resource "aikido_container" "compression" {
-  id         = one(data.aikido_containers.compression.containers).id
-  active     = true
-  tag_filter = "prod-*"
+  id     = one(data.aikido_containers.compression.containers).id
+  active = true
 }
 
 # Filters combine with AND. Omitting every filter returns all containers, active
@@ -33,7 +34,6 @@ resource "aikido_container" "development" {
 
   id     = each.key
   active = true
-  # tag_filter omitted: scan the newest image.
 }
 
 # The name filter is an exact match. Selecting containers by naming convention is
@@ -48,16 +48,17 @@ output "ci_container_ids" {
   ]
 }
 
-# A lookup map keyed by registry and name replaces an out-of-band mapping.
+# Registry and name do not identify a container on their own, so the trailing
+# ... groups every match into a list.
 locals {
   container_ids_by_registry_and_name = {
     for container in data.aikido_containers.all.containers :
-    "${container.registry_name}/${container.name}" => tonumber(container.id)
+    "${container.registry_name}/${container.name}" => tonumber(container.id)...
   }
 }
 
-# An empty tag_filter selects the containers that scan their newest image. A
-# returned container reports that same state as a null tag_filter.
+# An empty tag_filter selects the containers that scan their newest image, and a
+# returned container reports that state the same way.
 data "aikido_containers" "newest_image" {
   tag_filter = ""
 }

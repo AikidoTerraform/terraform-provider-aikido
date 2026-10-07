@@ -152,7 +152,7 @@ func (d *containersDataSource) Schema(_ context.Context, _ datasource.SchemaRequ
 						},
 						"tag_filter": schema.StringAttribute{
 							Computed:    true,
-							Description: "Tag filter deciding which image is scanned. Null means the newest image is scanned.",
+							Description: "Tag filter deciding which image is scanned. The empty string means the newest image is scanned.",
 						},
 						"active": schema.BoolAttribute{
 							Computed:    true,
@@ -348,7 +348,7 @@ func containerModelFromAPI(apiContainer containers.Container) containerModel {
 		RegistryID:        nullableInt64Value(apiContainer.RegistryID),
 		RegistryName:      nullIfEmpty(apiContainer.RegistryName),
 		CloudID:           nullableInt64Value(apiContainer.CloudID),
-		TagFilter:         nullIfEmpty(apiContainer.TagFilter),
+		TagFilter:         types.StringValue(apiContainer.TagFilter),
 		Active:            types.BoolValue(apiContainer.Active),
 		LinkedCodeRepoID:  nullableInt64Value(apiContainer.LinkedCodeRepoID),
 		Distro:            nullIfEmpty(apiContainer.Distro),
