@@ -76,8 +76,8 @@ func (r *containerResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 			"active": schema.BoolAttribute{
 				Required: true,
 				Description: "Whether the container is activated for scanning in Aikido. " +
-					"Public images and self-managed SBOM uploads, whose registry_provider is docker-hub or custom_upload, " +
-					"cannot be deactivated: Aikido rejects the request and they have to be deleted instead.",
+					"Public images and self-managed SBOM uploads cannot be deactivated: " +
+					"Aikido rejects the request and they have to be deleted instead.",
 			},
 			"tag_filter": schema.StringAttribute{
 				Optional: true,
@@ -252,7 +252,7 @@ func (r *containerResource) Delete(ctx context.Context, request resource.DeleteR
 	defer containers.InvalidateCache(r.client)
 
 	if err := r.setActive(ctx, id, false); err != nil && !client.NotFound(err) {
-		response.Diagnostics.AddError("Error deactivating container", err.Error())
+		response.Diagnostics.AddError("Error deactivating container", deactivationFailureDetail(err))
 	}
 }
 
@@ -341,6 +341,21 @@ func containerReadState(apiContainer containers.Container, priorLabels []types.S
 	}
 
 	return state
+}
+
+// deactivationFailureDetail adds the way forward to a refused deactivation.
+// Aikido refuses to deactivate public images and self-managed SBOM uploads, and
+// nothing in a container read predicts it, so the remedy cannot be reported
+// before the call is made.
+func deactivationFailureDetail(err error) string {
+	if !client.BadRequest(err) {
+		return err.Error()
+	}
+
+	return err.Error() + "\n\n" +
+		"Aikido refuses to deactivate public images and self-managed SBOM uploads. " +
+		"Delete the container in Aikido and destroy again, or run terraform state rm " +
+		"to stop managing it while it stays active in Aikido."
 }
 
 // setActive activates or deactivates the container.

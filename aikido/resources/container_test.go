@@ -636,6 +636,43 @@ func TestContainerDelete_DeactivatesAndToleratesA404(t *testing.T) {
 	})
 }
 
+// Aikido refuses to deactivate public images and self-managed SBOM uploads, and
+// no field in the response predicts it, so destroy fails with the reason but no
+// way forward. The remedy belongs in the diagnostic.
+func TestDeactivationFailureDetail(t *testing.T) {
+	const refusal = "You can not deactivate public images or self managed SBOM repos, delete these instead."
+
+	t.Run("a 400 carries the remedy", func(t *testing.T) {
+		detail := deactivationFailureDetail(&client.APIError{
+			StatusCode: http.StatusBadRequest,
+			Method:     http.MethodPost,
+			Path:       "/public/v1/containers/deactivate",
+			Body:       refusal,
+		})
+
+		if !strings.Contains(detail, refusal) {
+			t.Errorf("detail dropped the API reason: %q", detail)
+		}
+		if !strings.Contains(detail, "terraform state rm") {
+			t.Errorf("detail names no remedy: %q", detail)
+		}
+	})
+
+	t.Run("another failure is passed through", func(t *testing.T) {
+		detail := deactivationFailureDetail(&client.APIError{
+			StatusCode: http.StatusInternalServerError,
+			Body:       "boom",
+		})
+
+		if !strings.Contains(detail, "boom") {
+			t.Errorf("detail dropped the API reason: %q", detail)
+		}
+		if strings.Contains(detail, "terraform state rm") {
+			t.Errorf("a server error must not be reported as a refusal: %q", detail)
+		}
+	})
+}
+
 // An Optional+Computed attribute omitted from the configuration reaches the
 // provider as unknown, not null — that is how Terraform asks the provider to
 // fill it. Unknown must not be written to the API, and must not survive into

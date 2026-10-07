@@ -42,7 +42,7 @@ resource "aikido_container" "development" {
 
 ### Required
 
-- `active` (Boolean) Whether the container is activated for scanning in Aikido. Public images and self-managed SBOM uploads, whose registry_provider is docker-hub or custom_upload, cannot be deactivated: Aikido rejects the request and they have to be deleted instead.
+- `active` (Boolean) Whether the container is activated for scanning in Aikido. Public images and self-managed SBOM uploads cannot be deactivated: Aikido rejects the request and they have to be deleted instead.
 - `id` (String) Aikido container ID.
 
 ### Optional

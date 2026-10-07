@@ -99,6 +99,12 @@ func NotFound(err error) bool {
 	return ok && apiErr.StatusCode == http.StatusNotFound
 }
 
+// BadRequest reports whether the error is a 400 from a request that was made.
+func BadRequest(err error) bool {
+	apiErr, ok := err.(*APIError)
+	return ok && apiErr.StatusCode == http.StatusBadRequest
+}
+
 // ErrNotInList reports an object absent from a list the API returned successfully.
 var ErrNotInList = errors.New("not present in the list the API returned")
 
