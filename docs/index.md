@@ -50,9 +50,7 @@ provider "aikido" {
 
 ## Rate limits and large configurations
 
-Reads are cheap: every resource and data source of one type shares a single paginated listing per run, so refreshing a workspace costs roughly one request per 100 objects regardless of how many resources are managed.
-
-Writes are not. Each attribute the API accepts has its own endpoint, so a resource that has drifted costs one request per changed attribute, and a first apply that activates thousands of objects costs at least one request each. At the default 20 requests per minute that is hours rather than minutes. Raise `requests_per_minute` to the limit the Aikido team has granted your workspace before a large initial apply, and expect subsequent runs to be far cheaper because the provider sends no request for an attribute that already holds the configured value.
+Large initial applies can take longer because workspace API rate limits apply. Before increasing `requests_per_minute`, ask Aikido to raise your workspace limit. Subsequent applies are generally faster because unchanged settings are skipped.
 
 ## Teams and Git provider synchronisation
 

@@ -2,12 +2,12 @@
 
 FEATURES:
 
-- **New Resource:** `aikido_container` — manages activation and configuration of an existing Aikido container: tag filter, sensitivity, connectivity, labels and the linked code repository, via the public `activateContainer` / `deactivateContainer` / `updateTagFilter` / `updateContainerSensitivity` / `updateContainerInternetConnection` / `addContainerLabel` / `removeContainerLabel` / `linkCodeRepoToContainer` APIs. An attribute is written only when the container does not already hold the configured value, so a configuration that has not drifted sends no request. Omitting `tag_filter` leaves the container's filter alone; set it to the empty string to scan the newest image. Destroying the resource deactivates the container; it is never deleted from Aikido.
-- **New Data Source:** `aikido_containers` — looks up Aikido containers, filtering by name, registry provider, registry, cloud, activation state, tag filter and labels, via the public `listContainerRepos` API. The `ids` attribute feeds the numeric `image_id` attribute of `aikido_team_resource`, so identically named repositories in different registries can be told apart by `registry_name`, and clones of one repository by `tag_filter`.
+- **New Resource:** `aikido_container` manages scanning activation, tag selection, sensitivity, connectivity, labels, and the linked code repository for an existing Aikido container. Removing the resource deactivates the container without deleting it from Aikido.
+- **New Data Source:** `aikido_containers` finds containers by name, registry, cloud, activation state, tag filter, or labels. Results can be used with `aikido_container` and `aikido_team_resource`.
 
 BUG FIXES:
 
-- `aikido_repository`: labels imported from a Git provider no longer reach the managed `labels` state. Reconciliation never deletes an imported label, so a configuration that omitted one produced a plan that could never converge. Naming an imported label in `labels` is now rejected instead of silently ignored. The `aikido_containers` and `aikido_repositories` data sources continue to report every label.
+- `aikido_repository`: imported labels no longer cause persistent Terraform changes. They remain available through data sources but cannot be managed by the resource.
 
 ## 1.6.0
 

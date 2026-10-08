@@ -36,7 +36,7 @@ resource "aikido_repository" "example" {
 ### Optional
 
 - `connectivity` (String) Whether the code runs on an internet-connected server. One of: connected, not_connected, unknown.
-- `labels` (Set of String) Label names managed by this resource. When set, Terraform creates/deletes labels to match. Omitting labels leaves Aikido labels untouched. An empty set deletes every user-created label currently on the repository. Labels imported from a Git provider are reported by the data source but cannot be managed here: they are never deleted, and naming one is rejected.
+- `labels` (Set of String) Label names managed by this resource. When set, Terraform creates/deletes labels to match. Omitting labels leaves Aikido labels untouched. An empty set deletes every user-created label currently on the repository. Labels imported from external sources are reported by data sources but cannot be managed here: they are left unchanged, and naming one is rejected.
 - `sensitivity` (String) Sensitivity level of the repository. One of: extreme, sensitive, normal, not_sensitive, no_data.
 
 ### Read-Only
