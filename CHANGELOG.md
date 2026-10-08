@@ -1,3 +1,14 @@
+## 1.7.0
+
+FEATURES:
+
+- **New Resource:** `aikido_container` manages scanning activation, tag selection, sensitivity, connectivity, labels, and the linked code repository for an existing Aikido container. Removing the resource deactivates the container without deleting it from Aikido.
+- **New Data Source:** `aikido_containers` finds containers by name, registry, cloud, activation state, tag filter, or labels. Results can be used with `aikido_container` and `aikido_team_resource`.
+
+BUG FIXES:
+
+- `aikido_repository`: imported labels no longer cause persistent Terraform changes. They remain available through data sources but cannot be managed by the resource.
+
 ## 1.6.0
 
 FEATURES:

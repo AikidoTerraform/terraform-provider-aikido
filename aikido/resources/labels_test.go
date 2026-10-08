@@ -6,10 +6,12 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/AikidoTerraform/terraform-provider-aikido/internal/labels"
 	"github.com/AikidoTerraform/terraform-provider-aikido/internal/repositories"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
@@ -223,14 +225,16 @@ func TestApplyLabels_KeepsImportedAndSyncsNames(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	current := []repositories.Label{
+	current := []labels.Label{
 		{ID: "10", Name: "payments", IsImported: false},
 		{ID: "11", Name: "production", IsImported: false},
 		{ID: "12", Name: "imported", IsImported: true},
 	}
 
-	err := (&repositoryResource{client: testClient(srv)}).applyLabels(
+	err := applyLabels(
 		context.Background(),
+		testClient(srv),
+		"/public/v1/repositories/code",
 		"1",
 		labelSet("production", "billing"),
 		current,
@@ -253,13 +257,107 @@ func TestApplyLabels_KeepsImportedAndSyncsNames(t *testing.T) {
 	}))
 	t.Cleanup(noopServer.Close)
 
-	if err := (&repositoryResource{client: testClient(noopServer)}).applyLabels(
+	if err := applyLabels(
 		context.Background(),
+		testClient(noopServer),
+		"/public/v1/repositories/code",
 		"1",
 		nil,
-		[]repositories.Label{{ID: "10", Name: "payments"}},
+		[]labels.Label{{ID: "10", Name: "payments"}},
 	); err != nil {
 		t.Fatalf("omitted applyLabels: %v", err)
+	}
+}
+
+// Reconciliation cannot delete an imported label, so one in state that the
+// configuration omits is a change Terraform can never make. State has to carry
+// only the labels this resource is able to manage.
+func TestLabelNamesFromAPI_ExcludesImportedLabels(t *testing.T) {
+	names := labelNamesFromAPI([]labels.Label{
+		{ID: "10", Name: "payments"},
+		{ID: "11", Name: "team:platform", IsImported: true},
+		{ID: "12", Name: "production"},
+	})
+
+	got := make([]string, 0, len(names))
+	for _, name := range names {
+		got = append(got, name.ValueString())
+	}
+
+	want := []string{"payments", "production"}
+	if !slices.Equal(got, want) {
+		t.Errorf("labelNamesFromAPI = %v, want %v", got, want)
+	}
+}
+
+// Naming an imported label is the same impasse seen from the other side:
+// reconciliation leaves it alone, so the plan never converges. Saying so beats
+// looping.
+func TestApplyLabels_RejectsAPlannedImportedLabel(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	t.Cleanup(srv.Close)
+
+	err := applyLabels(
+		context.Background(),
+		testClient(srv),
+		"/public/v1/repositories/code",
+		"1",
+		labelSet("team:platform"),
+		[]labels.Label{{ID: "11", Name: "team:platform", IsImported: true}},
+	)
+	if err == nil {
+		t.Fatal("applyLabels: want an error naming the imported label")
+	}
+	if !strings.Contains(err.Error(), "team:platform") {
+		t.Errorf("error does not name the label: %v", err)
+	}
+}
+
+// The same reconciliation drives both resources, so the base path must reach the
+// request rather than being baked in.
+func TestApplyLabels_HonorsTheContainerBasePath(t *testing.T) {
+	var created, deleted []string
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/public/v1/containers/7/labels":
+			var body map[string]string
+			defer r.Body.Close()
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			created = append(created, body["name"])
+			_, _ = io.WriteString(w, `{"label_id":31}`)
+
+		case r.Method == http.MethodDelete:
+			deleted = append(deleted, r.URL.Path)
+			_, _ = io.WriteString(w, `{}`)
+
+		default:
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	err := applyLabels(
+		context.Background(),
+		testClient(srv),
+		"/public/v1/containers",
+		"7",
+		labelSet("production"),
+		[]labels.Label{{ID: "40", Name: "stale"}},
+	)
+	if err != nil {
+		t.Fatalf("applyLabels: %v", err)
+	}
+
+	if len(created) != 1 || created[0] != "production" {
+		t.Errorf("created = %#v, want production", created)
+	}
+	if len(deleted) != 1 || deleted[0] != "/public/v1/containers/7/labels/40" {
+		t.Errorf("deleted = %v, want the container label path", deleted)
 	}
 }
 
@@ -271,11 +369,13 @@ func TestApplyLabels_RefusesToDeleteLabelWithoutID(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	err := (&repositoryResource{client: testClient(srv)}).applyLabels(
+	err := applyLabels(
 		context.Background(),
+		testClient(srv),
+		"/public/v1/repositories/code",
 		"1",
 		labelSet(),
-		[]repositories.Label{{Name: "payments"}},
+		[]labels.Label{{Name: "payments"}},
 	)
 	if err == nil || !strings.Contains(err.Error(), "no id") {
 		t.Errorf("err = %v, want a missing-id error", err)

@@ -118,6 +118,7 @@ func (p *aikidoProvider) Configure(ctx context.Context, req provider.ConfigureRe
 func (p *aikidoProvider) Resources(_ context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
 		resources.NewRepositoryResource,
+		resources.NewContainerResource,
 		resources.NewAutofixDependencySettingsResource,
 		resources.NewAutofixSastSettingsResource,
 		resources.NewAutofixPentestSettingsResource,
@@ -135,6 +136,7 @@ func (p *aikidoProvider) Resources(_ context.Context) []func() resource.Resource
 func (p *aikidoProvider) DataSources(_ context.Context) []func() datasource.DataSource {
 	return []func() datasource.DataSource{
 		datasources.NewRepositoriesDataSource,
+		datasources.NewContainersDataSource,
 		datasources.NewTeamsDataSource,
 		datasources.NewUsersDataSource,
 	}

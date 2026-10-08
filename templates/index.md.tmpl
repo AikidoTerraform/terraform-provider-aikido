@@ -20,6 +20,10 @@ description: |-
 
 {{ .SchemaMarkdown | trimspace }}
 
+## Rate limits and large configurations
+
+Large initial applies can take longer because workspace API rate limits apply. Before increasing `requests_per_minute`, ask Aikido to raise your workspace limit. Subsequent applies are generally faster because unchanged settings are skipped.
+
 ## Teams and Git provider synchronisation
 
 `aikido_team`, `aikido_team_user` and `aikido_team_resource` support teams created in Aikido. Teams synced from a Git provider are read-only in the Terraform provider.

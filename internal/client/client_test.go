@@ -129,6 +129,28 @@ func TestNotFound_OnNonAPIError(t *testing.T) {
 	}
 }
 
+func TestBadRequest(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"a 400", &client.APIError{StatusCode: http.StatusBadRequest}, true},
+		{"a 404", &client.APIError{StatusCode: http.StatusNotFound}, false},
+		{"a 500", &client.APIError{StatusCode: http.StatusInternalServerError}, false},
+		{"a non-API error", io.EOF, false},
+		{"nil", nil, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := client.BadRequest(tt.err); got != tt.want {
+				t.Errorf("BadRequest(%v) = %v, want %v", tt.err, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestDo_RetriesOn429ThenSucceeds(t *testing.T) {
 	var calls atomic.Int32
 	c := newServer(t, func(w http.ResponseWriter, r *http.Request) {

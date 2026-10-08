@@ -34,10 +34,11 @@ const (
 )
 
 type Client struct {
-	http    *http.Client
-	baseURL string
-	limiter *rate.Limiter
-	cache   sync.Map
+	http        *http.Client
+	baseURL     string
+	limiter     *rate.Limiter
+	cache       sync.Map
+	cacheUpdate sync.Mutex
 }
 
 // Option configures a Client.
@@ -97,6 +98,12 @@ func (e *APIError) Error() string {
 func NotFound(err error) bool {
 	apiErr, ok := err.(*APIError)
 	return ok && apiErr.StatusCode == http.StatusNotFound
+}
+
+// BadRequest reports whether the error is a 400 from a request that was made.
+func BadRequest(err error) bool {
+	apiErr, ok := err.(*APIError)
+	return ok && apiErr.StatusCode == http.StatusBadRequest
 }
 
 // ErrNotInList reports an object absent from a list the API returned successfully.

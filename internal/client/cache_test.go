@@ -7,6 +7,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/AikidoTerraform/terraform-provider-aikido/internal/client"
 )
@@ -136,6 +137,171 @@ func TestLoadCached(t *testing.T) {
 			t.Errorf("calls = %d, want 1", calls.Load())
 		}
 	})
+}
+
+// A write that changes one container must not discard a whole paginated list:
+// the next reader would re-fetch every page, turning an apply over N containers
+// into N list fetches.
+func TestUpdateCached(t *testing.T) {
+	t.Run("replaces the value without re-running load", func(t *testing.T) {
+		c := client.New(http.DefaultClient, "http://example.invalid", unlimited())
+		var calls atomic.Int32
+
+		load := func(context.Context) (int, error) {
+			calls.Add(1)
+			return 1, nil
+		}
+
+		if _, err := client.LoadCached(c, context.Background(), "k", load); err != nil {
+			t.Fatal(err)
+		}
+
+		client.UpdateCached(c, "k", func(cached int) int { return cached + 41 })
+
+		got, err := client.LoadCached(c, context.Background(), "k", load)
+		if err != nil || got != 42 {
+			t.Fatalf("after update = %d, %v, want 42", got, err)
+		}
+		if calls.Load() != 1 {
+			t.Errorf("calls = %d, want 1: the update must not force a reload", calls.Load())
+		}
+	})
+
+	// Nothing cached means nothing to keep consistent, and the next load fetches
+	// fresh data anyway.
+	t.Run("missing key is a no-op", func(t *testing.T) {
+		c := client.New(http.DefaultClient, "http://example.invalid", unlimited())
+
+		client.UpdateCached(c, "missing", func(cached int) int { return cached + 1 })
+
+		got, err := client.LoadCached(c, context.Background(), "missing", func(context.Context) (int, error) {
+			return 7, nil
+		})
+		if err != nil || got != 7 {
+			t.Fatalf("load after no-op update = %d, %v, want 7", got, err)
+		}
+	})
+
+	// Terraform applies resources in parallel, so several containers can be
+	// written at once. A read-modify-write that loses a concurrent update would
+	// leave the cache reporting a pre-write value.
+	t.Run("concurrent updates all land", func(t *testing.T) {
+		c := client.New(http.DefaultClient, "http://example.invalid", unlimited())
+
+		if _, err := client.LoadCached(c, context.Background(), "m", func(context.Context) (map[int]int, error) {
+			return map[int]int{}, nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+
+		const n = 16
+		var wg sync.WaitGroup
+		wg.Add(n)
+		for i := range n {
+			go func() {
+				defer wg.Done()
+				client.UpdateCached(c, "m", func(cached map[int]int) map[int]int {
+					// Copy on write: a reader holding the old map must stay safe.
+					next := make(map[int]int, len(cached)+1)
+					for key, value := range cached {
+						next[key] = value
+					}
+					next[i] = i
+					return next
+				})
+			}()
+		}
+		wg.Wait()
+
+		got, err := client.LoadCached(c, context.Background(), "m", func(context.Context) (map[int]int, error) {
+			return nil, errors.New("load must not run again")
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(got) != n {
+			t.Errorf("cached entries = %d, want %d: a concurrent update was lost", len(got), n)
+		}
+	})
+}
+
+// An update patches a snapshot it read earlier, so storing the result must not
+// bring back an entry something else dropped in the meantime.
+func TestUpdateCached_DoesNotUndoAConcurrentInvalidation(t *testing.T) {
+	c := client.New(http.DefaultClient, "http://example.invalid", unlimited())
+	var calls atomic.Int32
+	load := func(context.Context) (int, error) { return int(calls.Add(1)), nil }
+
+	if _, err := client.LoadCached(c, context.Background(), "k", load); err != nil {
+		t.Fatal(err)
+	}
+
+	reading := make(chan struct{})
+	release := make(chan struct{})
+	updated := make(chan struct{})
+	go func() {
+		defer close(updated)
+		client.UpdateCached(c, "k", func(cached int) int {
+			close(reading)
+			<-release
+
+			return cached + 100
+		})
+	}()
+
+	<-reading
+	invalidated := make(chan struct{})
+	go func() {
+		defer close(invalidated)
+		client.InvalidateCached(c, "k")
+	}()
+
+	// Long enough for an unserialized Delete to land inside the update.
+	time.Sleep(20 * time.Millisecond)
+	close(release)
+	<-updated
+	<-invalidated
+
+	got, err := client.LoadCached(c, context.Background(), "k", load)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != 2 {
+		t.Errorf("after invalidate = %d, want 2: the dropped entry must be refetched", got)
+	}
+}
+
+// Nothing cached is not a failure. An update must not make the key look like a
+// failed load to a reader that arrives while it runs.
+func TestUpdateCached_ConcurrentReaderNeverSeesAFailure(t *testing.T) {
+	for range 200 {
+		c := client.New(http.DefaultClient, "http://example.invalid", unlimited())
+		errs := make(chan error, 1)
+
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			client.UpdateCached(c, "k", func(cached int) int { return cached + 1 })
+		}()
+		go func() {
+			defer wg.Done()
+			if _, err := client.LoadCached(c, context.Background(), "k", func(context.Context) (int, error) {
+				return 7, nil
+			}); err != nil {
+				select {
+				case errs <- err:
+				default:
+				}
+			}
+		}()
+		wg.Wait()
+
+		close(errs)
+		for err := range errs {
+			t.Fatalf("reader saw %v, want nothing cached to read as no error", err)
+		}
+	}
 }
 
 func TestInvalidateCached(t *testing.T) {
