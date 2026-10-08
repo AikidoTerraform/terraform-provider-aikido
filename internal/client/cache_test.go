@@ -7,6 +7,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/AikidoTerraform/terraform-provider-aikido/internal/client"
 )
@@ -222,6 +223,85 @@ func TestUpdateCached(t *testing.T) {
 			t.Errorf("cached entries = %d, want %d: a concurrent update was lost", len(got), n)
 		}
 	})
+}
+
+// An update patches a snapshot it read earlier, so storing the result must not
+// bring back an entry something else dropped in the meantime.
+func TestUpdateCached_DoesNotUndoAConcurrentInvalidation(t *testing.T) {
+	c := client.New(http.DefaultClient, "http://example.invalid", unlimited())
+	var calls atomic.Int32
+	load := func(context.Context) (int, error) { return int(calls.Add(1)), nil }
+
+	if _, err := client.LoadCached(c, context.Background(), "k", load); err != nil {
+		t.Fatal(err)
+	}
+
+	reading := make(chan struct{})
+	release := make(chan struct{})
+	updated := make(chan struct{})
+	go func() {
+		defer close(updated)
+		client.UpdateCached(c, "k", func(cached int) int {
+			close(reading)
+			<-release
+
+			return cached + 100
+		})
+	}()
+
+	<-reading
+	invalidated := make(chan struct{})
+	go func() {
+		defer close(invalidated)
+		client.InvalidateCached(c, "k")
+	}()
+
+	// Long enough for an unserialized Delete to land inside the update.
+	time.Sleep(20 * time.Millisecond)
+	close(release)
+	<-updated
+	<-invalidated
+
+	got, err := client.LoadCached(c, context.Background(), "k", load)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != 2 {
+		t.Errorf("after invalidate = %d, want 2: the dropped entry must be refetched", got)
+	}
+}
+
+// Nothing cached is not a failure. An update must not make the key look like a
+// failed load to a reader that arrives while it runs.
+func TestUpdateCached_ConcurrentReaderNeverSeesAFailure(t *testing.T) {
+	for range 200 {
+		c := client.New(http.DefaultClient, "http://example.invalid", unlimited())
+		errs := make(chan error, 1)
+
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			client.UpdateCached(c, "k", func(cached int) int { return cached + 1 })
+		}()
+		go func() {
+			defer wg.Done()
+			if _, err := client.LoadCached(c, context.Background(), "k", func(context.Context) (int, error) {
+				return 7, nil
+			}); err != nil {
+				select {
+				case errs <- err:
+				default:
+				}
+			}
+		}()
+		wg.Wait()
+
+		close(errs)
+		for err := range errs {
+			t.Fatalf("reader saw %v, want nothing cached to read as no error", err)
+		}
+	}
 }
 
 func TestInvalidateCached(t *testing.T) {

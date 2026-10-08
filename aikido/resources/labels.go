@@ -23,7 +23,9 @@ func labelsSchemaAttribute(noun string) schema.SetAttribute {
 		ElementType: types.StringType,
 		Description: "Label names managed by this resource. " +
 			"When set, Terraform creates/deletes labels to match. Omitting labels leaves Aikido labels untouched. " +
-			"An empty set deletes all labels currently on the " + noun + ".",
+			"An empty set deletes every user-created label currently on the " + noun + ". " +
+			"Labels imported from a Git provider are reported by the data source but cannot be managed here: " +
+			"they are never deleted, and naming one is rejected.",
 	}
 }
 
@@ -45,7 +47,12 @@ func applyLabels(
 	// Create planned names that don't exist yet.
 	for _, label := range planned {
 		name := label.ValueString()
-		if slices.ContainsFunc(current, func(l labels.Label) bool { return l.Name == name }) {
+		existing := slices.IndexFunc(current, func(l labels.Label) bool { return l.Name == name })
+		if existing >= 0 {
+			if current[existing].IsImported {
+				return fmt.Errorf("label %q is imported and cannot be managed; remove it from the configuration", name)
+			}
+
 			continue
 		}
 

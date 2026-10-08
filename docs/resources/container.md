@@ -55,7 +55,7 @@ resource "aikido_container" "staging" {
 ### Optional
 
 - `connectivity` (String) Whether the container runs on an internet-connected server. One of: connected, not_connected, unknown.
-- `labels` (Set of String) Label names managed by this resource. When set, Terraform creates/deletes labels to match. Omitting labels leaves Aikido labels untouched. An empty set deletes all labels currently on the container.
+- `labels` (Set of String) Label names managed by this resource. When set, Terraform creates/deletes labels to match. Omitting labels leaves Aikido labels untouched. An empty set deletes every user-created label currently on the container. Labels imported from a Git provider are reported by the data source but cannot be managed here: they are never deleted, and naming one is rejected.
 - `linked_code_repo_id` (Number) Aikido code repository ID to link to this container. Written only when set; removing it from the configuration leaves the existing link in place rather than unlinking.
 - `sensitivity` (String) Sensitivity level of the container. One of: extreme, sensitive, normal, not_sensitive, no_data.
 - `tag_filter` (String) Tag filter deciding which image is scanned. Supports * wildcards, for example prod-*, and the special value semver-production. Omitting it leaves the container's current filter alone; set it to the empty string to scan the newest image instead. Aikido rejects a tag filter on public images and on self-managed SBOM uploads, and on a container whose clone in the same region already carries the same filter.

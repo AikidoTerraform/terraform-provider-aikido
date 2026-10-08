@@ -312,9 +312,13 @@ func repositoryModelFromAPI(apiRepository repositories.Repository) repositoryMod
 
 // labelNamesFromAPI maps API labels into Terraform state (names only).
 // Always returns a non-nil slice so a managed empty set differs from omitted (nil).
+// Imported labels are left out, since reconciliation cannot delete one.
 func labelNamesFromAPI(apiLabels []labels.Label) []types.String {
 	names := make([]types.String, 0, len(apiLabels))
 	for _, apiLabel := range apiLabels {
+		if apiLabel.IsImported {
+			continue
+		}
 		names = append(names, types.StringValue(apiLabel.Name))
 	}
 

@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -265,6 +266,53 @@ func TestApplyLabels_KeepsImportedAndSyncsNames(t *testing.T) {
 		[]labels.Label{{ID: "10", Name: "payments"}},
 	); err != nil {
 		t.Fatalf("omitted applyLabels: %v", err)
+	}
+}
+
+// Reconciliation cannot delete an imported label, so one in state that the
+// configuration omits is a change Terraform can never make. State has to carry
+// only the labels this resource is able to manage.
+func TestLabelNamesFromAPI_ExcludesImportedLabels(t *testing.T) {
+	names := labelNamesFromAPI([]labels.Label{
+		{ID: "10", Name: "payments"},
+		{ID: "11", Name: "team:platform", IsImported: true},
+		{ID: "12", Name: "production"},
+	})
+
+	got := make([]string, 0, len(names))
+	for _, name := range names {
+		got = append(got, name.ValueString())
+	}
+
+	want := []string{"payments", "production"}
+	if !slices.Equal(got, want) {
+		t.Errorf("labelNamesFromAPI = %v, want %v", got, want)
+	}
+}
+
+// Naming an imported label is the same impasse seen from the other side:
+// reconciliation leaves it alone, so the plan never converges. Saying so beats
+// looping.
+func TestApplyLabels_RejectsAPlannedImportedLabel(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	t.Cleanup(srv.Close)
+
+	err := applyLabels(
+		context.Background(),
+		testClient(srv),
+		"/public/v1/repositories/code",
+		"1",
+		labelSet("team:platform"),
+		[]labels.Label{{ID: "11", Name: "team:platform", IsImported: true}},
+	)
+	if err == nil {
+		t.Fatal("applyLabels: want an error naming the imported label")
+	}
+	if !strings.Contains(err.Error(), "team:platform") {
+		t.Errorf("error does not name the label: %v", err)
 	}
 }
 
