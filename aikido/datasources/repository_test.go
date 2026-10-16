@@ -50,7 +50,7 @@ func TestRepositoryMetadata_TypeName(t *testing.T) {
 func TestSingleRepository_OneMatchIsReturned(t *testing.T) {
 	want := repositories.Repository{ID: 10, Name: "payments", Branch: "main"}
 
-	got, diagnostics := singleRepository("payments", []repositories.Repository{want})
+	got, diagnostics := singleRepository("payments", "", []repositories.Repository{want})
 	if diagnostics.HasError() {
 		t.Fatalf("got %v, want no diagnostics", diagnostics)
 	}
@@ -64,7 +64,7 @@ func TestSingleRepository_OneMatchIsReturned(t *testing.T) {
 func TestSingleRepository_InactiveMatchIsReturned(t *testing.T) {
 	want := repositories.Repository{ID: 10, Name: "payments", Active: false}
 
-	got, diagnostics := singleRepository("payments", []repositories.Repository{want})
+	got, diagnostics := singleRepository("payments", "", []repositories.Repository{want})
 	if diagnostics.HasError() {
 		t.Fatalf("got %v, want no diagnostics", diagnostics)
 	}
@@ -76,7 +76,7 @@ func TestSingleRepository_InactiveMatchIsReturned(t *testing.T) {
 // A single-repository lookup must fail rather than return an empty repository,
 // since downstream resources would otherwise receive an empty ID.
 func TestSingleRepository_NoMatchIsAnError(t *testing.T) {
-	_, diagnostics := singleRepository("payments", nil)
+	_, diagnostics := singleRepository("payments", "", nil)
 
 	if !diagnostics.HasError() {
 		t.Fatal("no match produced no error")
@@ -91,24 +91,24 @@ func TestSingleRepository_NoMatchIsAnError(t *testing.T) {
 
 // A cloned (multi-branch) repository appears as several repositories with the
 // same name. Picking one silently would feed an arbitrary clone's ID downstream,
-// so the lookup refuses and points at the branch-aware data source.
+// so the lookup refuses and asks the user to set branch.
 func TestSingleRepository_ClonedRepositoryIsAnError(t *testing.T) {
 	clones := []repositories.Repository{
 		{ID: 10, Name: "payments", Provider: "github", Branch: "main"},
 		{ID: 30, Name: "payments", Provider: "github", Branch: "develop"},
 	}
 
-	_, diagnostics := singleRepository("payments", clones)
+	_, diagnostics := singleRepository("payments", "", clones)
 
 	if !diagnostics.HasError() {
 		t.Fatal("two clones produced no error")
 	}
-	if summary := diagnostics.Errors()[0].Summary(); !strings.Contains(summary, "cloned") {
-		t.Errorf("summary = %q, want it to explain the repository is cloned", summary)
+	if summary := diagnostics.Errors()[0].Summary(); summary != "Repository lookup is ambiguous" {
+		t.Errorf("summary = %q, want an ambiguity error", summary)
 	}
 
 	detail := diagnostics.Errors()[0].Detail()
-	for _, want := range []string{"2 code repositories", `"payments"`, "ID 10", "ID 30", `branch "main"`, `branch "develop"`, "aikido_repositories"} {
+	for _, want := range []string{"2 code repositories", `"payments"`, "ID 10", "ID 30", `branch "main"`, `branch "develop"`, "Set branch"} {
 		if !strings.Contains(detail, want) {
 			t.Errorf("detail %q missing %q", detail, want)
 		}

@@ -3,18 +3,17 @@
 page_title: "Aikido Code Repository"
 subcategory: ""
 description: |-
-  Looks up exactly one Aikido code repository by name. The name is filtered server-side, so the lookup costs one small request however large the workspace is. It is an error when no repository has the name, and also when more than one does: configuring an additional branch for a repository adds a separate, cloned repository with the same name in Aikido, so a name alone no longer identifies one. For cloned (multi-branch) repositories, use the aikido_repositories data source with its branch filter instead.
+  Looks up exactly one Aikido code repository by name and, optionally, branch. It is an error when no repository matches or when several repositories match. Set branch when the same repository is configured for multiple branches.
 ---
 
 # aikido_repository (Data Source)
 
-Looks up exactly one Aikido code repository by name. The name is filtered server-side, so the lookup costs one small request however large the workspace is. It is an error when no repository has the name, and also when more than one does: configuring an additional branch for a repository adds a separate, cloned repository with the same name in Aikido, so a name alone no longer identifies one. For cloned (multi-branch) repositories, use the aikido_repositories data source with its branch filter instead.
+Looks up exactly one Aikido code repository by name and, optionally, branch. It is an error when no repository matches or when several repositories match. Set branch when the same repository is configured for multiple branches.
 
 ## Example Usage
 
 ```terraform
-# Looks up exactly one repository by name. The name is filtered by the API, so
-# the lookup stays one small request however many repositories the workspace has.
+# Look up a repository by name instead of its numeric Aikido ID.
 data "aikido_repository" "payments" {
   name = "payments"
 }
@@ -46,16 +45,14 @@ resource "aikido_repo_pr_checks_settings" "payments" {
   run_deep_audit_pr_scan = true
 }
 
-# A repository that scans more than one branch is cloned in Aikido: each branch
-# is a separate repository with the same name, so aikido_repository errors for
-# it. Select one clone with aikido_repositories and its branch filter instead.
-data "aikido_repositories" "checkout_develop" {
+# Set branch when several repositories have the same name.
+data "aikido_repository" "checkout_develop" {
   name   = "checkout"
   branch = "develop"
 }
 
 resource "aikido_repository" "checkout_develop" {
-  id     = one(data.aikido_repositories.checkout_develop.repositories).id
+  id     = data.aikido_repository.checkout_develop.id
   active = true
 }
 ```
@@ -65,12 +62,15 @@ resource "aikido_repository" "checkout_develop" {
 
 ### Required
 
-- `name` (String) Name of the code repository, matched exactly. Matching is exact, not a substring or glob, and the name must identify exactly one repository, active or inactive.
+- `name` (String) Name of the code repository, matched exactly. Matching is exact, not a substring or glob. The name and optional branch must identify exactly one repository, active or inactive.
+
+### Optional
+
+- `branch` (String) Branch configured for scanning. Set this to select one repository when several repositories have the same name.
 
 ### Read-Only
 
 - `active` (Boolean) Whether the repository is activated for scanning in Aikido.
-- `branch` (String) Branch configured for scanning.
 - `connectivity` (String) Whether the code runs on an internet-connected server. One of: connected, not_connected, unknown.
 - `external_repo_id` (String) Repository ID from the Git provider.
 - `external_repo_numeric_id` (Number) Numeric repository ID from the Git provider.

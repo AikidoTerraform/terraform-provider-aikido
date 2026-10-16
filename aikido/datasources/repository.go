@@ -41,17 +41,14 @@ func (d *repositoryDataSource) Metadata(_ context.Context, request datasource.Me
 
 func (d *repositoryDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, response *datasource.SchemaResponse) {
 	response.Schema = schema.Schema{
-		Description: "Looks up exactly one Aikido code repository by name. " +
-			"The name is filtered server-side, so the lookup costs one small request however large the workspace is. " +
-			"It is an error when no repository has the name, and also when more than one does: " +
-			"configuring an additional branch for a repository adds a separate, cloned repository with the same name in Aikido, " +
-			"so a name alone no longer identifies one. " +
-			"For cloned (multi-branch) repositories, use the aikido_repositories data source with its branch filter instead.",
+		Description: "Looks up exactly one Aikido code repository by name and, optionally, branch. " +
+			"It is an error when no repository matches or when several repositories match. " +
+			"Set branch when the same repository is configured for multiple branches.",
 		Attributes: map[string]schema.Attribute{
 			"name": schema.StringAttribute{
 				Required: true,
 				Description: "Name of the code repository, matched exactly. " +
-					"Matching is exact, not a substring or glob, and the name must identify exactly one repository, active or inactive.",
+					"Matching is exact, not a substring or glob. The name and optional branch must identify exactly one repository, active or inactive.",
 				Validators: []validator.String{
 					stringvalidator.LengthAtLeast(1),
 				},
@@ -77,8 +74,13 @@ func (d *repositoryDataSource) Schema(_ context.Context, _ datasource.SchemaRequ
 				Description: "Whether the repository is activated for scanning in Aikido.",
 			},
 			"branch": schema.StringAttribute{
-				Computed:    true,
-				Description: "Branch configured for scanning.",
+				Optional: true,
+				Computed: true,
+				Description: "Branch configured for scanning. " +
+					"Set this to select one repository when several repositories have the same name.",
+				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
+				},
 			},
 			"url": schema.StringAttribute{
 				Computed:    true,
@@ -141,14 +143,27 @@ func (d *repositoryDataSource) Read(ctx context.Context, request datasource.Read
 		return
 	}
 	name := config.Name.ValueString()
+	if config.Branch.IsUnknown() {
+		response.Diagnostics.AddAttributeError(
+			path.Root("branch"),
+			"Unknown repository branch",
+			"The branch is not known at read time, so it cannot be used to select a repository. "+
+				"Set it to a value that does not depend on an attribute that is only known after apply.",
+		)
+		return
+	}
+	branch := ""
+	if !config.Branch.IsNull() {
+		branch = config.Branch.ValueString()
+	}
 
-	matched, err := repositories.ByName(ctx, d.client, name)
+	matched, err := repositories.ByName(ctx, d.client, name, branch)
 	if err != nil {
 		response.Diagnostics.AddError("Error reading repository", err.Error())
 		return
 	}
 
-	repository, diagnostics := singleRepository(name, matched)
+	repository, diagnostics := singleRepository(name, branch, matched)
 	response.Diagnostics.Append(diagnostics...)
 	if response.Diagnostics.HasError() {
 		return
@@ -162,28 +177,35 @@ func (d *repositoryDataSource) Read(ctx context.Context, request datasource.Read
 // data source stands for. No match and several matches are both errors, because
 // a single-repository lookup that silently picked one of several clones would
 // feed the wrong ID downstream.
-func singleRepository(name string, matched []repositories.Repository) (repositories.Repository, diag.Diagnostics) {
+func singleRepository(name, branch string, matched []repositories.Repository) (repositories.Repository, diag.Diagnostics) {
 	var diagnostics diag.Diagnostics
 
 	switch len(matched) {
 	case 1:
 		return matched[0], nil
 	case 0:
+		target := fmt.Sprintf("named %q", name)
+		if branch != "" {
+			target += fmt.Sprintf(" on branch %q", branch)
+		}
 		diagnostics.AddAttributeError(
 			path.Root("name"),
 			"Repository not found",
-			fmt.Sprintf("No code repository named %q exists in the Aikido workspace, active or inactive. "+
-				"The name is matched exactly, so check its case and spelling against the repository list in Aikido.", name),
+			fmt.Sprintf("No code repository %s exists in the Aikido workspace, active or inactive. "+
+				"The filters are matched exactly, so check their case and spelling against the repository list in Aikido.", target),
 		)
 	default:
+		target := fmt.Sprintf("named %q", name)
+		guidance := "Set branch to select one of them."
+		if branch != "" {
+			target += fmt.Sprintf(" on branch %q", branch)
+			guidance = "Use one of the listed Aikido repository IDs to identify the intended repository."
+		}
 		diagnostics.AddAttributeError(
 			path.Root("name"),
-			"Repository is cloned for multiple branches",
-			fmt.Sprintf("%d code repositories are named %q: %s. "+
-				"Aikido represents every additionally scanned branch as a separate, cloned repository with the same name, "+
-				"so a name alone does not identify one and aikido_repository cannot be used for it. "+
-				"Use the aikido_repositories data source with its branch filter to select one of them.",
-				len(matched), name, describeRepositories(matched)),
+			"Repository lookup is ambiguous",
+			fmt.Sprintf("%d code repositories are %s: %s. %s",
+				len(matched), target, describeRepositories(matched), guidance),
 		)
 	}
 

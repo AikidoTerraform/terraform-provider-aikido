@@ -1,5 +1,4 @@
-# Looks up exactly one repository by name. The name is filtered by the API, so
-# the lookup stays one small request however many repositories the workspace has.
+# Look up a repository by name instead of its numeric Aikido ID.
 data "aikido_repository" "payments" {
   name = "payments"
 }
@@ -31,15 +30,13 @@ resource "aikido_repo_pr_checks_settings" "payments" {
   run_deep_audit_pr_scan = true
 }
 
-# A repository that scans more than one branch is cloned in Aikido: each branch
-# is a separate repository with the same name, so aikido_repository errors for
-# it. Select one clone with aikido_repositories and its branch filter instead.
-data "aikido_repositories" "checkout_develop" {
+# Set branch when several repositories have the same name.
+data "aikido_repository" "checkout_develop" {
   name   = "checkout"
   branch = "develop"
 }
 
 resource "aikido_repository" "checkout_develop" {
-  id     = one(data.aikido_repositories.checkout_develop.repositories).id
+  id     = data.aikido_repository.checkout_develop.id
   active = true
 }

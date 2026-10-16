@@ -54,8 +54,8 @@ terraform {
 
 provider "aikido" {}
 
-# Look up repositories by name, so no numeric Aikido IDs appear in config.
-data "aikido_repositories" "payments" {
+# Look up one repository by name, so no numeric Aikido ID appears in config.
+data "aikido_repository" "payments" {
   name = "payments"
 }
 
@@ -63,7 +63,7 @@ data "aikido_repositories" "payments" {
 data "aikido_repositories" "all" {}
 
 resource "aikido_repository" "example" {
-  id     = one(data.aikido_repositories.payments.repositories).id
+  id     = data.aikido_repository.payments.id
   active = true
 
   sensitivity  = "sensitive"
@@ -98,7 +98,7 @@ resource "aikido_autofix_pentest_settings" "example" {
 }
 
 resource "aikido_repo_pr_checks_settings" "example" {
-  code_repo_id                                    = one(data.aikido_repositories.payments.ids)
+  code_repo_id                                    = tonumber(data.aikido_repository.payments.id)
   
   minimum_severity                                = "high"
   fail_on_dependency_scan                         = true

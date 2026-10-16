@@ -147,17 +147,20 @@ func TestByName_FiltersServerSideAndRequestsInactiveAndLabels(t *testing.T) {
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		query = r.URL.Query()
-		_ = json.NewEncoder(w).Encode([]Repository{{ID: 1, Name: "payments & billing"}})
+		_ = json.NewEncoder(w).Encode([]Repository{{ID: 1, Name: "payments & billing", Branch: "main"}})
 	}))
 	t.Cleanup(srv.Close)
 
-	matched, err := ByName(context.Background(), testClient(srv), "payments & billing")
+	matched, err := ByName(context.Background(), testClient(srv), "payments & billing", "main")
 	if err != nil {
 		t.Fatalf("ByName: %v", err)
 	}
 
 	if got := query.Get("filter_name"); got != "payments & billing" {
 		t.Errorf("filter_name = %q, want the name, escaped so the API decodes it unchanged", got)
+	}
+	if got := query.Get("filter_branch"); got != "main" {
+		t.Errorf("filter_branch = %q, want main", got)
 	}
 	for _, want := range []string{"include_inactive", "include_labels"} {
 		if query.Get(want) != "true" {
@@ -180,7 +183,7 @@ func TestByName_KeepsOnlyExactMatchesSortedByID(t *testing.T) {
 		Repository{ID: 40, Name: "Payments", Branch: "main"},
 	)
 
-	matched, err := ByName(context.Background(), testClient(srv), "payments")
+	matched, err := ByName(context.Background(), testClient(srv), "payments", "")
 	if err != nil {
 		t.Fatalf("ByName: %v", err)
 	}
@@ -200,7 +203,7 @@ func TestByName_NoMatchIsEmptyNotNil(t *testing.T) {
 	var requestCount int
 	srv := listServer(t, &requestCount)
 
-	matched, err := ByName(context.Background(), testClient(srv), "payments")
+	matched, err := ByName(context.Background(), testClient(srv), "payments", "")
 	if err != nil {
 		t.Fatalf("ByName: %v", err)
 	}
@@ -218,10 +221,10 @@ func TestByName_BypassesTheSharedListCache(t *testing.T) {
 	apiClient := testClient(srv)
 	ctx := context.Background()
 
-	if _, err := ByName(ctx, apiClient, "payments"); err != nil {
+	if _, err := ByName(ctx, apiClient, "payments", ""); err != nil {
 		t.Fatalf("ByName: %v", err)
 	}
-	if _, err := ByName(ctx, apiClient, "payments"); err != nil {
+	if _, err := ByName(ctx, apiClient, "payments", ""); err != nil {
 		t.Fatalf("ByName (second call): %v", err)
 	}
 	if requestCount != 2 {
@@ -242,7 +245,7 @@ func TestByName_PropagatesAPIErrors(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	if _, err := ByName(context.Background(), testClient(srv), "payments"); err == nil {
+	if _, err := ByName(context.Background(), testClient(srv), "payments", ""); err == nil {
 		t.Fatal("ByName: want error on 403, got nil")
 	}
 }
