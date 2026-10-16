@@ -9,6 +9,7 @@ These are **fragments**, not a complete root module by themselves. Combine the p
 | Path | Purpose |
 |------|---------|
 | [`provider/provider.tf`](provider/provider.tf) | `required_providers` + `provider "aikido"` block |
+| [`data-sources/aikido_repository/data-source.tf`](data-sources/aikido_repository/data-source.tf) | `aikido_repository` data source: look up exactly one repository by name, filtered server-side |
 | [`data-sources/aikido_repositories/data-source.tf`](data-sources/aikido_repositories/data-source.tf) | `aikido_repositories` data source: look up repositories by name instead of by numeric ID |
 | [`data-sources/aikido_teams/data-source.tf`](data-sources/aikido_teams/data-source.tf) | `aikido_teams` data source |
 | [`data-sources/aikido_users/data-source.tf`](data-sources/aikido_users/data-source.tf) | `aikido_users` data source |
@@ -53,8 +54,8 @@ terraform {
 
 provider "aikido" {}
 
-# Look up repositories by name, so no numeric Aikido IDs appear in config.
-data "aikido_repositories" "payments" {
+# Look up one repository by name, so no numeric Aikido ID appears in config.
+data "aikido_repository" "payments" {
   name = "payments"
 }
 
@@ -62,7 +63,7 @@ data "aikido_repositories" "payments" {
 data "aikido_repositories" "all" {}
 
 resource "aikido_repository" "example" {
-  id     = one(data.aikido_repositories.payments.repositories).id
+  id     = data.aikido_repository.payments.id
   active = true
 
   sensitivity  = "sensitive"
@@ -97,7 +98,7 @@ resource "aikido_autofix_pentest_settings" "example" {
 }
 
 resource "aikido_repo_pr_checks_settings" "example" {
-  code_repo_id                                    = one(data.aikido_repositories.payments.ids)
+  code_repo_id                                    = tonumber(data.aikido_repository.payments.id)
   
   minimum_severity                                = "high"
   fail_on_dependency_scan                         = true

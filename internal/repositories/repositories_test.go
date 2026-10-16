@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -136,6 +137,116 @@ func TestByID_MissingRepositoryIsNotInList(t *testing.T) {
 	// proof the repository is gone.
 	if client.NotFound(err) {
 		t.Errorf("err = %v, must not also read as an API 404", err)
+	}
+}
+
+// ByName pushes the name to the API, so a lookup in a large workspace never
+// pages through every repository.
+func TestByName_FiltersServerSideAndRequestsInactiveAndLabels(t *testing.T) {
+	var query url.Values
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		query = r.URL.Query()
+		_ = json.NewEncoder(w).Encode([]Repository{{ID: 1, Name: "payments & billing", Branch: "main"}})
+	}))
+	t.Cleanup(srv.Close)
+
+	matched, err := ByName(context.Background(), testClient(srv), "payments & billing", "main")
+	if err != nil {
+		t.Fatalf("ByName: %v", err)
+	}
+
+	if got := query.Get("filter_name"); got != "payments & billing" {
+		t.Errorf("filter_name = %q, want the name, escaped so the API decodes it unchanged", got)
+	}
+	if got := query.Get("filter_branch"); got != "main" {
+		t.Errorf("filter_branch = %q, want main", got)
+	}
+	for _, want := range []string{"include_inactive", "include_labels"} {
+		if query.Get(want) != "true" {
+			t.Errorf("query %v missing %s=true", query, want)
+		}
+	}
+	if len(matched) != 1 || matched[0].ID != 1 {
+		t.Errorf("matched = %#v, want repository 1", matched)
+	}
+}
+
+// The API does not promise filter_name is exact, so a server that treats it as
+// a substring must not leak near-misses into a single-repository lookup.
+func TestByName_KeepsOnlyExactMatchesSortedByID(t *testing.T) {
+	var requestCount int
+	srv := listServer(t, &requestCount,
+		Repository{ID: 30, Name: "payments", Branch: "develop"},
+		Repository{ID: 20, Name: "payments-legacy", Branch: "main"},
+		Repository{ID: 10, Name: "payments", Branch: "main"},
+		Repository{ID: 40, Name: "Payments", Branch: "main"},
+	)
+
+	matched, err := ByName(context.Background(), testClient(srv), "payments", "")
+	if err != nil {
+		t.Fatalf("ByName: %v", err)
+	}
+
+	wantIDs := []int64{10, 30}
+	if len(matched) != len(wantIDs) {
+		t.Fatalf("got %d repositories %#v, want %d", len(matched), matched, len(wantIDs))
+	}
+	for i, wantID := range wantIDs {
+		if matched[i].ID != wantID {
+			t.Errorf("position %d = id %d, want %d", i, matched[i].ID, wantID)
+		}
+	}
+}
+
+func TestByName_NoMatchIsEmptyNotNil(t *testing.T) {
+	var requestCount int
+	srv := listServer(t, &requestCount)
+
+	matched, err := ByName(context.Background(), testClient(srv), "payments", "")
+	if err != nil {
+		t.Fatalf("ByName: %v", err)
+	}
+	if matched == nil || len(matched) != 0 {
+		t.Errorf("matched = %#v, want an empty non-nil slice", matched)
+	}
+}
+
+// ByName reads the API directly: a stale shared list must not hide a repository
+// that was renamed or activated by a resource earlier in the same apply, and a
+// lookup must not warm the cache with a filtered page.
+func TestByName_BypassesTheSharedListCache(t *testing.T) {
+	var requestCount int
+	srv := listServer(t, &requestCount, Repository{ID: 1, Name: "payments"})
+	apiClient := testClient(srv)
+	ctx := context.Background()
+
+	if _, err := ByName(ctx, apiClient, "payments", ""); err != nil {
+		t.Fatalf("ByName: %v", err)
+	}
+	if _, err := ByName(ctx, apiClient, "payments", ""); err != nil {
+		t.Fatalf("ByName (second call): %v", err)
+	}
+	if requestCount != 2 {
+		t.Errorf("list endpoint hit %d times after two lookups, want 2", requestCount)
+	}
+
+	if _, err := All(ctx, apiClient); err != nil {
+		t.Fatalf("All: %v", err)
+	}
+	if requestCount != 3 {
+		t.Errorf("list endpoint hit %d times after All, want 3: a filtered lookup must not populate the cache", requestCount)
+	}
+}
+
+func TestByName_PropagatesAPIErrors(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	t.Cleanup(srv.Close)
+
+	if _, err := ByName(context.Background(), testClient(srv), "payments", ""); err == nil {
+		t.Fatal("ByName: want error on 403, got nil")
 	}
 }
 

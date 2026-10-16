@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"slices"
 	"strconv"
 
@@ -84,6 +85,33 @@ func All(ctx context.Context, apiClient *client.Client) ([]Repository, error) {
 	})
 
 	return all, nil
+}
+
+// ByName returns repositories matching name and an optional branch, sorted by
+// ID. The filters are pushed to the API so the provider does not fetch the full
+// workspace list. Exact matching is also enforced locally.
+func ByName(ctx context.Context, apiClient *client.Client, name, branch string) ([]Repository, error) {
+	query := listQueryParams + "&filter_name=" + url.QueryEscape(name)
+	if branch != "" {
+		query += "&filter_branch=" + url.QueryEscape(branch)
+	}
+
+	items, err := client.FetchAllPages[Repository](ctx, apiClient, BasePath, pageSize, query)
+	if err != nil {
+		return nil, err
+	}
+
+	matched := make([]Repository, 0, len(items))
+	for _, repo := range items {
+		if repo.Name == name && (branch == "" || repo.Branch == branch) {
+			matched = append(matched, repo)
+		}
+	}
+	slices.SortFunc(matched, func(left, right Repository) int {
+		return cmp.Compare(left.ID, right.ID)
+	})
+
+	return matched, nil
 }
 
 // Detail loads one repository via GET /repositories/code/{id}. Use after writes

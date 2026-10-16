@@ -1,3 +1,9 @@
+## 1.8.0
+
+FEATURES:
+
+- **New Data Source:** `aikido_repository` makes it easy to reference a code repository by name instead of its numeric Aikido ID. An optional branch can distinguish repositories configured for multiple branches.
+
 ## 1.7.0
 
 FEATURES:
