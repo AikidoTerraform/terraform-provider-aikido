@@ -1,3 +1,9 @@
+## 1.8.0 (Unreleased)
+
+FEATURES:
+
+- **New Data Source:** `aikido_repository` looks up exactly one code repository by name. The name is filtered by the API, so the lookup costs one small request regardless of workspace size. Names that match no repository, or that match several because the repository is cloned for multiple branches, are rejected; use `aikido_repositories` with its `branch` filter for cloned repositories.
+
 ## 1.7.0
 
 FEATURES:

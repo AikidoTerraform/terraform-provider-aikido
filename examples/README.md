@@ -9,6 +9,7 @@ These are **fragments**, not a complete root module by themselves. Combine the p
 | Path | Purpose |
 |------|---------|
 | [`provider/provider.tf`](provider/provider.tf) | `required_providers` + `provider "aikido"` block |
+| [`data-sources/aikido_repository/data-source.tf`](data-sources/aikido_repository/data-source.tf) | `aikido_repository` data source: look up exactly one repository by name, filtered server-side |
 | [`data-sources/aikido_repositories/data-source.tf`](data-sources/aikido_repositories/data-source.tf) | `aikido_repositories` data source: look up repositories by name instead of by numeric ID |
 | [`data-sources/aikido_teams/data-source.tf`](data-sources/aikido_teams/data-source.tf) | `aikido_teams` data source |
 | [`data-sources/aikido_users/data-source.tf`](data-sources/aikido_users/data-source.tf) | `aikido_users` data source |

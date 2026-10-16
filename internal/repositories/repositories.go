@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"slices"
 	"strconv"
 
@@ -84,6 +85,35 @@ func All(ctx context.Context, apiClient *client.Client) ([]Repository, error) {
 	})
 
 	return all, nil
+}
+
+// ByName returns the repositories named exactly name, sorted by ID. The name is
+// pushed to the API through its filter_name parameter, so a lookup in a large
+// workspace costs one small request rather than the full paginated list, and
+// bypasses the shared list cache so it always reflects the API. The API does not
+// document filter_name as an exact match, so the result is narrowed to exact
+// matches here. More than one match means the repository is cloned: Aikido
+// represents every additionally scanned branch as a separate repository with the
+// same name.
+func ByName(ctx context.Context, apiClient *client.Client, name string) ([]Repository, error) {
+	query := listQueryParams + "&filter_name=" + url.QueryEscape(name)
+
+	items, err := client.FetchAllPages[Repository](ctx, apiClient, BasePath, pageSize, query)
+	if err != nil {
+		return nil, err
+	}
+
+	matched := make([]Repository, 0, len(items))
+	for _, repo := range items {
+		if repo.Name == name {
+			matched = append(matched, repo)
+		}
+	}
+	slices.SortFunc(matched, func(left, right Repository) int {
+		return cmp.Compare(left.ID, right.ID)
+	})
+
+	return matched, nil
 }
 
 // Detail loads one repository via GET /repositories/code/{id}. Use after writes
