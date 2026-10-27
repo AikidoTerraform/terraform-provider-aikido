@@ -50,7 +50,7 @@ resource "aikido_container" "staging" {
 ### Required
 
 - `active` (Boolean) Whether the container is activated for scanning in Aikido. Public images and self-managed SBOM uploads cannot be deactivated: Aikido rejects the request and they have to be deleted instead.
-- `id` (String) Aikido container ID.
+- `id` (String) Aikido container ID. Import accepts the numeric ID or registry_name/name (optionally @tag_filter). registry_name is whatever Aikido reports for that registry (for example an AWS account ID, an ACR hostname, or a Docker Hub namespace).
 
 ### Optional
 
@@ -70,7 +70,7 @@ resource "aikido_container" "staging" {
 - `last_scanned_tag` (String) Tag that was actually scanned, as opposed to the tag_filter that selected it.
 - `name` (String) Name of the container.
 - `registry_id` (Number) ID of the registry holding this container. Null when the container was discovered through a cloud.
-- `registry_name` (String) Name of the registry holding this container. For AWS this is the account ID.
+- `registry_name` (String) Name of the registry holding this container. Provider-specific: for example an AWS account ID, an ACR hostname, or a Docker Hub namespace.
 - `registry_provider` (String) Provider hosting the container (e.g. aws, acr, docker-hub).
 
 ## Import
@@ -80,6 +80,21 @@ Import is supported using the following syntax:
 The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
 
 ```shell
-# Containers are imported by their Aikido container ID.
+# Containers can be imported by their numeric Aikido container ID.
 terraform import aikido_container.example 12345
+
+# Or by orignal key: registry_name/name. Use the registry_name and name values
+# returned by the Aikido API (or aikido_containers).
+#
+# Examples of registry_name by provider:
+#   AWS ECR:       12-digit account ID
+#   Azure ACR:     registry hostname (e.g. myregistry.azurecr.io)
+#   Docker Hub:    namespace or organization
+#   Self-hosted:   registry hostname
+terraform import aikido_container.example 111222333444/pied-piper/compression
+terraform import aikido_container.example myregistry.azurecr.io/event-bus
+terraform import aikido_container.example acme-corp/api-gateway
+
+# Append @tag_filter when several clones share the same registry and name.
+terraform import aikido_container.example '111222333444/pied-piper/compression@prod-*'
 ```
