@@ -83,7 +83,7 @@ The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/c
 # Containers can be imported by their numeric Aikido container ID.
 terraform import aikido_container.example 12345
 
-# Or by orignal key: registry_name/name. Use the registry_name and name values
+# Or by original key: registry_name/name. Use the registry_name and name values
 # returned by the Aikido API (or aikido_containers).
 #
 # Examples of registry_name by provider:
