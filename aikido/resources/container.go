@@ -542,13 +542,13 @@ func resolveContainerImportID(ctx context.Context, apiClient *client.Client, imp
 	}
 
 	// not found
-	if(len(matched) == 0) {
+	if len(matched) == 0 {
 		return "", fmt.Errorf("no container named %q in registry %q exists in the Aikido workspace%s",
 			name, registryName, tagFilterSuffix(tagFilter))
 	}
 
 	// multiple found, needed to add tag filter to select one
-	if(len(matched) > 1) {
+	if len(matched) > 1 {
 		parts := make([]string, 0, len(matched))
 		for _, c := range matched {
 			parts = append(parts, fmt.Sprintf("ID %d (tag filter %q)", c.ID, c.TagFilter))
