@@ -72,7 +72,7 @@ func (r *containerResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 				Description: "Aikido container ID. " +
 					"Import accepts the numeric ID or registry_name/name (optionally @tag_filter). " +
 					"registry_name is whatever Aikido reports for that registry " +
-					"(for example an AWS account ID, an ACR hostname, or a Docker Hub namespace).",
+					"(for example an AWS account ID, GCP project ID, ACR hostname, or Docker Hub namespace).",
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 				},
@@ -130,7 +130,7 @@ func (r *containerResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 			"registry_name": schema.StringAttribute{
 				Computed: true,
 				Description: "Name of the registry holding this container. " +
-					"Provider-specific: for example an AWS account ID, an ACR hostname, or a Docker Hub namespace.",
+					"Provider-specific: for example an AWS account ID, GCP project ID, ACR hostname, or Docker Hub namespace.",
 			},
 			"cloud_id": schema.Int64Attribute{
 				Computed:    true,
