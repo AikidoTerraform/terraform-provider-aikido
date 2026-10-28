@@ -86,11 +86,8 @@ func TestRepositoryIDsFilter(t *testing.T) {
 		if diagnostics.HasError() {
 			t.Fatalf("got %v", diagnostics)
 		}
-		if ids == nil {
-			t.Fatal("ids = nil, want a non-nil empty slice")
-		}
-		if len(*ids) != 0 {
-			t.Errorf("ids = %v, want empty", *ids)
+		if ids == nil || len(*ids) != 0 {
+			t.Fatalf("ids = %v, want a non-nil empty slice", ids)
 		}
 	})
 

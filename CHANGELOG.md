@@ -1,3 +1,9 @@
+## Unreleased
+
+FEATURES:
+
+- `aikido_container`: import accepts `registry_name/name` (optionally `@tag_filter`) in addition to the numeric container ID. `registry_name` is the identity Aikido reports for the registry (for example an AWS account ID or GCP project ID).
+
 ## 1.8.0
 
 FEATURES:

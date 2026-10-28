@@ -79,7 +79,7 @@ output "containers_scanning_the_newest_image" {
 - `labels` (Set of String) Only return containers carrying every one of these labels, matched exactly. An empty set matches every container; use Terraform expressions over the containers attribute for OR and other conditions.
 - `name` (String) Only return containers whose name is exactly this. Matching is exact, not a substring or glob. A name can match more than one container when the same repository name exists in several registries, so combine this with registry_name, registry_id or cloud_id to select exactly one.
 - `registry_id` (Number) Only return containers held by this registry.
-- `registry_name` (String) Only return containers whose registry name is exactly this. For AWS the registry name is the account ID, which distinguishes identically named repositories in different accounts.
+- `registry_name` (String) Only return containers whose registry name is exactly this. Value is provider-specific (for example an AWS account ID, GCP project ID, ACR hostname, or Docker Hub namespace) and distinguishes identically named repositories in different registries.
 - `registry_provider` (String) Only return containers hosted by this registry provider, for example aws, acr or docker-hub.
 - `tag_filter` (String) Only return containers whose tag filter is exactly this, compared as a literal string. prod-* selects containers whose tag filter is prod-*, not containers whose scanned tag matches prod-*. Use the empty string to select containers that scan their newest image.
 
@@ -106,7 +106,7 @@ Read-Only:
 - `linked_code_repo_id` (Number) Aikido code repository linked to this container, or null when none is linked.
 - `name` (String) Name of the container.
 - `registry_id` (Number) ID of the registry holding this container. Null when the container was discovered through a cloud.
-- `registry_name` (String) Name of the registry holding this container. For AWS this is the account ID.
+- `registry_name` (String) Name of the registry holding this container. Provider-specific: for example an AWS account ID, GCP project ID, ACR hostname, or Docker Hub namespace.
 - `registry_provider` (String) Provider hosting the container.
 - `sensitivity` (String) Sensitivity level of the container. One of: extreme, sensitive, normal, not_sensitive, no_data.
 - `tag_filter` (String) Tag filter deciding which image is scanned. The empty string means the newest image is scanned.
