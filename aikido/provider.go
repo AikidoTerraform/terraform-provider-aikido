@@ -119,6 +119,7 @@ func (p *aikidoProvider) Resources(_ context.Context) []func() resource.Resource
 	return []func() resource.Resource{
 		resources.NewRepositoryResource,
 		resources.NewContainerResource,
+		resources.NewContainerCloneResource,
 		resources.NewAutofixDependencySettingsResource,
 		resources.NewAutofixSastSettingsResource,
 		resources.NewAutofixPentestSettingsResource,
