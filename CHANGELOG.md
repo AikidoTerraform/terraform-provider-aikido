@@ -2,7 +2,7 @@
 
 FEATURES:
 
-- **New Resource:** `aikido_container_clone` scans additional tags of a registry container by cloning it with its own tag filter, the same as adding another tag in the Aikido UI. Configure each clone's labels, sensitivity and other settings with `aikido_container` on the clone's ID. Removing the resource deactivates the clone, which stays available in Aikido.
+- **New Resource:** `aikido_container_clone` scans additional tags of a registry container by cloning it with its own tag filter, the same as adding another tag in the Aikido UI. Configure each clone's labels, sensitivity and other settings with `aikido_container` on the clone's ID. Removing the resource deactivates the clone, which stays available in Aikido. Existing clones, including those made in the Aikido UI, can be imported as `source_container_id:clone_id`.
 
 ## 1.8.0
 

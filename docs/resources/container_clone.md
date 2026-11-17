@@ -3,12 +3,12 @@
 page_title: "Aikido Container Clone"
 subcategory: ""
 description: |-
-  Clones an existing Aikido container with its own tag filter, so that several tags of one image are scanned. Only containers from a connected registry can be cloned. The clone starts active and is scanned right away; manage its other settings with an aikido_container on the clone's ID. Destroy deactivates the clone, which stays available in Aikido. To scan that tag again, reactivate the existing clone with an aikido_container on its ID rather than cloning it again. Clones already made in the Aikido UI are managed the same way: the aikido_containers data source finds one by the source container's name and registry plus the clone's tag_filter.
+  Clones an existing Aikido container with its own tag filter, so that several tags of one image are scanned. Only containers from a connected registry can be cloned. The clone starts active and is scanned right away; manage its other settings with an aikido_container on the clone's ID. Destroy deactivates the clone, which stays available in Aikido. To scan that tag again, reactivate the existing clone with an aikido_container on its ID rather than cloning it again. Clones already made in the Aikido UI can be imported as <source_container_id>:<clone_id>; the aikido_containers data source finds a clone's ID by the source container's name and registry plus the clone's tag_filter.
 ---
 
 # aikido_container_clone (Resource)
 
-Clones an existing Aikido container with its own tag filter, so that several tags of one image are scanned. Only containers from a connected registry can be cloned. The clone starts active and is scanned right away; manage its other settings with an aikido_container on the clone's ID. Destroy deactivates the clone, which stays available in Aikido. To scan that tag again, reactivate the existing clone with an aikido_container on its ID rather than cloning it again. Clones already made in the Aikido UI are managed the same way: the aikido_containers data source finds one by the source container's name and registry plus the clone's tag_filter.
+Clones an existing Aikido container with its own tag filter, so that several tags of one image are scanned. Only containers from a connected registry can be cloned. The clone starts active and is scanned right away; manage its other settings with an aikido_container on the clone's ID. Destroy deactivates the clone, which stays available in Aikido. To scan that tag again, reactivate the existing clone with an aikido_container on its ID rather than cloning it again. Clones already made in the Aikido UI can be imported as <source_container_id>:<clone_id>; the aikido_containers data source finds a clone's ID by the source container's name and registry plus the clone's tag_filter.
 
 ## Example Usage
 
@@ -65,3 +65,15 @@ resource "aikido_container" "api_release" {
 ### Read-Only
 
 - `id` (String) Aikido container ID of the clone.
+
+## Import
+
+Import is supported using the following syntax:
+
+The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
+
+```shell
+# Clones are imported as source_container_id:clone_id, including clones made in
+# the Aikido UI. The clone must share the source container's name and registry.
+terraform import 'aikido_container_clone.api["release-*"]' 12345:12399
+```

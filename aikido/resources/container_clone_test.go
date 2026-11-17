@@ -3,6 +3,7 @@ package resources
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -15,7 +16,9 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-go/tftypes"
 )
 
 func TestContainerCloneSchema_IsValid(t *testing.T) {
@@ -260,6 +263,270 @@ func TestDeactivateClone_DeactivatesAndReportsA404(t *testing.T) {
 			t.Errorf("err = %v, want an API 404 the caller can tolerate", err)
 		}
 	})
+}
+
+// cloneAPI answers the clone request with a fixed status and body, and serves
+// current from the list endpoint, which is where a recovery looks the clone up.
+type cloneAPI struct {
+	cloneStatus int
+	cloneBody   string
+	current     []containers.Container
+	listCalls   int
+}
+
+func (api *cloneAPI) server(t *testing.T) *httptest.Server {
+	t.Helper()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer r.Body.Close()
+
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/public/v1/containers/clone":
+			w.WriteHeader(api.cloneStatus)
+			_, _ = io.WriteString(w, api.cloneBody)
+
+		case r.Method == http.MethodGet && r.URL.Path == "/public/v1/containers":
+			api.listCalls++
+			_ = json.NewEncoder(w).Encode(api.current)
+
+		default:
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	return srv
+}
+
+// apiImage is a registry image as the list reports it. A source and its clones
+// share a name and a registry.
+func apiImage(id int64, name string, registryID int64, tagFilter string) containers.Container {
+	return containers.Container{ID: id, Name: name, RegistryID: ptrTo(registryID), TagFilter: tagFilter}
+}
+
+func TestCloneOutcomeUncertain(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"a refusal", &client.APIError{StatusCode: http.StatusBadRequest}, false},
+		{"a forbidden request", &client.APIError{StatusCode: http.StatusForbidden}, false},
+		{"rate limited past every retry", &client.APIError{StatusCode: http.StatusTooManyRequests}, false},
+		{"a server error", &client.APIError{StatusCode: http.StatusInternalServerError}, true},
+		{"a gateway timeout", &client.APIError{StatusCode: http.StatusGatewayTimeout}, true},
+		{"a lost connection", errors.New("performing request: connection reset by peer"), true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := cloneOutcomeUncertain(tt.err); got != tt.want {
+				t.Errorf("cloneOutcomeUncertain(%v) = %v, want %v", tt.err, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCreateClone_ReturnsTheClonedID(t *testing.T) {
+	api := &cloneAPI{cloneStatus: http.StatusOK, cloneBody: `{"container_repo_id":77}`}
+	srv := api.server(t)
+
+	cloneID, diagnostics := (&containerCloneResource{client: testClient(srv)}).createClone(context.Background(), 12, "prod-*")
+	if diagnostics.HasError() || diagnostics.WarningsCount() != 0 {
+		t.Fatalf("diagnostics = %v, want none", diagnostics)
+	}
+	if cloneID != 77 {
+		t.Errorf("cloneID = %d, want 77", cloneID)
+	}
+	if api.listCalls != 0 {
+		t.Errorf("list endpoint hit %d times, want none after a clean clone", api.listCalls)
+	}
+}
+
+// Aikido runs every check before saving, so a refusal created nothing, and an
+// existing clone carrying the tag must not be adopted in its place.
+func TestCreateClone_ARefusalIsNotRecovered(t *testing.T) {
+	api := &cloneAPI{
+		cloneStatus: http.StatusBadRequest,
+		cloneBody:   "A clone of this image already exists with the selected tag",
+		current: []containers.Container{
+			apiImage(12, "pied-piper/api", 5, "prod-*"),
+			apiImage(77, "pied-piper/api", 5, "staging-*"),
+		},
+	}
+	srv := api.server(t)
+
+	_, diagnostics := (&containerCloneResource{client: testClient(srv)}).createClone(context.Background(), 12, "staging-*")
+	if !diagnostics.HasError() {
+		t.Fatal("want the refusal as an error")
+	}
+	if api.listCalls != 0 {
+		t.Errorf("list endpoint hit %d times, want no recovery lookup after a refusal", api.listCalls)
+	}
+}
+
+// The clone can be saved and the response still lost. Recording the clone found
+// under the source's name, registry and tag keeps it managed.
+func TestCreateClone_RecoversTheCloneAfterAnUncertainResponse(t *testing.T) {
+	tests := []struct {
+		name        string
+		cloneStatus int
+		cloneBody   string
+	}{
+		{"a server error", http.StatusInternalServerError, "boom"},
+		{"a response without an ID", http.StatusOK, `{}`},
+		{"an unreadable response", http.StatusOK, `{"container_repo_id":`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			api := &cloneAPI{
+				cloneStatus: tt.cloneStatus,
+				cloneBody:   tt.cloneBody,
+				current: []containers.Container{
+					apiImage(12, "pied-piper/api", 5, "staging-*"),
+					apiImage(40, "pied-piper/api", 6, "staging-*"),
+					apiImage(41, "pied-piper/web", 5, "staging-*"),
+					apiImage(77, "pied-piper/api", 5, "staging-*"),
+				},
+			}
+			srv := api.server(t)
+
+			cloneID, diagnostics := (&containerCloneResource{client: testClient(srv)}).createClone(context.Background(), 12, "staging-*")
+			if diagnostics.HasError() {
+				t.Fatalf("diagnostics = %v, want a recovery", diagnostics)
+			}
+			if diagnostics.WarningsCount() != 1 {
+				t.Errorf("warnings = %d, want 1 saying the clone was recovered", diagnostics.WarningsCount())
+			}
+			if cloneID != 77 {
+				t.Errorf("cloneID = %d, want 77: not the source, nor another registry or repository", cloneID)
+			}
+		})
+	}
+}
+
+// Without exactly one match the clone cannot be told apart, so the user gets the
+// original failure and the import ID that adopts the clone.
+func TestCreateClone_AnUnsettledRecoveryPointsAtImport(t *testing.T) {
+	tests := []struct {
+		name    string
+		current []containers.Container
+	}{
+		{"no clone", []containers.Container{apiImage(12, "pied-piper/api", 5, "prod-*")}},
+		{"two clones", []containers.Container{
+			apiImage(12, "pied-piper/api", 5, "prod-*"),
+			apiImage(77, "pied-piper/api", 5, "staging-*"),
+			apiImage(78, "pied-piper/api", 5, "staging-*"),
+		}},
+		{"the source is gone", []containers.Container{apiImage(77, "pied-piper/api", 5, "staging-*")}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			api := &cloneAPI{cloneStatus: http.StatusBadGateway, cloneBody: "upstream unavailable", current: tt.current}
+			srv := api.server(t)
+
+			_, diagnostics := (&containerCloneResource{client: testClient(srv)}).createClone(context.Background(), 12, "staging-*")
+			if !diagnostics.HasError() {
+				t.Fatal("want an error")
+			}
+
+			detail := diagnostics.Errors()[0].Detail()
+			if !strings.Contains(detail, "upstream unavailable") {
+				t.Errorf("detail dropped the original failure: %q", detail)
+			}
+			if !strings.Contains(detail, "terraform import") || !strings.Contains(detail, "12:<clone_id>") {
+				t.Errorf("detail names no import ID: %q", detail)
+			}
+		})
+	}
+}
+
+func TestParseContainerCloneImportID(t *testing.T) {
+	sourceID, cloneID, err := parseContainerCloneImportID("12:77")
+	if err != nil {
+		t.Fatalf("parseContainerCloneImportID: %v", err)
+	}
+	if sourceID != 12 || cloneID != 77 {
+		t.Errorf("got %d:%d, want 12:77", sourceID, cloneID)
+	}
+
+	for _, importID := range []string{"77", "12:77:1", "12:", ":77", "abc:77", "12:abc", "0:77", "12:-1"} {
+		t.Run(importID, func(t *testing.T) {
+			if _, _, err := parseContainerCloneImportID(importID); err == nil {
+				t.Errorf("parseContainerCloneImportID(%q): want an error", importID)
+			}
+		})
+	}
+}
+
+// Read fills the tag filter in after an import, so the import itself only has to
+// record which clone it adopted and the source it was made from.
+func TestContainerCloneImportState_RecordsTheCloneAndItsSource(t *testing.T) {
+	ctx := context.Background()
+	srv := containerListServer(t,
+		apiImage(12, "pied-piper/api", 5, "prod-*"),
+		apiImage(77, "pied-piper/api", 5, "staging-*"),
+	)
+
+	cloneResource := &containerCloneResource{client: testClient(srv)}
+	schemaResponse := &resource.SchemaResponse{}
+	cloneResource.Schema(ctx, resource.SchemaRequest{}, schemaResponse)
+
+	response := &resource.ImportStateResponse{State: tfsdk.State{
+		Schema: schemaResponse.Schema,
+		Raw:    tftypes.NewValue(schemaResponse.Schema.Type().TerraformType(ctx), nil),
+	}}
+	cloneResource.ImportState(ctx, resource.ImportStateRequest{ID: "12:77"}, response)
+	if response.Diagnostics.HasError() {
+		t.Fatalf("ImportState: %v", response.Diagnostics)
+	}
+
+	var state containerCloneModel
+	if diagnostics := response.State.Get(ctx, &state); diagnostics.HasError() {
+		t.Fatalf("State.Get: %v", diagnostics)
+	}
+	if state.ID.ValueString() != "77" {
+		t.Errorf("id = %v, want 77", state.ID)
+	}
+	if state.SourceContainerID.ValueInt64() != 12 {
+		t.Errorf("source_container_id = %v, want 12", state.SourceContainerID)
+	}
+}
+
+func TestVerifyCloneOfSource(t *testing.T) {
+	srv := containerListServer(t,
+		apiImage(12, "pied-piper/api", 5, "prod-*"),
+		apiImage(77, "pied-piper/api", 5, "staging-*"),
+		apiImage(40, "pied-piper/api", 6, "staging-*"),
+		apiImage(41, "pied-piper/web", 5, "staging-*"),
+	)
+	res := &containerCloneResource{client: testClient(srv)}
+
+	tests := []struct {
+		name      string
+		sourceID  int64
+		cloneID   int64
+		wantError bool
+	}{
+		{"a clone of the source", 12, 77, false},
+		{"the source itself", 12, 12, true},
+		{"another registry", 12, 40, true},
+		{"another repository", 12, 41, true},
+		{"a missing clone", 12, 99, true},
+		{"a missing source", 99, 77, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := res.verifyCloneOfSource(context.Background(), tt.sourceID, tt.cloneID)
+			if (err != nil) != tt.wantError {
+				t.Errorf("verifyCloneOfSource(%d, %d) = %v, want error %v", tt.sourceID, tt.cloneID, err, tt.wantError)
+			}
+		})
+	}
 }
 
 // A tag filter changed in Aikido must show up as drift. The source is carried

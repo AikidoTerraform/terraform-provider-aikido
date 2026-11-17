@@ -2,15 +2,19 @@ package resources
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"regexp"
 	"strconv"
+	"strings"
 
 	"github.com/AikidoTerraform/terraform-provider-aikido/internal/client"
 	"github.com/AikidoTerraform/terraform-provider-aikido/internal/containers"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
@@ -21,8 +25,9 @@ import (
 )
 
 var (
-	_ resource.Resource              = &containerCloneResource{}
-	_ resource.ResourceWithConfigure = &containerCloneResource{}
+	_ resource.Resource                = &containerCloneResource{}
+	_ resource.ResourceWithImportState = &containerCloneResource{}
+	_ resource.ResourceWithConfigure   = &containerCloneResource{}
 )
 
 func NewContainerCloneResource() resource.Resource {
@@ -50,8 +55,8 @@ func (r *containerCloneResource) Schema(_ context.Context, _ resource.SchemaRequ
 			"The clone starts active and is scanned right away; manage its other settings with an aikido_container on the clone's ID. " +
 			"Destroy deactivates the clone, which stays available in Aikido. " +
 			"To scan that tag again, reactivate the existing clone with an aikido_container on its ID rather than cloning it again. " +
-			"Clones already made in the Aikido UI are managed the same way: " +
-			"the aikido_containers data source finds one by the source container's name and registry plus the clone's tag_filter.",
+			"Clones already made in the Aikido UI can be imported as <source_container_id>:<clone_id>; " +
+			"the aikido_containers data source finds a clone's ID by the source container's name and registry plus the clone's tag_filter.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Computed:    true,
@@ -113,9 +118,9 @@ func (r *containerCloneResource) Create(ctx context.Context, request resource.Cr
 		return
 	}
 
-	cloneID, err := r.cloneContainer(ctx, planned.SourceContainerID.ValueInt64(), planned.TagFilter.ValueString())
-	if err != nil {
-		response.Diagnostics.AddError("Error cloning container", err.Error())
+	cloneID, diagnostics := r.createClone(ctx, planned.SourceContainerID.ValueInt64(), planned.TagFilter.ValueString())
+	response.Diagnostics.Append(diagnostics...)
+	if response.Diagnostics.HasError() {
 		return
 	}
 
@@ -180,6 +185,151 @@ func (r *containerCloneResource) Delete(ctx context.Context, request resource.De
 	if err := r.deactivateClone(ctx, id); err != nil && !client.NotFound(err) {
 		response.Diagnostics.AddError("Error deactivating container clone", err.Error())
 	}
+}
+
+// ImportState adopts an existing clone, including one made in the Aikido UI. The
+// ID names the source too, since the clone's source is recorded only in state.
+func (r *containerCloneResource) ImportState(ctx context.Context, request resource.ImportStateRequest, response *resource.ImportStateResponse) {
+	sourceID, cloneID, err := parseContainerCloneImportID(request.ID)
+	if err != nil {
+		response.Diagnostics.AddError("Invalid import ID", err.Error())
+		return
+	}
+
+	if err := r.verifyCloneOfSource(ctx, sourceID, cloneID); err != nil {
+		response.Diagnostics.AddError("Error importing container clone", err.Error())
+		return
+	}
+
+	response.Diagnostics.Append(response.State.SetAttribute(ctx, path.Root("id"), strconv.FormatInt(cloneID, 10))...)
+	response.Diagnostics.Append(response.State.SetAttribute(ctx, path.Root("source_container_id"), sourceID)...)
+}
+
+// createClone clones the source container and returns the clone's ID. When the
+// clone request fails in a way that leaves its outcome open, the clone may exist
+// all the same, and recording it here is what keeps a later apply from being
+// rejected as a duplicate while the clone goes unmanaged.
+func (r *containerCloneResource) createClone(ctx context.Context, sourceID int64, tagFilter string) (int64, diag.Diagnostics) {
+	var diagnostics diag.Diagnostics
+
+	cloneID, cloneErr := r.cloneContainer(ctx, sourceID, tagFilter)
+	if cloneErr == nil {
+		return cloneID, diagnostics
+	}
+	if !cloneOutcomeUncertain(cloneErr) {
+		diagnostics.AddError("Error cloning container", cloneErr.Error())
+		return 0, diagnostics
+	}
+
+	recoveredID, lookupErr := r.findClone(ctx, sourceID, tagFilter)
+	if lookupErr != nil {
+		diagnostics.AddError("Error cloning container", fmt.Sprintf(
+			"%s\n\nThe clone may still have been created, and looking it up afterwards did not settle it: %s\n\n"+
+				"If the clone exists, adopt it with terraform import using %d:<clone_id>.",
+			cloneErr, lookupErr, sourceID,
+		))
+		return 0, diagnostics
+	}
+
+	diagnostics.AddWarning("Container clone recovered", fmt.Sprintf(
+		"The clone request did not complete: %s\n\nClone %d with tag filter %q was found and is now managed by this resource.",
+		cloneErr, recoveredID, tagFilter,
+	))
+
+	return recoveredID, diagnostics
+}
+
+// cloneOutcomeUncertain reports whether a failed clone request may still have
+// created the clone. Aikido runs every check before it saves the clone, so a 4xx
+// means nothing was created; a 5xx, a lost connection or an unreadable response
+// leaves it open.
+func cloneOutcomeUncertain(err error) bool {
+	var apiErr *client.APIError
+	if errors.As(err, &apiErr) {
+		return apiErr.StatusCode >= http.StatusInternalServerError
+	}
+
+	return true
+}
+
+// findClone looks up the clone of the source container that carries tagFilter.
+// Aikido allows one image per tag among a source and its clones in a registry,
+// so a single match is the clone; anything else is left for the user to settle.
+func (r *containerCloneResource) findClone(ctx context.Context, sourceID int64, tagFilter string) (int64, error) {
+	source, err := containers.ByID(ctx, r.client, sourceID)
+	if err != nil {
+		return 0, err
+	}
+	all, err := containers.All(ctx, r.client)
+	if err != nil {
+		return 0, err
+	}
+
+	var matches []int64
+	for _, candidate := range all {
+		if isCloneOf(candidate, source) && candidate.TagFilter == tagFilter {
+			matches = append(matches, candidate.ID)
+		}
+	}
+	if len(matches) != 1 {
+		return 0, fmt.Errorf("found %d clones of container %d with tag filter %q, want exactly 1",
+			len(matches), sourceID, tagFilter)
+	}
+
+	return matches[0], nil
+}
+
+// verifyCloneOfSource guards an import against a mistyped pair, which would
+// otherwise only surface as a misplaced clone on the next replacement.
+func (r *containerCloneResource) verifyCloneOfSource(ctx context.Context, sourceID, cloneID int64) error {
+	source, err := containers.ByID(ctx, r.client, sourceID)
+	if err != nil {
+		return err
+	}
+	clone, err := containers.ByID(ctx, r.client, cloneID)
+	if err != nil {
+		return err
+	}
+	if !isCloneOf(clone, source) {
+		return fmt.Errorf("container %d (%s) is not a clone of container %d (%s) in the same registry",
+			cloneID, clone.Name, sourceID, source.Name)
+	}
+
+	return nil
+}
+
+// isCloneOf reports whether candidate is another image of the same repository in
+// the same registry as source. A clone carries its source's name and registry.
+func isCloneOf(candidate, source containers.Container) bool {
+	return candidate.ID != source.ID &&
+		candidate.Name == source.Name &&
+		sameRegistry(candidate.RegistryID, source.RegistryID)
+}
+
+func sameRegistry(left, right *int64) bool {
+	return left != nil && right != nil && *left == *right
+}
+
+// parseContainerCloneImportID splits <source_container_id>:<clone_id>.
+func parseContainerCloneImportID(importID string) (int64, int64, error) {
+	parts := strings.Split(importID, ":")
+	if len(parts) != 2 {
+		return 0, 0, fmt.Errorf("import ID %q must be <source_container_id>:<clone_id>", importID)
+	}
+
+	sourceID, err := parseContainerID(parts[0])
+	if err != nil {
+		return 0, 0, err
+	}
+	cloneID, err := parseContainerID(parts[1])
+	if err != nil {
+		return 0, 0, err
+	}
+	if sourceID < 1 || cloneID < 1 {
+		return 0, 0, fmt.Errorf("import ID %q must hold two positive container IDs", importID)
+	}
+
+	return sourceID, cloneID, nil
 }
 
 // cloneContainer asks Aikido for a clone of the source container and returns the
