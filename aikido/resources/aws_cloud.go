@@ -458,7 +458,7 @@ func awsCloudModelFromAPI(ctx context.Context, cloud clouds.Cloud) (awsCloudMode
 		state.RoleARN = types.StringValue(cloud.AWS.RoleARN)
 		state.IsManagementAccount = types.BoolValue(cloud.AWS.IsManagementAccount)
 
-		if cloud.AWS.Organization != nil {
+		if cloud.AWS.IsManagementAccount && cloud.AWS.Organization != nil {
 			orgObject, orgDiagnostics := organizationObjectValue(ctx, *cloud.AWS.Organization)
 			diagnostics.Append(orgDiagnostics...)
 			state.Organization = orgObject
