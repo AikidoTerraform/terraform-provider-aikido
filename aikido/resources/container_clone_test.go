@@ -366,17 +366,20 @@ func TestCreateClone_ARefusalIsNotRecovered(t *testing.T) {
 	}
 }
 
-// The clone can be saved and the response still lost. Recording the clone found
-// under the source's name, registry and tag keeps it managed.
-func TestCreateClone_RecoversTheCloneAfterAnUncertainResponse(t *testing.T) {
+// The clone can be saved and the response still lost, but a clone found
+// afterwards may be one that existed before, owned by the UI or another
+// configuration. Nothing is adopted: the user gets the original failure and the
+// import ID that adopts the clone deliberately.
+func TestCreateClone_AnUncertainOutcomePointsAtImport(t *testing.T) {
 	tests := []struct {
 		name        string
 		cloneStatus int
 		cloneBody   string
+		wantDetail  string
 	}{
-		{"a server error", http.StatusInternalServerError, "boom"},
-		{"a response without an ID", http.StatusOK, `{}`},
-		{"an unreadable response", http.StatusOK, `{"container_repo_id":`},
+		{"a server error", http.StatusBadGateway, "upstream unavailable", "upstream unavailable"},
+		{"a response without an ID", http.StatusOK, `{}`, "reported no ID"},
+		{"an unreadable response", http.StatusOK, `{"container_repo_id":`, "decoding response body"},
 	}
 
 	for _, tt := range tests {
@@ -385,56 +388,22 @@ func TestCreateClone_RecoversTheCloneAfterAnUncertainResponse(t *testing.T) {
 				cloneStatus: tt.cloneStatus,
 				cloneBody:   tt.cloneBody,
 				current: []containers.Container{
-					apiImage(12, "pied-piper/api", 5, "staging-*"),
-					apiImage(40, "pied-piper/api", 6, "staging-*"),
-					apiImage(41, "pied-piper/web", 5, "staging-*"),
+					apiImage(12, "pied-piper/api", 5, "prod-*"),
 					apiImage(77, "pied-piper/api", 5, "staging-*"),
 				},
 			}
 			srv := api.server(t)
 
 			cloneID, diagnostics := (&containerCloneResource{client: testClient(srv)}).createClone(context.Background(), 12, "staging-*")
-			if diagnostics.HasError() {
-				t.Fatalf("diagnostics = %v, want a recovery", diagnostics)
-			}
-			if diagnostics.WarningsCount() != 1 {
-				t.Errorf("warnings = %d, want 1 saying the clone was recovered", diagnostics.WarningsCount())
-			}
-			if cloneID != 77 {
-				t.Errorf("cloneID = %d, want 77: not the source, nor another registry or repository", cloneID)
-			}
-		})
-	}
-}
-
-// Without exactly one match the clone cannot be told apart, so the user gets the
-// original failure and the import ID that adopts the clone.
-func TestCreateClone_AnUnsettledRecoveryPointsAtImport(t *testing.T) {
-	tests := []struct {
-		name    string
-		current []containers.Container
-	}{
-		{"no clone", []containers.Container{apiImage(12, "pied-piper/api", 5, "prod-*")}},
-		{"two clones", []containers.Container{
-			apiImage(12, "pied-piper/api", 5, "prod-*"),
-			apiImage(77, "pied-piper/api", 5, "staging-*"),
-			apiImage(78, "pied-piper/api", 5, "staging-*"),
-		}},
-		{"the source is gone", []containers.Container{apiImage(77, "pied-piper/api", 5, "staging-*")}},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			api := &cloneAPI{cloneStatus: http.StatusBadGateway, cloneBody: "upstream unavailable", current: tt.current}
-			srv := api.server(t)
-
-			_, diagnostics := (&containerCloneResource{client: testClient(srv)}).createClone(context.Background(), 12, "staging-*")
 			if !diagnostics.HasError() {
-				t.Fatal("want an error")
+				t.Fatalf("cloneID = %d, want an error rather than adopting the matching clone", cloneID)
+			}
+			if api.listCalls != 0 {
+				t.Errorf("list endpoint hit %d times, want no lookup", api.listCalls)
 			}
 
 			detail := diagnostics.Errors()[0].Detail()
-			if !strings.Contains(detail, "upstream unavailable") {
+			if !strings.Contains(detail, tt.wantDetail) {
 				t.Errorf("detail dropped the original failure: %q", detail)
 			}
 			if !strings.Contains(detail, "terraform import") || !strings.Contains(detail, "12:<clone_id>") {

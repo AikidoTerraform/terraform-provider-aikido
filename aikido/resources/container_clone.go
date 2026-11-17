@@ -205,10 +205,11 @@ func (r *containerCloneResource) ImportState(ctx context.Context, request resour
 	response.Diagnostics.Append(response.State.SetAttribute(ctx, path.Root("source_container_id"), sourceID)...)
 }
 
-// createClone clones the source container and returns the clone's ID. When the
-// clone request fails in a way that leaves its outcome open, the clone may exist
-// all the same, and recording it here is what keeps a later apply from being
-// rejected as a duplicate while the clone goes unmanaged.
+// createClone clones the source container and returns the clone's ID. A failure
+// that leaves the outcome open may still have created the clone. A clone found
+// afterwards could just as well be one that existed before, owned by the UI or
+// another configuration, so it is never adopted here: the user is pointed at the
+// import that adopts it deliberately.
 func (r *containerCloneResource) createClone(ctx context.Context, sourceID int64, tagFilter string) (int64, diag.Diagnostics) {
 	var diagnostics diag.Diagnostics
 
@@ -216,27 +217,17 @@ func (r *containerCloneResource) createClone(ctx context.Context, sourceID int64
 	if cloneErr == nil {
 		return cloneID, diagnostics
 	}
-	if !cloneOutcomeUncertain(cloneErr) {
-		diagnostics.AddError("Error cloning container", cloneErr.Error())
-		return 0, diagnostics
-	}
-
-	recoveredID, lookupErr := r.findClone(ctx, sourceID, tagFilter)
-	if lookupErr != nil {
+	if cloneOutcomeUncertain(cloneErr) {
 		diagnostics.AddError("Error cloning container", fmt.Sprintf(
-			"%s\n\nThe clone may still have been created, and looking it up afterwards did not settle it: %s\n\n"+
+			"%s\n\nThe clone request outcome is uncertain; no existing matching clone was adopted. "+
 				"If the clone exists, adopt it with terraform import using %d:<clone_id>.",
-			cloneErr, lookupErr, sourceID,
+			cloneErr, sourceID,
 		))
 		return 0, diagnostics
 	}
 
-	diagnostics.AddWarning("Container clone recovered", fmt.Sprintf(
-		"The clone request did not complete: %s\n\nClone %d with tag filter %q was found and is now managed by this resource.",
-		cloneErr, recoveredID, tagFilter,
-	))
-
-	return recoveredID, diagnostics
+	diagnostics.AddError("Error cloning container", cloneErr.Error())
+	return 0, diagnostics
 }
 
 // cloneOutcomeUncertain reports whether a failed clone request may still have
@@ -250,33 +241,6 @@ func cloneOutcomeUncertain(err error) bool {
 	}
 
 	return true
-}
-
-// findClone looks up the clone of the source container that carries tagFilter.
-// Aikido allows one image per tag among a source and its clones in a registry,
-// so a single match is the clone; anything else is left for the user to settle.
-func (r *containerCloneResource) findClone(ctx context.Context, sourceID int64, tagFilter string) (int64, error) {
-	source, err := containers.ByID(ctx, r.client, sourceID)
-	if err != nil {
-		return 0, err
-	}
-	all, err := containers.All(ctx, r.client)
-	if err != nil {
-		return 0, err
-	}
-
-	var matches []int64
-	for _, candidate := range all {
-		if isCloneOf(candidate, source) && candidate.TagFilter == tagFilter {
-			matches = append(matches, candidate.ID)
-		}
-	}
-	if len(matches) != 1 {
-		return 0, fmt.Errorf("found %d clones of container %d with tag filter %q, want exactly 1",
-			len(matches), sourceID, tagFilter)
-	}
-
-	return matches[0], nil
 }
 
 // verifyCloneOfSource guards an import against a mistyped pair, which would
