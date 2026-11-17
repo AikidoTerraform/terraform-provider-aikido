@@ -11,8 +11,11 @@ These are **fragments**, not a complete root module by themselves. Combine the p
 | [`provider/provider.tf`](provider/provider.tf) | `required_providers` + `provider "aikido"` block |
 | [`data-sources/aikido_repository/data-source.tf`](data-sources/aikido_repository/data-source.tf) | `aikido_repository` data source: look up exactly one repository by name, filtered server-side |
 | [`data-sources/aikido_repositories/data-source.tf`](data-sources/aikido_repositories/data-source.tf) | `aikido_repositories` data source: look up repositories by name instead of by numeric ID |
+| [`data-sources/aikido_clouds/data-source.tf`](data-sources/aikido_clouds/data-source.tf) | `aikido_clouds` data source: look up clouds, including organization management accounts |
+| [`data-sources/aikido_containers/data-source.tf`](data-sources/aikido_containers/data-source.tf) | `aikido_containers` data source: look up containers by name, registry, cloud, or labels |
 | [`data-sources/aikido_teams/data-source.tf`](data-sources/aikido_teams/data-source.tf) | `aikido_teams` data source |
 | [`data-sources/aikido_users/data-source.tf`](data-sources/aikido_users/data-source.tf) | `aikido_users` data source |
+| [`resources/aikido_aws_cloud/resource.tf`](resources/aikido_aws_cloud/resource.tf) | `aikido_aws_cloud` resource: connect a single AWS account or an AWS Organization |
 | [`resources/aikido_repository/resource.tf`](resources/aikido_repository/resource.tf) | `aikido_repository` resource |
 | [`resources/aikido_autofix_dependency_settings/resource.tf`](resources/aikido_autofix_dependency_settings/resource.tf) | `aikido_autofix_dependency_settings` resource |
 | [`resources/aikido_autofix_sast_settings/resource.tf`](resources/aikido_autofix_sast_settings/resource.tf) | `aikido_autofix_sast_settings` resource |
@@ -177,6 +180,9 @@ Prefer env vars for credentials so secrets are not committed. The provider block
 
 ## Notes
 
+- `aikido_aws_cloud` connects an AWS account (or AWS Organization management account) to Aikido. Create the IAM role in AWS first; this resource does not generate CloudFormation. Use `organization` for org-linked connections; `synced_unit_ids` / `excluded_accounts` are updatable, while `organization_id` and the ECR/EBS scan flags force replacement. Import by numeric cloud ID.
+- `aikido_clouds` lists connected AWS clouds. Filter with `name`, `cloud_provider`, `environment`, `external_id`, or `is_management_account`. Organization management accounts include `aws.organization` (synced units, exclusions, scan flags). Use `ids` with `aikido_team_resource.cloud_id`.
+- `aikido_container` / `aikido_containers` manage and look up containers already discovered in Aikido. See the resource and data-source docs for activation, tag filters, and team linking.
 - `aikido_repositories` is a read-only lookup, so config never has to hard-code Aikido's numeric repository IDs. Filter with `name`, `branch` and `active` (combined with AND); omit all three to get every repository, active and inactive.
   - `name` matches **exactly** — it is not a substring or glob match. To select repositories by naming convention, omit `name` and filter the `repositories` list with a Terraform expression such as `startswith(repository.name, "team-a-")`, `endswith(...)` or `can(regex(...))`.
   - Use `ids` (Set of Number) wherever a resource wants numeric IDs: assign it straight to `repo_ids`, or `one(...ids)` to a single `code_repo_id`. Use `repositories[*].id` (String) for `aikido_repository`'s `id`.

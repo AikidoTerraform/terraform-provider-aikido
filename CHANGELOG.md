@@ -1,3 +1,10 @@
+## 1.9.0
+
+FEATURES:
+
+- **New Resource:** `aikido_aws_cloud` connects a single account or an Organization management account to Aikido. AWS only support. 
+- **New Data Source:** `aikido_clouds` looks up connected clouds by name, provider, environment, external ID, or management-account status, and reports organization sync settings for org-linked clouds.
+
 ## 1.8.0
 
 FEATURES:

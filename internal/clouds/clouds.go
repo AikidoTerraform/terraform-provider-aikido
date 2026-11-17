@@ -1,0 +1,198 @@
+package clouds
+
+import (
+	"cmp"
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"slices"
+	"strconv"
+
+	"github.com/AikidoTerraform/terraform-provider-aikido/internal/client"
+)
+
+const (
+	BasePath        = "/public/v1/clouds"
+	pageSize        = 100
+	cacheKey        = "clouds"
+	listQueryParams = "with_org_details=true"
+)
+
+var SupportedProviders = []string{ProviderAWS}
+
+func IsSupported(provider string) bool {
+	return slices.Contains(SupportedProviders, provider)
+}
+
+type Cloud struct {
+	ID            int64  `json:"id"`
+	Name          string `json:"name"`
+	Provider      string `json:"provider"`
+	Environment   string `json:"environment"`
+	ExternalID    string `json:"external_id"`
+	LastScannedAt int64  `json:"last_scanned_at"`
+
+	AWS *AWSDetails `json:"-"`
+}
+
+// GetAllClouds returns every cloud from the shared list cache, sorted by ID.
+func GetAllClouds(ctx context.Context, apiClient *client.Client) ([]Cloud, error) {
+	byID, err := cachedByID(ctx, apiClient)
+	if err != nil {
+		return nil, err
+	}
+
+	all := make([]Cloud, 0, len(byID))
+	for _, cloud := range byID {
+		all = append(all, cloud)
+	}
+
+	slices.SortFunc(all, func(left, right Cloud) int {
+		return cmp.Compare(left.ID, right.ID)
+	})
+
+	return all, nil
+}
+
+// GetAllCloudsBySupportedProvider is GetAllClouds filtered to SupportedProviders.
+func GetAllCloudsBySupportedProvider(ctx context.Context, apiClient *client.Client) ([]Cloud, error) {
+	all, err := GetAllClouds(ctx, apiClient)
+	if err != nil {
+		return nil, err
+	}
+
+	supported := make([]Cloud, 0, len(all))
+	for _, cloud := range all {
+		if IsSupported(cloud.Provider) {
+			supported = append(supported, cloud)
+		}
+	}
+
+	return supported, nil
+}
+
+// ByID looks up one cloud in the shared list cache.
+func ByID(ctx context.Context, apiClient *client.Client, id int64) (Cloud, error) {
+	byID, err := cachedByID(ctx, apiClient)
+	if err != nil {
+		return Cloud{}, err
+	}
+
+	cached, ok := byID[id]
+	if !ok {
+		return Cloud{}, fmt.Errorf("%w: cloud %d", client.ErrNotInList, id)
+	}
+
+	return cached, nil
+}
+
+// Get fetches one cloud by ID from the detail endpoint and refreshes that entry
+// in the list cache when present.
+func Get(ctx context.Context, apiClient *client.Client, id int64) (Cloud, error) {
+	var cloud Cloud
+	if err := apiClient.Do(ctx, http.MethodGet, DetailPath(id)+"?"+listQueryParams, nil, &cloud); err != nil {
+		return Cloud{}, err
+	}
+
+	client.UpdateCached(apiClient, cacheKey, func(byID map[int64]Cloud) map[int64]Cloud {
+		next := make(map[int64]Cloud, len(byID)+1)
+
+		for id, existing := range byID {
+			next[id] = existing
+		}
+
+		next[cloud.ID] = cloud
+		return next
+	})
+
+	return cloud, nil
+}
+
+// Delete removes a cloud connection.
+func Delete(ctx context.Context, apiClient *client.Client, id int64) error {
+	defer client.InvalidateCached(apiClient, cacheKey)
+	return apiClient.Do(ctx, http.MethodDelete, DetailPath(id), nil, nil)
+}
+
+// DetailPath is the path of a single cloud.
+func DetailPath(id int64) string {
+	return BasePath + "/" + strconv.FormatInt(id, 10)
+}
+
+func cachedByID(ctx context.Context, apiClient *client.Client) (map[int64]Cloud, error) {
+	return client.LoadCached(apiClient, ctx, cacheKey, func(ctx context.Context) (map[int64]Cloud, error) {
+		items, err := client.FetchAllPages[Cloud](ctx, apiClient, BasePath, pageSize, listQueryParams)
+
+		if err != nil {
+			return nil, err
+		}
+
+		byID := make(map[int64]Cloud, len(items))
+		for _, cloud := range items {
+			byID[cloud.ID] = cloud
+		}
+
+		return byID, nil
+	})
+}
+
+func (c *Cloud) UnmarshalJSON(data []byte) error {
+	type shared Cloud
+	var decoded shared
+
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+
+	*c = Cloud(decoded)
+	c.AWS = nil
+
+	var aws AWSDetails
+	if err := json.Unmarshal(data, &aws); err != nil {
+		return err
+	}
+	if c.Provider == ProviderAWS || !aws.empty() {
+		c.AWS = &aws
+	}
+
+	return nil
+}
+
+func (c Cloud) MarshalJSON() ([]byte, error) {
+	type shared Cloud
+	sharedJSON, err := json.Marshal(shared(c))
+
+	if err != nil {
+		return nil, err
+	}
+
+	if c.AWS == nil {
+		return sharedJSON, nil
+	}
+
+	awsJSON, err := json.Marshal(c.AWS)
+	if err != nil {
+		return nil, err
+	}
+
+	return mergeJSONObjects(sharedJSON, awsJSON)
+}
+
+func mergeJSONObjects(base, extra []byte) ([]byte, error) {
+	var left, right map[string]json.RawMessage
+
+	if err := json.Unmarshal(base, &left); err != nil {
+		return nil, err
+	}
+
+	if err := json.Unmarshal(extra, &right); err != nil {
+		return nil, err
+	}
+
+	for key, value := range right {
+		left[key] = value
+	}
+
+	return json.Marshal(left)
+}
