@@ -47,7 +47,7 @@ resource "aikido_aws_cloud" "organization" {
 
 ### Optional
 
-- `organization` (Attributes) When set, connects this AWS account as an organization management account. Adding or removing this block forces replacement. synced_unit_ids and excluded_accounts are updatable; organization_id and the ECR/EBS scan flags are create-only. (see [below for nested schema](#nestedatt--organization))
+- `organization` (Attributes) When set, connects this AWS account as an organization management account and syncs member accounts. Adding or removing this block forces replacement. synced_unit_ids and excluded_accounts are updatable; organization_id and the ECR/EBS scan flags are create-only. (see [below for nested schema](#nestedatt--organization))
 
 ### Read-Only
 

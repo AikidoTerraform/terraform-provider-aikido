@@ -226,14 +226,8 @@ func (r *awsCloudResource) Create(ctx context.Context, request resource.CreateRe
 	response.Diagnostics.Append(response.State.Set(ctx, state)...)
 }
 
-func (r *awsCloudResource) createSingleAccount(ctx context.Context, planned awsCloudModel, response *resource.CreateResponse) (int64, error) {
-	input, diagnostics := createAWSInput(planned)
-	response.Diagnostics.Append(diagnostics...)
-	if response.Diagnostics.HasError() {
-		return 0, nil
-	}
-
-	return clouds.CreateAWS(ctx, r.client, input)
+func (r *awsCloudResource) createSingleAccount(ctx context.Context, planned awsCloudModel, _ *resource.CreateResponse) (int64, error) {
+	return clouds.CreateAWS(ctx, r.client, createAWSInput(planned))
 }
 
 func (r *awsCloudResource) createOrganization(ctx context.Context, planned awsCloudModel, response *resource.CreateResponse) (int64, error) {
@@ -365,12 +359,12 @@ func (r *awsCloudResource) readBack(ctx context.Context, id int64, planned awsCl
 	return state, diagnostics
 }
 
-func createAWSInput(planned awsCloudModel) (clouds.CreateAWSInput, diag.Diagnostics) {
+func createAWSInput(planned awsCloudModel) clouds.CreateAWSInput {
 	return clouds.CreateAWSInput{
 		Name:        planned.Name.ValueString(),
 		RoleARN:     planned.RoleARN.ValueString(),
 		Environment: planned.Environment.ValueString(),
-	}, nil
+	}
 }
 
 func createAWSOrganizationInput(ctx context.Context, planned awsCloudModel) (clouds.CreateAWSOrganizationInput, diag.Diagnostics) {

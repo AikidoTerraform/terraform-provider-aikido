@@ -67,10 +67,10 @@ resource "aikido_team_resource" "clouds" {
 Read-Only:
 
 - `aws` (Attributes) AWS-specific attributes. Null when cloud_provider is not aws. (see [below for nested schema](#nestedatt--clouds--aws))
-- `cloud_provider` (String) Cloud provider identifier. Currently AWS for every returned cloud.
+- `cloud_provider` (String) Cloud provider identifier.
 - `environment` (String) Environment purpose. One of: production, staging, development, mixed.
 - `external_id` (String) Provider-specific external ID. For AWS this is the account ID.
-- `id` (String) Aikido cloud ID, as a string to match the id attribute of aikido_aws_cloud. For the numeric cloud_id attribute, use the ids attribute of this data source instead.
+- `id` (String) Aikido cloud ID.
 - `last_scanned_at` (Number) Unix timestamp of the last cloud scan, or -1 when no scan has completed yet.
 - `name` (String) Display name of the cloud connection.
 
@@ -80,7 +80,7 @@ Read-Only:
 Read-Only:
 
 - `is_management_account` (Boolean) Whether this cloud is an organization management account.
-- `organization` (Attributes) Organization sync settings when this cloud is a management account. Null for single-account connections. (see [below for nested schema](#nestedatt--clouds--aws--organization))
+- `organization` (Attributes) AWS Organization sync settings when this cloud is a management account. Null for single-account connections. (see [below for nested schema](#nestedatt--clouds--aws--organization))
 - `role_arn` (String) IAM role ARN Aikido assumes to scan this account.
 
 <a id="nestedatt--clouds--aws--organization"></a>

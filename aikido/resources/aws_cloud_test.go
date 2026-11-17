@@ -89,15 +89,12 @@ func TestAWSCloudModelFromAPI(t *testing.T) {
 }
 
 func TestCreateAWSInput(t *testing.T) {
-	input, diagnostics := createAWSInput(awsCloudModel{
+	input := createAWSInput(awsCloudModel{
 		Name:         types.StringValue("prod"),
 		RoleARN:      types.StringValue("arn:aws:iam::1:role/aikido"),
 		Environment:  types.StringValue("production"),
 		Organization: types.ObjectNull(awsOrganizationAttributeTypes()),
 	})
-	if diagnostics.HasError() {
-		t.Fatalf("diagnostics: %v", diagnostics)
-	}
 	if input.Name != "prod" || input.RoleARN == "" {
 		t.Fatalf("input = %#v", input)
 	}
@@ -174,15 +171,12 @@ func TestAWSCloudCreateAndDelete(t *testing.T) {
 
 	res := &awsCloudResource{client: testClient(srv)}
 
-	input, diagnostics := createAWSInput(awsCloudModel{
+	input := createAWSInput(awsCloudModel{
 		Name:         types.StringValue(listed.Name),
 		RoleARN:      types.StringValue(listed.AWS.RoleARN),
 		Environment:  types.StringValue(listed.Environment),
 		Organization: types.ObjectNull(awsOrganizationAttributeTypes()),
 	})
-	if diagnostics.HasError() {
-		t.Fatalf("createAWSInput: %v", diagnostics)
-	}
 
 	id, err := clouds.CreateAWS(context.Background(), res.client, input)
 	if err != nil {
