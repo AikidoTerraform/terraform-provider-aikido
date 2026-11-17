@@ -1,3 +1,10 @@
+## 1.9.0
+
+FEATURES:
+
+- **New Resource:** `aikido_custom_sast_rule` manages a custom semgrep rule that Aikido runs on every code repository scan. Rules written in heredocs or files are accepted as-is, and Aikido's rewrite of the rule id causes no diff. A rule that failed during a scan is reported as a warning on plan.
+- **New Data Source:** `aikido_custom_sast_rules` lists every custom rule in the workspace, including those created in the Aikido dashboard, with whether each failed during a scan.
+
 ## 1.8.0
 
 FEATURES:
