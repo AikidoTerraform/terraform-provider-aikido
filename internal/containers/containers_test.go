@@ -333,6 +333,124 @@ func TestByID_MissingContainerIsNotInList(t *testing.T) {
 	}
 }
 
+func TestByNaturalKey_MatchesRegistryAndName(t *testing.T) {
+	var gotQuery string
+	srv := naturalKeyListServer(t, &gotQuery,
+		Container{ID: 1, Name: "pied-piper/compression", RegistryName: "111222333444", TagFilter: "prod-*"},
+		Container{ID: 2, Name: "pied-piper/compression", RegistryName: "999888777666", TagFilter: ""},
+		Container{ID: 3, Name: "other", RegistryName: "111222333444", TagFilter: ""},
+	)
+
+	matched, err := ByOriginalKey(context.Background(), testClient(srv), "111222333444", "pied-piper/compression", nil)
+	if err != nil {
+		t.Fatalf("ByNaturalKey: %v", err)
+	}
+	if len(matched) != 1 || matched[0].ID != 1 {
+		t.Fatalf("matched = %#v, want container 1", matched)
+	}
+	for _, want := range []string{
+		"filter_name=pied-piper%2Fcompression",
+		"filter_registry_name=111222333444",
+		"filter_status=all",
+	} {
+		if !strings.Contains(gotQuery, want) {
+			t.Errorf("query %q missing %q", gotQuery, want)
+		}
+	}
+}
+
+// Clones of the same ECR repository share account and name and differ only by
+// tag filter. Omitting the filter returns every clone so the caller can refuse
+// an ambiguous lookup rather than picking one.
+func TestByNaturalKey_ReturnsClonesWhenTagFilterOmitted(t *testing.T) {
+	var gotQuery string
+	srv := naturalKeyListServer(t, &gotQuery,
+		Container{ID: 1, Name: "compression", RegistryName: "111222333444", TagFilter: "prod-*"},
+		Container{ID: 2, Name: "compression", RegistryName: "111222333444", TagFilter: ""},
+	)
+
+	matched, err := ByOriginalKey(context.Background(), testClient(srv), "111222333444", "compression", nil)
+	if err != nil {
+		t.Fatalf("ByNaturalKey: %v", err)
+	}
+	if len(matched) != 2 {
+		t.Fatalf("matched %d, want 2 clones", len(matched))
+	}
+	if matched[0].ID != 1 || matched[1].ID != 2 {
+		t.Errorf("order = %d,%d, want 1,2", matched[0].ID, matched[1].ID)
+	}
+}
+
+func TestByNaturalKey_TagFilterSelectsOneClone(t *testing.T) {
+	var gotQuery string
+	srv := naturalKeyListServer(t, &gotQuery,
+		Container{ID: 1, Name: "compression", RegistryName: "111222333444", TagFilter: "prod-*"},
+		Container{ID: 2, Name: "compression", RegistryName: "111222333444", TagFilter: ""},
+	)
+
+	newest := ""
+	matched, err := ByOriginalKey(context.Background(), testClient(srv), "111222333444", "compression", &newest)
+	if err != nil {
+		t.Fatalf("ByNaturalKey: %v", err)
+	}
+	if len(matched) != 1 || matched[0].ID != 2 {
+		t.Fatalf("matched = %#v, want the newest-image clone", matched)
+	}
+}
+
+func TestByNaturalKey_NoMatchIsEmptyNotNil(t *testing.T) {
+	var gotQuery string
+	srv := naturalKeyListServer(t, &gotQuery, Container{ID: 1, Name: "compression", RegistryName: "111222333444"})
+
+	matched, err := ByOriginalKey(context.Background(), testClient(srv), "111222333444", "absent", nil)
+	if err != nil {
+		t.Fatalf("ByNaturalKey: %v", err)
+	}
+	if matched == nil || len(matched) != 0 {
+		t.Errorf("matched = %#v, want empty non-nil", matched)
+	}
+}
+
+// Natural-key lookup must not reuse the shared workspace list: it pushes
+// exact filters to the API so large workspaces stay cheap.
+func TestByNaturalKey_BypassesTheSharedListCache(t *testing.T) {
+	var requestCount int
+	srv := listServer(t, &requestCount, Container{ID: 1, Name: "compression", RegistryName: "111222333444"})
+	apiClient := testClient(srv)
+	ctx := context.Background()
+
+	if _, err := All(ctx, apiClient); err != nil {
+		t.Fatalf("All: %v", err)
+	}
+	if _, err := ByOriginalKey(ctx, apiClient, "111222333444", "compression", nil); err != nil {
+		t.Fatalf("ByNaturalKey: %v", err)
+	}
+
+	if requestCount != 2 {
+		t.Errorf("list endpoint hit %d times, want 2 (cached All + separate natural-key fetch)", requestCount)
+	}
+}
+
+// naturalKeyListServer records the list query and returns the given containers.
+func naturalKeyListServer(t *testing.T, gotQuery *string, items ...Container) *httptest.Server {
+	t.Helper()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != BasePath {
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		*gotQuery = r.URL.RawQuery
+		if err := json.NewEncoder(w).Encode(items); err != nil {
+			t.Errorf("encoding response: %v", err)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	return srv
+}
+
 // A cloud-sourced container carries no registry and vice versa. Both must survive
 // the list round-trip as nil.
 func TestAll_PreservesNullRegistryAndCloudIDs(t *testing.T) {

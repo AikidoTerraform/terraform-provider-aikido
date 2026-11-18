@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"maps"
+	"net/url"
 	"slices"
 	"strconv"
 
@@ -111,6 +112,41 @@ func ByID(ctx context.Context, apiClient *client.Client, id int64) (Container, e
 	}
 
 	return cached, nil
+}
+
+// ByOriginalKey finds containers by registry_name + name (the natural key used
+// on import). Pass tagFilter to pick one clone; nil means any tag filter.
+// Hits the list API with those filters instead of the shared cache, then
+// re-checks registry/name locally in case an older API ignores the params.
+func ByOriginalKey(ctx context.Context, apiClient *client.Client, registryName, name string, tagFilter *string) ([]Container, error) {
+	query := listQueryParams +
+		"&filter_name=" + url.QueryEscape(name) +
+		"&filter_registry_name=" + url.QueryEscape(registryName)
+
+	items, err := client.FetchAllPages[Container](ctx, apiClient, BasePath, pageSize, query)
+	if err != nil {
+		return nil, err
+	}
+
+	matched := make([]Container, 0, len(items))
+	for _, container := range items {
+		if container.RegistryName != registryName || container.Name != name {
+			continue
+		}
+
+		// Tag filter stays client-side: the list API has no exact filter_tag match,
+		// and sending a non-exact filter could drop the empty newest-image clone.
+		// After registry+name the result set is small.
+		if tagFilter != nil && container.TagFilter != *tagFilter {
+			continue
+		}
+		matched = append(matched, container)
+	}
+	slices.SortFunc(matched, func(left, right Container) int {
+		return cmp.Compare(left.ID, right.ID)
+	})
+
+	return matched, nil
 }
 
 // All returns every container from the shared list cache, sorted by ID so

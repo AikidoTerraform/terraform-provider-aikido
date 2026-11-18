@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/AikidoTerraform/terraform-provider-aikido/internal/client"
 	"github.com/AikidoTerraform/terraform-provider-aikido/internal/containers"
@@ -67,8 +68,11 @@ func (r *containerResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 			"Apply sets active and optional config; destroy deactivates it.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
-				Required:    true,
-				Description: "Aikido container ID.",
+				Required: true,
+				Description: "Aikido container ID. " +
+					"Import accepts the numeric ID or registry_name/name (optionally @tag_filter). " +
+					"registry_name is whatever Aikido reports for that registry " +
+					"(for example an AWS account ID, GCP project ID, ACR hostname, or Docker Hub namespace).",
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 				},
@@ -124,8 +128,9 @@ func (r *containerResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 				Description: "ID of the registry holding this container. Null when the container was discovered through a cloud.",
 			},
 			"registry_name": schema.StringAttribute{
-				Computed:    true,
-				Description: "Name of the registry holding this container. For AWS this is the account ID.",
+				Computed: true,
+				Description: "Name of the registry holding this container. " +
+					"Provider-specific: for example an AWS account ID, GCP project ID, ACR hostname, or Docker Hub namespace.",
 			},
 			"cloud_id": schema.Int64Attribute{
 				Computed:    true,
@@ -254,9 +259,18 @@ func (r *containerResource) Delete(ctx context.Context, request resource.DeleteR
 	}
 }
 
-// ImportState lets users adopt an existing Aikido container into state by ID.
+// ImportState adopts an existing Aikido container by numeric ID or by original
+// key. The original key is registry_name/name, with an optional @tag_filter
+// suffix when several clones share the same registry and name.
+// registry_name matches the value Aikido returns for that field (account ID, hostname, org, …).
 func (r *containerResource) ImportState(ctx context.Context, request resource.ImportStateRequest, response *resource.ImportStateResponse) {
-	resource.ImportStatePassthroughID(ctx, path.Root("id"), request, response)
+	id, err := resolveContainerImportID(ctx, r.client, request.ID)
+	if err != nil {
+		response.Diagnostics.AddError("Invalid import ID", err.Error())
+		return
+	}
+
+	response.Diagnostics.Append(response.State.SetAttribute(ctx, path.Root("id"), id)...)
 }
 
 // setContainerConfig is shared by Create and Update.
@@ -500,6 +514,77 @@ func parseContainerID(containerID string) (int64, error) {
 	}
 
 	return id, nil
+}
+
+// resolveContainerImportID returns the numeric container ID for an import ID.
+// Accepts either a numeric ID, or registry_name/name[@tag_filter] looked up via the API.
+func resolveContainerImportID(ctx context.Context, apiClient *client.Client, importID string) (string, error) {
+	if importID == "" {
+		return "", fmt.Errorf("import ID must be a numeric Aikido container ID or registry_name/name")
+	}
+
+	if _, err := strconv.ParseInt(importID, 10, 64); err == nil {
+		return importID, nil
+	}
+
+	registryName, name, tagFilter, err := parseContainerNaturalKey(importID)
+	if err != nil {
+		return "", err
+	}
+
+	if apiClient == nil {
+		return "", fmt.Errorf("provider client is not configured")
+	}
+
+	matched, err := containers.ByOriginalKey(ctx, apiClient, registryName, name, tagFilter)
+	if err != nil {
+		return "", err
+	}
+
+	// not found
+	if len(matched) == 0 {
+		return "", fmt.Errorf("no container named %q in registry %q exists in the Aikido workspace%s",
+			name, registryName, tagFilterSuffix(tagFilter))
+	}
+
+	// multiple found, needed to add tag filter to select one
+	if len(matched) > 1 {
+		parts := make([]string, 0, len(matched))
+		for _, c := range matched {
+			parts = append(parts, fmt.Sprintf("ID %d (tag filter %q)", c.ID, c.TagFilter))
+		}
+		return "", fmt.Errorf("%d containers are named %q in registry %q%s: %s; append @tag_filter to select one",
+			len(matched), name, registryName, tagFilterSuffix(tagFilter), strings.Join(parts, ", "))
+	}
+
+	// single found, return the ID
+	return strconv.FormatInt(matched[0].ID, 10), nil
+}
+
+// parseContainerNaturalKey splits an import ID into registry_name, name, and optional tag_filter.
+// Format: registry_name/name[@tag_filter]. The first slash separates registry from name
+// (name may contain further slashes). A trailing @ alone means the newest-image clone.
+func parseContainerNaturalKey(importID string) (registryName, name string, tagFilter *string, err error) {
+	key := importID
+	if registry, tag, found := strings.Cut(importID, "@"); found {
+		key = registry
+		tagFilter = &tag
+	}
+
+	registryName, name, found := strings.Cut(key, "/")
+	if !found || registryName == "" || name == "" {
+		return "", "", nil, fmt.Errorf("import ID %q must be registry_name/name[@tag_filter]", importID)
+	}
+
+	return registryName, name, tagFilter, nil
+}
+
+func tagFilterSuffix(tagFilter *string) string {
+	if tagFilter == nil {
+		return ""
+	}
+
+	return fmt.Sprintf(" with tag filter %q", *tagFilter)
 }
 
 // containerModelFromAPI maps an API container into a Terraform state model.

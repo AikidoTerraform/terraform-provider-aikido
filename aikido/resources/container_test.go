@@ -752,6 +752,147 @@ func ptrTo[T any](value T) *T {
 	return &value
 }
 
+func TestParseContainerNaturalKey(t *testing.T) {
+	tests := []struct {
+		name          string
+		importID      string
+		wantRegistry  string
+		wantName      string
+		wantTagFilter *string
+		wantErr       bool
+	}{
+		{
+			name:         "account and repo",
+			importID:     "111222333444/compression",
+			wantRegistry: "111222333444",
+			wantName:     "compression",
+		},
+		{
+			name:         "repo name with slash",
+			importID:     "111222333444/pied-piper/compression",
+			wantRegistry: "111222333444",
+			wantName:     "pied-piper/compression",
+		},
+		{
+			name:          "tag filter clone",
+			importID:      "111222333444/pied-piper/compression@prod-*",
+			wantRegistry:  "111222333444",
+			wantName:      "pied-piper/compression",
+			wantTagFilter: ptrTo("prod-*"),
+		},
+		{
+			name:          "newest-image tag filter",
+			importID:      "111222333444/compression@",
+			wantRegistry:  "111222333444",
+			wantName:      "compression",
+			wantTagFilter: ptrTo(""),
+		},
+		{
+			name:     "missing slash",
+			importID: "111222333444",
+			wantErr:  true,
+		},
+		{
+			name:     "empty name",
+			importID: "111222333444/",
+			wantErr:  true,
+		},
+		{
+			name:     "empty registry",
+			importID: "/compression",
+			wantErr:  true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			registry, name, tagFilter, err := parseContainerNaturalKey(tt.importID)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("want an error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("parseContainerNaturalKey: %v", err)
+			}
+			if registry != tt.wantRegistry || name != tt.wantName {
+				t.Errorf("got %q/%q, want %q/%q", registry, name, tt.wantRegistry, tt.wantName)
+			}
+			switch {
+			case tt.wantTagFilter == nil && tagFilter != nil:
+				t.Errorf("tagFilter = %q, want nil", *tagFilter)
+			case tt.wantTagFilter != nil && tagFilter == nil:
+				t.Errorf("tagFilter = nil, want %q", *tt.wantTagFilter)
+			case tt.wantTagFilter != nil && *tagFilter != *tt.wantTagFilter:
+				t.Errorf("tagFilter = %q, want %q", *tagFilter, *tt.wantTagFilter)
+			}
+		})
+	}
+}
+
+func TestResolveContainerImportID_NumericPassesThrough(t *testing.T) {
+	id, err := resolveContainerImportID(context.Background(), nil, "12345")
+	if err != nil {
+		t.Fatalf("resolveContainerImportID: %v", err)
+	}
+	if id != "12345" {
+		t.Errorf("id = %q, want 12345", id)
+	}
+}
+
+func TestResolveContainerImportID_NaturalKeyLooksUp(t *testing.T) {
+	clones := []containers.Container{
+		{ID: 42, Name: "pied-piper/compression", RegistryName: "111222333444", TagFilter: "prod-*"},
+		{ID: 43, Name: "pied-piper/compression", RegistryName: "111222333444", TagFilter: ""},
+	}
+
+	t.Run("unique without tag filter", func(t *testing.T) {
+		srv := containerListServer(t, containers.Container{ID: 99, Name: "solo", RegistryName: "111222333444"})
+
+		id, err := resolveContainerImportID(context.Background(), testClient(srv), "111222333444/solo")
+		if err != nil {
+			t.Fatalf("resolveContainerImportID: %v", err)
+		}
+		if id != "99" {
+			t.Errorf("id = %q, want 99", id)
+		}
+	})
+
+	t.Run("ambiguous without tag filter", func(t *testing.T) {
+		srv := containerListServer(t, clones...)
+
+		_, err := resolveContainerImportID(context.Background(), testClient(srv), "111222333444/pied-piper/compression")
+		if err == nil {
+			t.Fatal("want ambiguity error, got nil")
+		}
+		if !strings.Contains(err.Error(), "@tag_filter") {
+			t.Errorf("error %q missing tag_filter guidance", err)
+		}
+	})
+
+	t.Run("tag filter selects clone", func(t *testing.T) {
+		srv := containerListServer(t, clones...)
+
+		id, err := resolveContainerImportID(context.Background(), testClient(srv), "111222333444/pied-piper/compression@prod-*")
+		if err != nil {
+			t.Fatalf("resolveContainerImportID: %v", err)
+		}
+		if id != "42" {
+			t.Errorf("id = %q, want 42", id)
+		}
+	})
+
+	t.Run("missing container", func(t *testing.T) {
+		srv := containerListServer(t, clones...)
+
+		_, err := resolveContainerImportID(context.Background(), testClient(srv), "111222333444/absent")
+		if err == nil {
+			t.Fatal("want not-found error, got nil")
+		}
+	})
+}
+
 func TestParseContainerID_RejectsNonNumeric(t *testing.T) {
 	if _, err := parseContainerID("abc"); err == nil {
 		t.Error("parseContainerID(\"abc\"): want an error, got nil")
