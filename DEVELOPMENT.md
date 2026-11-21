@@ -8,7 +8,7 @@ For user-facing docs, see [`README.md`](README.md).
 
 | Tool | Version | Notes |
 |------|---------|--------|
-| [Go](https://go.dev/doc/install) | >= 1.26 | Matches `go.mod` |
+| [Go](https://go.dev/doc/install) | >= 1.27.4 | Matches `go.mod` |
 | [Terraform](https://developer.hashicorp.com/terraform/downloads) | >= 1.2 | Required for e2e applies |
 | [golangci-lint](https://golangci-lint.run/welcome/install/) | latest | Optional; used by `make lint` |
 
