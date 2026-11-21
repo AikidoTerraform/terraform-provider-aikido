@@ -131,6 +131,7 @@ func (p *aikidoProvider) Resources(_ context.Context) []func() resource.Resource
 		resources.NewTeamLinkedResource,
 		resources.NewTeamUserResource,
 		resources.NewUserPermissionsResource,
+		resources.NewCustomSastRuleResource,
 	}
 }
 
@@ -141,6 +142,7 @@ func (p *aikidoProvider) DataSources(_ context.Context) []func() datasource.Data
 		datasources.NewContainersDataSource,
 		datasources.NewTeamsDataSource,
 		datasources.NewUsersDataSource,
+		datasources.NewCustomSastRulesDataSource,
 	}
 }
 

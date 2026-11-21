@@ -1,6 +1,6 @@
 module github.com/AikidoTerraform/terraform-provider-aikido
 
-go 1.26
+go 1.27.4
 
 require (
 	github.com/hashicorp/terraform-plugin-framework v1.19.0
