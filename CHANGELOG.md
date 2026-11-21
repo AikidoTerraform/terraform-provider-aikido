@@ -2,6 +2,7 @@
 
 FEATURES:
 
+- **New Resource:** `aikido_container_clone` scans additional tags of a registry container by cloning it with its own tag filter, the same as adding another tag in the Aikido UI. Configure each clone's labels, sensitivity and other settings with `aikido_container` on the clone's ID. Removing the resource deactivates the clone, which stays available in Aikido. Existing clones, including those made in the Aikido UI, can be imported as `source_container_id:clone_id`.
 - **New Resource:** `aikido_custom_sast_rule` manages a custom semgrep rule that Aikido runs on every code repository scan. Rules written in heredocs or files are accepted as-is, and Aikido's rewrite of the rule id causes no diff. A rule that failed during a scan is reported as a warning on plan.
 - **New Data Source:** `aikido_custom_sast_rules` lists every custom rule in the workspace, including those created in the Aikido dashboard, with whether each failed during a scan.
 
