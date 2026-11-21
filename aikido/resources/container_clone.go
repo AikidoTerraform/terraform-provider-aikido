@@ -50,13 +50,8 @@ func (r *containerCloneResource) Metadata(_ context.Context, request resource.Me
 
 func (r *containerCloneResource) Schema(_ context.Context, _ resource.SchemaRequest, response *resource.SchemaResponse) {
 	response.Schema = schema.Schema{
-		Description: "Clones an existing Aikido container with its own tag filter, so that several tags of one image are scanned. " +
-			"Only containers from a connected registry can be cloned. " +
-			"The clone starts active and is scanned right away; manage its other settings with an aikido_container on the clone's ID. " +
-			"Destroy deactivates the clone, which stays available in Aikido. " +
-			"To scan that tag again, reactivate the existing clone with an aikido_container on its ID rather than cloning it again. " +
-			"Clones already made in the Aikido UI can be imported as <source_container_id>:<clone_id>; " +
-			"the aikido_containers data source finds a clone's ID by the source container's name and registry plus the clone's tag_filter.",
+		Description: "Scan additional tags of an existing container using separate clones, each with its own tag filter. " +
+			"The source container must belong to a connected registry.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Computed:    true,
@@ -67,7 +62,7 @@ func (r *containerCloneResource) Schema(_ context.Context, _ resource.SchemaRequ
 			},
 			"source_container_id": schema.Int64Attribute{
 				Required:    true,
-				Description: "Aikido container ID of the container to clone.",
+				Description: "Aikido container ID of the existing registry container to clone. Changing it replaces the clone.",
 				Validators: []validator.Int64{
 					int64validator.AtLeast(1),
 				},
@@ -79,7 +74,8 @@ func (r *containerCloneResource) Schema(_ context.Context, _ resource.SchemaRequ
 				Required: true,
 				Description: "Tag filter deciding which image the clone scans. " +
 					"Supports * wildcards, for example prod-*, and the special value semver-production. " +
-					"Aikido rejects a tag that another clone of the same image in the same registry already carries.",
+					"Must not be empty or have surrounding whitespace. Changing it replaces the clone. " +
+					"Aikido rejects a tag already used by the source or another clone of the same image in the same registry, including inactive containers.",
 				Validators: []validator.String{
 					// Aikido trims the tag it stores, so surrounding whitespace would read
 					// back as drift and replace the clone on every apply.

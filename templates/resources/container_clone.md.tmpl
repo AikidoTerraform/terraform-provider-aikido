@@ -10,8 +10,14 @@ description: |-
 
 {{ .Description | trimspace }}
 
+Cloud-discovered containers, public images and uploaded SBOMs cannot be cloned.
+
 {{ if .HasExamples -}}
-## Example Usage
+## Basic usage
+
+Each clone starts active, and Aikido requests a scan immediately. A wildcard selects one matching image, not every matching tag.
+
+Replace `12345` with your source container's ID. Use [`aikido_containers`](https://registry.terraform.io/providers/AikidoTerraform/aikido/latest/docs/data-sources/containers) to find it and [`aikido_container`](https://registry.terraform.io/providers/AikidoTerraform/aikido/latest/docs/resources/container) to configure its own tag filter.
 
 {{- range .ExampleFiles }}
 
@@ -19,12 +25,37 @@ description: |-
 {{- end }}
 {{- end }}
 
+## Optional settings
+
+Cloning does not copy labels, sensitivity or connectivity from the source container. Manage these settings and activation with an `aikido_container` using the clone's ID. Omit `tag_filter` to keep the clone's filter.
+
+```terraform
+resource "aikido_container" "api_clones" {
+  for_each = aikido_container_clone.api
+
+  id          = each.value.id
+  active      = true
+  sensitivity = "sensitive"
+  labels      = ["api"]
+}
+```
+
+## Replacement and destroy
+
+> **Warning:** Removing this resource deactivates the clone but does not delete it. Aikido still reserves its tag filter, so adding the same tag back will fail.
+
+Changing `source_container_id` or `tag_filter` also replaces the clone, leaving the old clone inactive. Reverting to a previously used tag filter or forcing replacement with the same filter will fail for the same reason.
+
+To resume scanning without importing, configure an `aikido_container` with the existing clone's ID and `active = true`. If you also restore `aikido_container_clone` to the configuration, import it before applying. Import alone does not reactivate it.
+
 {{ .SchemaMarkdown | trimspace }}
 {{- if or .HasImport .HasImportIDConfig .HasImportIdentityConfig }}
 
-## Import
+## Import existing clones
 
-Import is supported using the following syntax:
+Import a clone created in Aikido, including through the UI, using `<source_container_id>:<clone_id>`. Configure `source_container_id` and `tag_filter` to match the existing clone before importing.
+
+Find the clone's ID in Aikido or with the `aikido_containers` data source, filtering by name, registry ID and tag filter. For registries spanning multiple regions, confirm that you selected the correct clone.
 {{- end }}
 {{- if .HasImportIdentityConfig }}
 
@@ -42,7 +73,7 @@ In Terraform v1.5.0 and later, the [`import` block](https://developer.hashicorp.
 {{- end }}
 {{- if .HasImport }}
 
-The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
+For the `staging-*` instance in the basic example, use [`terraform import`](https://developer.hashicorp.com/terraform/cli/commands/import):
 
 {{codefile "shell" .ImportFile }}
 {{- end }}
