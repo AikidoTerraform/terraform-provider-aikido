@@ -26,8 +26,7 @@ resource "aikido_repo_pr_checks_settings" "payments" {
   enable_code_quality_scan                       = true
   post_code_quality_inline_comments_min_severity = "medium"
 
-  run_deep_audit_pr_scan                       = true
-  post_deep_audit_inline_comments_min_severity = "high"
+  run_deep_audit_pr_scan = true
 }
 
 # Filters combine with AND. Omitting every filter returns all repositories,
@@ -43,6 +42,29 @@ resource "aikido_autofix_sast_settings" "example" {
   severity_filter = "critical_and_high_only"
   repos_scope     = "selected"
   repo_ids        = data.aikido_repositories.active.ids
+}
+
+# The labels filter is an exact match, and several labels are an AND: a repository
+# must carry all of them. GitHub topics arrive as plain labels (payments) and GitHub
+# custom properties as property:value (product:payments), so a repository's product
+# is selectable without maintaining a list of repository IDs by hand.
+data "aikido_repositories" "payments_tier_1" {
+  active = true
+  labels = ["product:payments", "tier:1"]
+}
+
+# OR, and anything else the AND filter cannot express, stays a Terraform expression
+# over the repositories list.
+data "aikido_repositories" "active_all" {
+  active = true
+}
+
+output "payments_or_identity_repository_ids" {
+  value = [
+    for repository in data.aikido_repositories.active_all.repositories :
+    tonumber(repository.id)
+    if contains(repository.labels, "product:payments") || contains(repository.labels, "product:identity")
+  ]
 }
 
 # The name filter is an exact match. Selecting repositories by naming convention

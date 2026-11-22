@@ -6,8 +6,8 @@ The Aikido Terraform provider allows you to manage resources in [Aikido Security
 
 ## Requirements
 
-- [Terraform](https://developer.hashicorp.com/terraform/downloads) >= 1.0
-- [Go](https://go.dev/doc/install) >= 1.26 (to build the provider)
+- [Terraform](https://developer.hashicorp.com/terraform/downloads) >= 1.2
+- [Go](https://go.dev/doc/install) >= 1.27.4 (to build the provider)
 
 ## Authentication
 
@@ -96,7 +96,24 @@ resource "aikido_repo_pr_checks_settings" "example" {
   post_code_quality_inline_comments_min_severity  = "medium"
 
   run_deep_audit_pr_scan                          = true
-  post_deep_audit_inline_comments_min_severity    = "high"
+}
+
+resource "aikido_default_pr_checks_settings" "example" {
+  minimum_severity                                = "high"
+  fail_on_dependency_scan                         = true
+  fail_on_sast_scan                               = true
+  fail_on_iac_scan                                = true
+  fail_on_secrets_scan                            = true
+  fail_on_malware_scan                            = true
+  post_inline_comments_min_severity               = "critical"
+
+  minimum_license_severity                        = "none"
+
+  fail_on_code_quality_scan                       = true
+  enable_code_quality_scan                        = true
+  post_code_quality_inline_comments_min_severity  = "medium"
+
+  run_deep_audit_pr_scan                          = true
 }
 
 resource "aikido_all_repo_pr_checks_settings" "example" {
@@ -117,7 +134,15 @@ resource "aikido_all_repo_pr_checks_settings" "example" {
   post_code_quality_inline_comments_min_severity  = "low"
 
   run_deep_audit_pr_scan                          = false
-  post_deep_audit_inline_comments_min_severity    = "medium"
+}
+
+resource "aikido_task_tracking_team_mapping" "linear" {
+  integration_id = 2
+
+  project_teams_map = {
+    "10000" = [1, 2, 3]
+    "10001" = [4, 6]
+  }
 }
 ```
 

@@ -82,8 +82,8 @@ func TestConstructAllPRChecksSettingsBody(t *testing.T) {
 				if body["run_deep_audit_pr_scan"] != true {
 					t.Errorf("deep audit = %#v", body["run_deep_audit_pr_scan"])
 				}
-				if body["post_deep_audit_inline_comments_min_severity"] != "medium" {
-					t.Errorf("deep audit inline = %#v", body["post_deep_audit_inline_comments_min_severity"])
+				if _, ok := body["post_deep_audit_inline_comments_min_severity"]; ok {
+					t.Error("deprecated post_deep_audit_inline_comments_min_severity must not be sent")
 				}
 			},
 		},
@@ -120,7 +120,7 @@ func TestConstructAllPRChecksSettingsBody(t *testing.T) {
 					t.Errorf("deep audit = %#v", body["run_deep_audit_pr_scan"])
 				}
 				if _, ok := body["post_deep_audit_inline_comments_min_severity"]; ok {
-					t.Error("did not expect deep audit inline when disabled")
+					t.Error("deprecated post_deep_audit_inline_comments_min_severity must not be sent")
 				}
 			},
 		},
@@ -157,7 +157,6 @@ func TestValidateAllPRChecksSettings(t *testing.T) {
 		EnableCodeQualityScan:                    types.BoolValue(true),
 		PostCodeQualityInlineCommentsMinSeverity: types.StringValue("low"),
 		RunDeepAuditPRScan:                       types.BoolValue(false),
-		PostDeepAuditInlineCommentsMinSeverity:   types.StringNull(),
 	}
 
 	tests := []struct {
@@ -258,17 +257,17 @@ func TestAllPRChecksSettingsStateFromPlan(t *testing.T) {
 		t.Errorf("deep audit inline = %#v, want null", state.PostDeepAuditInlineCommentsMinSeverity)
 	}
 
-	enabled := allPRChecksSettingsStateFromPlan(allPrChecksSettingsModel{
+	kept := allPRChecksSettingsStateFromPlan(allPrChecksSettingsModel{
 		MinimumSeverity:                        types.StringValue("critical"),
 		FailOnDependencyScan:                   types.BoolValue(true),
 		EnableCodeQualityScan:                  types.BoolValue(false),
 		FailOnCodeQualityScan:                  types.BoolValue(false),
 		MinimumLicenseSeverity:                 types.StringValue("none"),
 		RunDeepAuditPRScan:                     types.BoolValue(true),
-		PostDeepAuditInlineCommentsMinSeverity: types.StringUnknown(),
+		PostDeepAuditInlineCommentsMinSeverity: types.StringValue("high"),
 	})
-	if enabled.PostDeepAuditInlineCommentsMinSeverity.ValueString() != "none" {
-		t.Errorf("deep audit inline with Deep Review enabled = %q, want none", enabled.PostDeepAuditInlineCommentsMinSeverity.ValueString())
+	if kept.PostDeepAuditInlineCommentsMinSeverity.ValueString() != "high" {
+		t.Errorf("deep audit inline = %q, want high (deprecated noop kept from plan)", kept.PostDeepAuditInlineCommentsMinSeverity.ValueString())
 	}
 }
 
@@ -311,7 +310,6 @@ func TestSetAllPRChecksSettings_PostsThenKeepsPlanExclusions(t *testing.T) {
 		EnableCodeQualityScan:                    types.BoolValue(false),
 		PostCodeQualityInlineCommentsMinSeverity: types.StringNull(),
 		RunDeepAuditPRScan:                       types.BoolValue(false),
-		PostDeepAuditInlineCommentsMinSeverity:   types.StringValue("medium"),
 	}
 
 	state, err := (&allPrChecksSettingsResource{client: testClient(srv)}).setAllPRChecksSettings(context.Background(), plan)
@@ -454,7 +452,6 @@ func TestKeepAllPRChecksSettingsUnlessDrifted(t *testing.T) {
 		EnableCodeQualityScan:                    types.BoolValue(false),
 		PostCodeQualityInlineCommentsMinSeverity: types.StringNull(),
 		RunDeepAuditPRScan:                       types.BoolValue(false),
-		PostDeepAuditInlineCommentsMinSeverity:   types.StringNull(),
 	}
 	matching := func(codeRepoID int64) prChecksSettingsAPI {
 		return prChecksSettingsAPI{
@@ -542,7 +539,6 @@ func TestKeepAllPRChecksSettingsUnlessDrifted_SkipsInactiveNonGitHubAndSynthetic
 		EnableCodeQualityScan:                    types.BoolValue(false),
 		PostCodeQualityInlineCommentsMinSeverity: types.StringNull(),
 		RunDeepAuditPRScan:                       types.BoolValue(false),
-		PostDeepAuditInlineCommentsMinSeverity:   types.StringNull(),
 	}
 	skippedRows := []prChecksSettingsAPI{
 		{ID: 1, CodeRepoID: 5, MinimumSeverity: "low"},

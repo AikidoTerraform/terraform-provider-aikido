@@ -1,0 +1,1 @@
+terraform import aikido_default_pr_checks_settings.example default_pr_checks_settings

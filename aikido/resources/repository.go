@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/AikidoTerraform/terraform-provider-aikido/internal/client"
+	"github.com/AikidoTerraform/terraform-provider-aikido/internal/labels"
 	"github.com/AikidoTerraform/terraform-provider-aikido/internal/repositories"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -109,7 +110,7 @@ func (r *repositoryResource) Schema(_ context.Context, _ resource.SchemaRequest,
 				Computed:    true,
 				Description: "Repository ID from the Git provider.",
 			},
-			"labels": labelsSchemaAttribute(),
+			"labels": labelsSchemaAttribute("repository"),
 		},
 	}
 }
@@ -163,7 +164,7 @@ func (r *repositoryResource) Read(ctx context.Context, request resource.ReadRequ
 	// get repository from list cache
 	apiRepository, err := repositories.ByID(ctx, r.client, id)
 	if err != nil {
-		if client.NotFound(err) {
+		if client.NotInList(err) {
 			response.State.RemoveResource(ctx)
 			return
 		}
@@ -205,6 +206,8 @@ func (r *repositoryResource) Delete(ctx context.Context, request resource.Delete
 		return
 	}
 
+	defer repositories.InvalidateCache(r.client)
+
 	if err := r.setActive(ctx, priorState.ID.ValueString(), false); err != nil && !client.NotFound(err) {
 		response.Diagnostics.AddError("Error deactivating repository", err.Error())
 	}
@@ -218,6 +221,9 @@ func (r *repositoryResource) ImportState(ctx context.Context, request resource.I
 // setRepoConfig is shared by Create and Update.
 func (r *repositoryResource) setRepoConfig(ctx context.Context, plannedRepository repositoryModel) (repositoryModel, error) {
 	repositoryID := plannedRepository.ID.ValueString()
+
+	// Deferred: a call that fails partway may still have changed the repository.
+	defer repositories.InvalidateCache(r.client)
 
 	if err := r.setActive(ctx, repositoryID, plannedRepository.Active.ValueBool()); err != nil {
 		return repositoryModel{}, err
@@ -246,7 +252,7 @@ func (r *repositoryResource) setRepoConfig(ctx context.Context, plannedRepositor
 		return repositoryModel{}, err
 	}
 
-	if err := r.applyLabels(ctx, repositoryID, plannedRepository.Labels, apiRepository.Labels); err != nil {
+	if err := applyLabels(ctx, r.client, basePath, repositoryID, plannedRepository.Labels, apiRepository.Labels); err != nil {
 		return repositoryModel{}, err
 	}
 
@@ -306,9 +312,13 @@ func repositoryModelFromAPI(apiRepository repositories.Repository) repositoryMod
 
 // labelNamesFromAPI maps API labels into Terraform state (names only).
 // Always returns a non-nil slice so a managed empty set differs from omitted (nil).
-func labelNamesFromAPI(apiLabels []repositories.Label) []types.String {
+// Imported labels are left out, since reconciliation cannot delete one.
+func labelNamesFromAPI(apiLabels []labels.Label) []types.String {
 	names := make([]types.String, 0, len(apiLabels))
 	for _, apiLabel := range apiLabels {
+		if apiLabel.IsImported {
+			continue
+		}
 		names = append(names, types.StringValue(apiLabel.Name))
 	}
 

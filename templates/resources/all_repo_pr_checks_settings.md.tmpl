@@ -16,7 +16,9 @@ There is exactly one all-repos PR checks settings resource per workspace, so def
 
 -> Destroy does **not** reset or disable PR checks in Aikido. It only removes the resource from Terraform state.
 
-Read reconstructs check settings from PR-checks rows belonging to active GitHub repositories that are not in `excluded_repos`. After apply, every managed repository has the same settings, so one drifted row is enough to surface a plan. Inactive, non-GitHub, and Aikido clone/custom/self-scan repositories are ignored because the bulk endpoint does not update them. `excluded_repos` is persisted by Aikido and refreshed from the API on read and import.
+Terraform detects changes made outside Terraform to the PR-checks settings of repositories managed by this resource. The next apply restores the configured settings. Repositories listed in `excluded_repos` are not managed by this resource.
+
+Aikido stores `excluded_repos`, so Terraform can recover them on import and refresh.
 
 {{ if .HasExamples -}}
 ## Example Usage
@@ -33,6 +35,8 @@ Read reconstructs check settings from PR-checks rows belonging to active GitHub 
 ## Import
 
 Import is supported using the following syntax.
+
+Import requires at least one non-excluded active GitHub repository with PR checks settings.
 {{- end }}
 {{- if .HasImportIdentityConfig }}
 

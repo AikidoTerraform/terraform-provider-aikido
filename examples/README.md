@@ -9,17 +9,26 @@ These are **fragments**, not a complete root module by themselves. Combine the p
 | Path | Purpose |
 |------|---------|
 | [`provider/provider.tf`](provider/provider.tf) | `required_providers` + `provider "aikido"` block |
+| [`data-sources/aikido_repository/data-source.tf`](data-sources/aikido_repository/data-source.tf) | `aikido_repository` data source: look up exactly one repository by name, filtered server-side |
 | [`data-sources/aikido_repositories/data-source.tf`](data-sources/aikido_repositories/data-source.tf) | `aikido_repositories` data source: look up repositories by name instead of by numeric ID |
+| [`data-sources/aikido_teams/data-source.tf`](data-sources/aikido_teams/data-source.tf) | `aikido_teams` data source |
+| [`data-sources/aikido_users/data-source.tf`](data-sources/aikido_users/data-source.tf) | `aikido_users` data source |
 | [`resources/aikido_repository/resource.tf`](resources/aikido_repository/resource.tf) | `aikido_repository` resource |
 | [`resources/aikido_autofix_dependency_settings/resource.tf`](resources/aikido_autofix_dependency_settings/resource.tf) | `aikido_autofix_dependency_settings` resource |
 | [`resources/aikido_autofix_sast_settings/resource.tf`](resources/aikido_autofix_sast_settings/resource.tf) | `aikido_autofix_sast_settings` resource |
 | [`resources/aikido_autofix_pentest_settings/resource.tf`](resources/aikido_autofix_pentest_settings/resource.tf) | `aikido_autofix_pentest_settings` resource |
 | [`resources/aikido_repo_pr_checks_settings/resource.tf`](resources/aikido_repo_pr_checks_settings/resource.tf) | `aikido_repo_pr_checks_settings` resource |
+| [`resources/aikido_default_pr_checks_settings/resource.tf`](resources/aikido_default_pr_checks_settings/resource.tf) | `aikido_default_pr_checks_settings` resource |
 | [`resources/aikido_all_repo_pr_checks_settings/resource.tf`](resources/aikido_all_repo_pr_checks_settings/resource.tf) | `aikido_all_repo_pr_checks_settings` resource |
+| [`resources/aikido_task_tracking_team_mapping/resource.tf`](resources/aikido_task_tracking_team_mapping/resource.tf) | `aikido_task_tracking_team_mapping` resource |
+| [`resources/aikido_team/resource.tf`](resources/aikido_team/resource.tf) | `aikido_team` resource |
+| [`resources/aikido_team_resource/resource.tf`](resources/aikido_team_resource/resource.tf) | `aikido_team_resource` resource |
+| [`resources/aikido_team_user/resource.tf`](resources/aikido_team_user/resource.tf) | `aikido_team_user` resource |
+| [`resources/aikido_user_permissions/resource.tf`](resources/aikido_user_permissions/resource.tf) | `aikido_user_permissions` resource |
 
 ## Prerequisites
 
-- Terraform >= 1.0
+- Terraform >= 1.2
 - Aikido API credentials (`AIKIDO_CLIENT_ID` / `AIKIDO_CLIENT_SECRET`)
 - For a **local** provider build: install the binary and set a `dev_overrides` entry — see [`DEVELOPMENT.md`](../DEVELOPMENT.md)
 
@@ -45,8 +54,8 @@ terraform {
 
 provider "aikido" {}
 
-# Look up repositories by name, so no numeric Aikido IDs appear in config.
-data "aikido_repositories" "payments" {
+# Look up one repository by name, so no numeric Aikido ID appears in config.
+data "aikido_repository" "payments" {
   name = "payments"
 }
 
@@ -54,7 +63,7 @@ data "aikido_repositories" "payments" {
 data "aikido_repositories" "all" {}
 
 resource "aikido_repository" "example" {
-  id     = one(data.aikido_repositories.payments.repositories).id
+  id     = data.aikido_repository.payments.id
   active = true
 
   sensitivity  = "sensitive"
@@ -89,7 +98,7 @@ resource "aikido_autofix_pentest_settings" "example" {
 }
 
 resource "aikido_repo_pr_checks_settings" "example" {
-  code_repo_id                                    = one(data.aikido_repositories.payments.ids)
+  code_repo_id                                    = tonumber(data.aikido_repository.payments.id)
   
   minimum_severity                                = "high"
   fail_on_dependency_scan                         = true
@@ -106,7 +115,24 @@ resource "aikido_repo_pr_checks_settings" "example" {
   post_code_quality_inline_comments_min_severity  = "medium"
 
   run_deep_audit_pr_scan                          = true
-  post_deep_audit_inline_comments_min_severity    = "high"
+}
+
+resource "aikido_default_pr_checks_settings" "example" {
+  minimum_severity                                = "high"
+  fail_on_dependency_scan                         = true
+  fail_on_sast_scan                               = true
+  fail_on_iac_scan                                = true
+  fail_on_secrets_scan                            = true
+  fail_on_malware_scan                            = true
+  post_inline_comments_min_severity               = "critical"
+
+  minimum_license_severity                        = "none"
+
+  fail_on_code_quality_scan                       = true
+  enable_code_quality_scan                        = true
+  post_code_quality_inline_comments_min_severity  = "medium"
+
+  run_deep_audit_pr_scan                          = true
 }
 
 resource "aikido_all_repo_pr_checks_settings" "example" {
@@ -128,7 +154,14 @@ resource "aikido_all_repo_pr_checks_settings" "example" {
   post_code_quality_inline_comments_min_severity = "low"
 
   run_deep_audit_pr_scan                       = false
-  post_deep_audit_inline_comments_min_severity = "medium"
+}
+
+resource "aikido_task_tracking_team_mapping" "linear" {
+  integration_id = 2
+
+  project_teams_map = {
+    "10000" = [1, 2, 3]
+  }
 }
 ```
 
@@ -154,6 +187,8 @@ Prefer env vars for credentials so secrets are not committed. The provider block
 - `aikido_autofix_sast_settings` manages the single **workspace-wide** SAST & IaC Autofix settings object; define it at most once. Set `repos_scope` to `all` or `selected`, and pass matching `repo_ids` (ignored when scope is `all`). When `enabled` is `false`, other fields are ignored. Destroying the resource disables automatic SAST AutoFix PR creation.
 - `aikido_autofix_pentest_settings` manages the single **workspace-wide** Pentest & AI Code Analysis Autofix settings object; define it at most once. When `enabled` is `false`, other fields are ignored. Destroying the resource disables automatic pentest AutoFix PR creation.
 - `aikido_repo_pr_checks_settings` manages PR checks for one code repository (`code_repo_id`). When `enable_code_quality_scan` is `true`, `post_code_quality_inline_comments_min_severity` is required; when it is `false`, `fail_on_code_quality_scan` must be `false`. Deep Review (`run_deep_audit_pr_scan`) needs at least one vulnerability scan type enabled. Import by `code_repo_id`.
+- `aikido_default_pr_checks_settings` manages the single **workspace-wide** default PR checks configuration applied to newly activated repositories; define it at most once. When all checks are disabled or the resource is removed, the settings are deleted in Aikido for the workspace. Import with `default_pr_checks_settings`.
 - `aikido_all_repo_pr_checks_settings` applies the same PR checks settings to every active GitHub repository; define it at most once. Currently only GitHub is supported. Use `excluded_repos` to skip repositories that should keep their current settings. The same code-quality and Deep Review rules apply as for the per-repo resource. Destroy only removes the resource from Terraform state.
+- `aikido_task_tracking_team_mapping` maps Aikido teams to task-tracker projects (Linear, Jira, …). Keys are tracker project IDs; values are Aikido team IDs. Destroy only removes the resource from Terraform state.
 - After changing provider Go code locally, re-run `make install` before `terraform apply`.
 - Full local/staging setup: [`DEVELOPMENT.md`](../DEVELOPMENT.md)

@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -33,10 +34,11 @@ const (
 )
 
 type Client struct {
-	http    *http.Client
-	baseURL string
-	limiter *rate.Limiter
-	cache   sync.Map
+	http        *http.Client
+	baseURL     string
+	limiter     *rate.Limiter
+	cache       sync.Map
+	cacheUpdate sync.Mutex
 }
 
 // Option configures a Client.
@@ -91,11 +93,25 @@ func (e *APIError) Error() string {
 	return fmt.Sprintf("aikido API %s %s: status %d: %s", e.Method, e.Path, e.StatusCode, e.Body)
 }
 
-// NotFound reports whether the error is a 404, which callers use to detect a
-// resource that has been deleted outside of Terraform.
+// NotFound reports whether the error is a 404 from a request that was made.
+// Lookups over a cached list use NotInList instead.
 func NotFound(err error) bool {
 	apiErr, ok := err.(*APIError)
 	return ok && apiErr.StatusCode == http.StatusNotFound
+}
+
+// BadRequest reports whether the error is a 400 from a request that was made.
+func BadRequest(err error) bool {
+	apiErr, ok := err.(*APIError)
+	return ok && apiErr.StatusCode == http.StatusBadRequest
+}
+
+// ErrNotInList reports an object absent from a list the API returned successfully.
+var ErrNotInList = errors.New("not present in the list the API returned")
+
+// NotInList reports whether a lookup completed and found no such object.
+func NotInList(err error) bool {
+	return errors.Is(err, ErrNotInList)
 }
 
 // Do sends an HTTP request. If body is non-nil it is JSON-encoded. If out is
