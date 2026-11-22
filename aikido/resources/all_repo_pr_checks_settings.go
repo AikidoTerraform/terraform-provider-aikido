@@ -302,7 +302,10 @@ func (r *allPrChecksSettingsResource) Read(ctx context.Context, request resource
 		return
 	}
 
-	// Prefer the server-side exclusion list so import and refresh recover it.
+	// Keep omitted exclusions null when Aikido has none.
+	if len(excludedRepos) == 0 && prior.ExcludedRepos == nil {
+		excludedRepos = nil
+	}
 	prior.ExcludedRepos = excludedRepos
 
 	settingsList, err := prChecksSettingsListFromCache(ctx, r.client)
