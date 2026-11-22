@@ -558,6 +558,7 @@ func resolveContainerImportID(ctx context.Context, apiClient *client.Client, imp
 	}
 
 	// single found, return the ID
+	containers.StoreCached(apiClient, matched[0])
 	return strconv.FormatInt(matched[0].ID, 10), nil
 }
 

@@ -4,6 +4,14 @@ FEATURES:
 
 - `aikido_container`: import accepts `registry_name/name` (optionally `@tag_filter`) in addition to the numeric container ID. `registry_name` is the identity Aikido reports for the registry (for example an AWS account ID or GCP project ID).
 
+## 1.9.0
+
+FEATURES:
+
+- **New Resource:** `aikido_container_clone` lets you scan multiple tags of the same container image.
+- **New Resource:** `aikido_custom_sast_rule` creates and manages custom security checks for code repository scans.
+- **New Data Source:** `aikido_custom_sast_rules` lists the workspace's custom SAST rules and identifies rules that failed during a scan.
+
 ## 1.8.0
 
 FEATURES:
