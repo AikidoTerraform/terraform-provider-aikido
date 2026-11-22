@@ -6,6 +6,10 @@ FEATURES:
 - **New Resource:** `aikido_custom_sast_rule` creates and manages custom security checks for code repository scans.
 - **New Data Source:** `aikido_custom_sast_rules` lists the workspace's custom SAST rules and identifies rules that failed during a scan.
 
+ENHANCEMENTS:
+
+- Added import support for `aikido_all_repo_pr_checks_settings`.
+
 ## 1.8.0
 
 FEATURES:

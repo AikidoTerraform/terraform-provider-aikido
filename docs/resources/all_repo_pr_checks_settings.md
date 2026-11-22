@@ -18,6 +18,8 @@ There is exactly one all-repos PR checks settings resource per workspace, so def
 
 Terraform detects changes made outside Terraform to the PR-checks settings of repositories managed by this resource. The next apply restores the configured settings. Repositories listed in `excluded_repos` are not managed by this resource.
 
+Aikido stores `excluded_repos`, so Terraform can recover them on import and refresh.
+
 ## Example Usage
 
 ```terraform
@@ -64,7 +66,7 @@ resource "aikido_all_repo_pr_checks_settings" "example" {
 
 ### Optional
 
-- `excluded_repos` (Set of Number) Repository IDs to exclude from the bulk configuration. Omitted or empty applies the settings to every active GitHub repository.
+- `excluded_repos` (Set of Number) Repository IDs to exclude from the bulk configuration. Omitted or empty applies the settings to every active GitHub repository. Persisted by Aikido and recovered on import and refresh.
 - `post_code_quality_inline_comments_min_severity` (String) Minimum severity for code quality inline comments. Required when enable_code_quality_scan is true (one of: low, medium, high, critical). Ignored when enable_code_quality_scan is false and may be omitted.
 - `post_deep_audit_inline_comments_min_severity` (String, Deprecated) Deprecated: ignored and has no effect. Kept only for backward compatibility. One of: none, low, medium, high, critical.
 - `post_inline_comments_min_severity` (String) Minimum severity for inline comments. Defaults to none when omitted. One of: none, low, medium, high, critical.
@@ -73,3 +75,16 @@ resource "aikido_all_repo_pr_checks_settings" "example" {
 ### Read-Only
 
 - `id` (String) Workspace all-repos PR checks settings identifier.
+
+## Import
+
+Import is supported using the following syntax.
+
+Import requires at least one non-excluded active GitHub repository with PR checks settings.
+
+The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
+
+```shell
+# Import by the fixed workspace singleton ID. excluded_repos is recovered from the Aikido API.
+terraform import aikido_all_repo_pr_checks_settings.example all_repo_pr_checks_settings
+```
