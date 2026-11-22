@@ -94,7 +94,8 @@ func (d *containersDataSource) Schema(_ context.Context, _ datasource.SchemaRequ
 			"registry_name": schema.StringAttribute{
 				Optional: true,
 				Description: "Only return containers whose registry name is exactly this. " +
-					"For AWS the registry name is the account ID, which distinguishes identically named repositories in different accounts.",
+					"Value is provider-specific (for example an AWS account ID, GCP project ID, ACR hostname, or Docker Hub namespace) " +
+					"and distinguishes identically named repositories in different registries.",
 			},
 			"cloud_id": schema.Int64Attribute{
 				Optional:    true,
@@ -143,8 +144,9 @@ func (d *containersDataSource) Schema(_ context.Context, _ datasource.SchemaRequ
 							Description: "ID of the registry holding this container. Null when the container was discovered through a cloud.",
 						},
 						"registry_name": schema.StringAttribute{
-							Computed:    true,
-							Description: "Name of the registry holding this container. For AWS this is the account ID.",
+							Computed: true,
+							Description: "Name of the registry holding this container. " +
+								"Provider-specific: for example an AWS account ID, GCP project ID, ACR hostname, or Docker Hub namespace.",
 						},
 						"cloud_id": schema.Int64Attribute{
 							Computed:    true,
