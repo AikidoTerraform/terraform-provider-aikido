@@ -1,3 +1,9 @@
+## 1.10.0
+
+ENHANCEMENTS:
+
+- `aikido_users`: added a `scm_identifier` filter and attribute. For GitHub users it is the GitHub username, so people can be resolved to an Aikido user ID, and from there added to a team, without relying on their email address.
+
 ## 1.9.0
 
 FEATURES:

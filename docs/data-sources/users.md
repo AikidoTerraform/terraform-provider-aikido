@@ -24,6 +24,16 @@ output "alice_user_id" {
   value = one(data.aikido_users.alice.ids)
 }
 
+# Looking a user up by username is often more straightforward than by
+# email, since it is the login the team already knows.
+data "aikido_users" "alice_by_github" {
+  scm_identifier = "alice-example"
+}
+
+output "alice_github_user_id" {
+  value = one(data.aikido_users.alice_by_github.ids)
+}
+
 # Filters combine with AND. Omitting every filter returns the whole workspace,
 # deactivated users included.
 data "aikido_users" "active_admins" {
@@ -67,6 +77,7 @@ output "never_logged_in" {
 - `full_name` (String) Only return users whose full name is exactly this.
 - `id` (Number) Only return the user with this Aikido user ID.
 - `role` (String) Only return users with this workspace role. `admin` administers the workspace, `default` sees every repository without administering it, and `team_only` sees only the repositories of the teams it belongs to. Team membership widens access for `team_only` users; the other two already see everything.
+- `scm_identifier` (String) Only return users with exactly this username.
 
 ### Read-Only
 
@@ -85,3 +96,4 @@ Read-Only:
 - `id` (Number) Aikido user ID.
 - `last_login_timestamp` (Number) Unix timestamp of the user's last login.
 - `role` (String) Workspace role of the user. `admin` administers the workspace, `default` sees every repository without administering it, and `team_only` sees only the repositories of the teams it belongs to.
+- `scm_identifier` (String) Username of the user at their source code management provider.

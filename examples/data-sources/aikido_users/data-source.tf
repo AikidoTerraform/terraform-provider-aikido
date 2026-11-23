@@ -9,6 +9,16 @@ output "alice_user_id" {
   value = one(data.aikido_users.alice.ids)
 }
 
+# Looking a user up by username is often more straightforward than by
+# email, since it is the login the team already knows.
+data "aikido_users" "alice_by_github" {
+  scm_identifier = "alice-example"
+}
+
+output "alice_github_user_id" {
+  value = one(data.aikido_users.alice_by_github.ids)
+}
+
 # Filters combine with AND. Omitting every filter returns the whole workspace,
 # deactivated users included.
 data "aikido_users" "active_admins" {

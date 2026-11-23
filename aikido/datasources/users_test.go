@@ -10,12 +10,13 @@ import (
 
 func TestUserMatchesFilters(t *testing.T) {
 	user := users.User{
-		ID:       7,
-		FullName: "Wendy Snutz",
-		Email:    "wendy@example.com",
-		Active:   1,
-		Role:     "admin",
-		AuthType: "github",
+		ID:            7,
+		FullName:      "Wendy Snutz",
+		Email:         "wendy@example.com",
+		Active:        1,
+		Role:          "admin",
+		AuthType:      "github",
+		ScmIdentifier: "wendy-snutz",
 	}
 
 	tests := []struct {
@@ -43,6 +44,21 @@ func TestUserMatchesFilters(t *testing.T) {
 		{
 			name:   "email is not a substring match",
 			config: usersDataSourceModel{Email: types.StringValue("wendy")},
+			want:   false,
+		},
+		{
+			name:   "scm identifier matches exactly",
+			config: usersDataSourceModel{ScmIdentifier: types.StringValue("wendy-snutz")},
+			want:   true,
+		},
+		{
+			name:   "scm identifier matching is case sensitive",
+			config: usersDataSourceModel{ScmIdentifier: types.StringValue("Wendy-Snutz")},
+			want:   false,
+		},
+		{
+			name:   "scm identifier is not a substring match",
+			config: usersDataSourceModel{ScmIdentifier: types.StringValue("wendy")},
 			want:   false,
 		},
 		{
@@ -200,8 +216,19 @@ func TestUserModelFromAPI_ActiveBecomesBool(t *testing.T) {
 	if model.ID != types.Int64Value(7) {
 		t.Errorf("ID = %v, want 7", model.ID)
 	}
+	if !model.ScmIdentifier.IsNull() {
+		t.Errorf("ScmIdentifier = %v, want null when the API returns none", model.ScmIdentifier)
+	}
 	if model.LastLoginTimestamp != types.Int64Value(1720059659) {
 		t.Errorf("LastLoginTimestamp = %v", model.LastLoginTimestamp)
+	}
+}
+
+func TestUserModelFromAPI_ScmIdentifier(t *testing.T) {
+	model := userModelFromAPI(users.User{ID: 7, ScmIdentifier: "wendy-snutz"})
+
+	if model.ScmIdentifier != types.StringValue("wendy-snutz") {
+		t.Errorf("ScmIdentifier = %v, want wendy-snutz", model.ScmIdentifier)
 	}
 }
 
@@ -222,6 +249,7 @@ func TestUnknownUserFilterDiagnostics(t *testing.T) {
 			config usersDataSourceModel
 		}{
 			{"email", usersDataSourceModel{Email: types.StringUnknown()}},
+			{"scm_identifier", usersDataSourceModel{ScmIdentifier: types.StringUnknown()}},
 			{"full_name", usersDataSourceModel{FullName: types.StringUnknown()}},
 			{"role", usersDataSourceModel{Role: types.StringUnknown()}},
 			{"auth_type", usersDataSourceModel{AuthType: types.StringUnknown()}},

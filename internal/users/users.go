@@ -33,6 +33,10 @@ type User struct {
 	LastLoginTimestamp int64  `json:"last_login_timestamp"`
 	Role               string `json:"role"`
 	AuthType           string `json:"auth_type"`
+	// ScmIdentifier is the user's username at their source code management
+	// provider; for GitHub users it is the GitHub username. Unlike the email, it
+	// does not change with the addresses the user has attached to that account.
+	ScmIdentifier string `json:"scm_identifier"`
 }
 
 // IsActive reports whether the user is active in the workspace.
