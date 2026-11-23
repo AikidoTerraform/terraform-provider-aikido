@@ -116,7 +116,7 @@ func (d *usersDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, 
 							Description: "Email address of the user.",
 						},
 						"scm_identifier": schema.StringAttribute{
-							Computed: true,
+							Computed:    true,
 							Description: "Username of the user at their source code management provider.",
 						},
 						"full_name": schema.StringAttribute{
