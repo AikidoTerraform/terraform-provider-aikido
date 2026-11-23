@@ -26,6 +26,16 @@ resource "aikido_team_user" "payments_alice" {
   user_id = one(data.aikido_users.alice.ids)
 }
 
+# Look up a user by scm_identifier and add them to the team.
+data "aikido_users" "bob" {
+  scm_identifier = "bob-example"
+}
+
+resource "aikido_team_user" "payments_bob" {
+  team_id = aikido_team.payments.id
+  user_id = one(data.aikido_users.bob.ids)
+}
+
 # A security team that needs visibility over every product, whose members are not
 # assigned to those repositories in GitHub. Aikido teams are independent of the
 # Git provider, so this membership is not undone by the next GitHub sync.

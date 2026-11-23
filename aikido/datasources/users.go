@@ -31,19 +31,21 @@ type usersDataSource struct {
 // Filters are applied in-process against the shared user list cache: the API
 // offers no filtering beyond team membership, and the list is a single request.
 type usersDataSourceModel struct {
-	ID       types.Int64   `tfsdk:"id"`
-	Email    types.String  `tfsdk:"email"`
-	FullName types.String  `tfsdk:"full_name"`
-	Role     types.String  `tfsdk:"role"`
-	AuthType types.String  `tfsdk:"auth_type"`
-	Active   types.Bool    `tfsdk:"active"`
-	IDs      []types.Int64 `tfsdk:"ids"`
-	Users    []userModel   `tfsdk:"users"`
+	ID            types.Int64   `tfsdk:"id"`
+	Email         types.String  `tfsdk:"email"`
+	ScmIdentifier types.String  `tfsdk:"scm_identifier"`
+	FullName      types.String  `tfsdk:"full_name"`
+	Role          types.String  `tfsdk:"role"`
+	AuthType      types.String  `tfsdk:"auth_type"`
+	Active        types.Bool    `tfsdk:"active"`
+	IDs           []types.Int64 `tfsdk:"ids"`
+	Users         []userModel   `tfsdk:"users"`
 }
 
 type userModel struct {
 	ID                 types.Int64  `tfsdk:"id"`
 	Email              types.String `tfsdk:"email"`
+	ScmIdentifier      types.String `tfsdk:"scm_identifier"`
 	FullName           types.String `tfsdk:"full_name"`
 	Role               types.String `tfsdk:"role"`
 	AuthType           types.String `tfsdk:"auth_type"`
@@ -71,6 +73,10 @@ func (d *usersDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, 
 			"email": schema.StringAttribute{
 				Optional:    true,
 				Description: "Only return users with exactly this email address, compared without regard to case.",
+			},
+			"scm_identifier": schema.StringAttribute{
+				Optional:    true,
+				Description: "Only return users with exactly this username.",
 			},
 			"full_name": schema.StringAttribute{
 				Optional:    true,
@@ -108,6 +114,10 @@ func (d *usersDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, 
 						"email": schema.StringAttribute{
 							Computed:    true,
 							Description: "Email address of the user.",
+						},
+						"scm_identifier": schema.StringAttribute{
+							Computed:    true,
+							Description: "Username of the user at their source code management provider.",
 						},
 						"full_name": schema.StringAttribute{
 							Computed:    true,
@@ -208,6 +218,7 @@ func unknownUserFilterDiagnostics(config usersDataSourceModel) diag.Diagnostics 
 	}{
 		{"id", config.ID.IsUnknown()},
 		{"email", config.Email.IsUnknown()},
+		{"scm_identifier", config.ScmIdentifier.IsUnknown()},
 		{"full_name", config.FullName.IsUnknown()},
 		{"role", config.Role.IsUnknown()},
 		{"auth_type", config.AuthType.IsUnknown()},
@@ -240,6 +251,10 @@ func userMatchesFilters(apiUser users.User, config usersDataSourceModel) bool {
 	if !config.Email.IsNull() && !strings.EqualFold(apiUser.Email, config.Email.ValueString()) {
 		return false
 	}
+	// Unlike the email, the SCM identifier is compared exactly, case included.
+	if !config.ScmIdentifier.IsNull() && apiUser.ScmIdentifier != config.ScmIdentifier.ValueString() {
+		return false
+	}
 	if !config.FullName.IsNull() && apiUser.FullName != config.FullName.ValueString() {
 		return false
 	}
@@ -260,6 +275,7 @@ func userModelFromAPI(apiUser users.User) userModel {
 	return userModel{
 		ID:                 types.Int64Value(apiUser.ID),
 		Email:              types.StringValue(apiUser.Email),
+		ScmIdentifier:      nullIfEmpty(apiUser.ScmIdentifier),
 		FullName:           types.StringValue(apiUser.FullName),
 		Role:               nullIfEmpty(apiUser.Role),
 		AuthType:           nullIfEmpty(apiUser.AuthType),
