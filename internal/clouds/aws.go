@@ -98,7 +98,7 @@ func CreateAWSOrganization(ctx context.Context, apiClient *client.Client, input 
 	return created.ID, nil
 }
 
-// Update the IAM role ARN for a single-account AWS cloud connection. 
+// Update the IAM role ARN for a single-account AWS cloud connection.
 // Updating IAM roles for organization-linked clouds is not allowed.
 // Reconnect the cloud to change the IAM role.
 func UpdateAwsCloudCredentials(ctx context.Context, apiClient *client.Client, id int64, input UpdateAwsCloudCredentialsInput) error {

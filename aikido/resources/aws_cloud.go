@@ -41,17 +41,17 @@ type awsCloudResource struct {
 }
 
 type awsCloudModel struct {
-	ID                  types.String `tfsdk:"id"`
-	Name                types.String `tfsdk:"name"`
-	RoleARN             types.String `tfsdk:"role_arn"`
-	Environment         types.String `tfsdk:"environment"`
-	Organization        types.Object `tfsdk:"organization"`
-	ExternalID          types.String `tfsdk:"external_id"`
-	LastScannedAt       types.Int64  `tfsdk:"last_scanned_at"`
+	ID            types.String `tfsdk:"id"`
+	Name          types.String `tfsdk:"name"`
+	RoleARN       types.String `tfsdk:"role_arn"`
+	Environment   types.String `tfsdk:"environment"`
+	Organization  types.Object `tfsdk:"organization"`
+	ExternalID    types.String `tfsdk:"external_id"`
+	LastScannedAt types.Int64  `tfsdk:"last_scanned_at"`
 }
 
 type awsOrganizationModel struct {
-	IsManagementAccount types.Bool   `tfsdk:"is_management_account"`
+	IsManagementAccount  types.Bool   `tfsdk:"is_management_account"`
 	OrganizationID       types.String `tfsdk:"organization_id"`
 	SyncedUnitIDs        types.List   `tfsdk:"synced_unit_ids"`
 	ExcludedAccounts     types.List   `tfsdk:"excluded_accounts"`
@@ -497,13 +497,13 @@ func awsOrganizationAttributeTypes() map[string]attr.Type {
 
 func identityOnlyAWSCloud(id int64, planned awsCloudModel) awsCloudModel {
 	return awsCloudModel{
-		ID:                  types.StringValue(strconv.FormatInt(id, 10)),
-		Name:                planned.Name,
-		RoleARN:             planned.RoleARN,
-		Environment:         planned.Environment,
-		Organization:        planned.Organization,
-		ExternalID:          types.StringNull(),
-		LastScannedAt:       types.Int64Null(),
+		ID:            types.StringValue(strconv.FormatInt(id, 10)),
+		Name:          planned.Name,
+		RoleARN:       planned.RoleARN,
+		Environment:   planned.Environment,
+		Organization:  planned.Organization,
+		ExternalID:    types.StringNull(),
+		LastScannedAt: types.Int64Null(),
 	}
 }
 

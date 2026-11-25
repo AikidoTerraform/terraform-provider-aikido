@@ -63,7 +63,6 @@ type CloudOrganization struct {
 	VMScanEnabled        bool   `json:"vm_scan_enabled"`
 }
 
-
 type UpdateCloudInput struct {
 	Name        string `json:"name"`
 	Environment string `json:"environment"` // one of SupportedEnvironments
@@ -160,10 +159,10 @@ func Update(ctx context.Context, apiClient *client.Client, id int64, input Updat
 	return apiClient.Do(ctx, http.MethodPut, DetailPath(id), input, nil)
 }
 
-// update cloud organization settings
+// update cloud organization settings.
 func UpdateOrganization(ctx context.Context, apiClient *client.Client, id int64, input UpdateCloudOrganizationInput) error {
 	defer client.InvalidateCached(apiClient, cacheKey)
-	return apiClient.Do(ctx, http.MethodPut, DetailPath(id) + "/organization", input, nil)
+	return apiClient.Do(ctx, http.MethodPut, DetailPath(id)+"/organization", input, nil)
 }
 
 // DetailPath is the path of a single cloud.

@@ -53,7 +53,6 @@ resource "aikido_aws_cloud" "organization" {
 
 - `external_id` (String) AWS account ID extracted from the role ARN.
 - `id` (String) Aikido cloud ID.
-- `is_management_account` (Boolean) True when this cloud is the management account of a connected AWS Organization.
 - `last_scanned_at` (Number) Unix timestamp of the last cloud scan, or -1 when no scan has completed yet.
 
 <a id="nestedatt--organization"></a>
@@ -69,6 +68,10 @@ Optional:
 - `container_scan_enabled` (Boolean) When true, automatically configure ECR scanning across the organization. Defaults to false. Create-only; changing it forces replacement.
 - `excluded_accounts` (List of String) Optional AWS account IDs to exclude from organization sync. Defaults to an empty list.
 - `vm_scan_enabled` (Boolean) When true, automatically configure EBS/EC2 scanning across the organization. Defaults to false. Create-only; changing it forces replacement.
+
+Read-Only:
+
+- `is_management_account` (Boolean) True when this cloud is the management account of a connected AWS Organization.
 
 ## Import
 
