@@ -48,10 +48,10 @@ type awsCloudModel struct {
 	Organization        types.Object `tfsdk:"organization"`
 	ExternalID          types.String `tfsdk:"external_id"`
 	LastScannedAt       types.Int64  `tfsdk:"last_scanned_at"`
-	IsManagementAccount types.Bool   `tfsdk:"is_management_account"`
 }
 
 type awsOrganizationModel struct {
+	IsManagementAccount types.Bool   `tfsdk:"is_management_account"`
 	OrganizationID       types.String `tfsdk:"organization_id"`
 	SyncedUnitIDs        types.List   `tfsdk:"synced_unit_ids"`
 	ExcludedAccounts     types.List   `tfsdk:"excluded_accounts"`
@@ -97,7 +97,7 @@ func (r *awsCloudResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 				Required:    true,
 				Description: "Environment purpose used for severity weighting. One of production, staging, development, mixed.",
 				Validators: []validator.String{
-					stringvalidator.OneOf("production", "staging", "development", "mixed"),
+					stringvalidator.OneOf(clouds.SupportedEnvironments...),
 				},
 			},
 			"organization": schema.SingleNestedAttribute{
@@ -115,6 +115,10 @@ func (r *awsCloudResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 					),
 				},
 				Attributes: map[string]schema.Attribute{
+					"is_management_account": schema.BoolAttribute{
+						Computed:    true,
+						Description: "True when this cloud is the management account of a connected AWS Organization.",
+					},
 					"organization_id": schema.StringAttribute{
 						Required:    true,
 						Description: "AWS Organizations ID, for example o-1234567890. Changing it forces replacement.",
@@ -164,10 +168,6 @@ func (r *awsCloudResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 			"last_scanned_at": schema.Int64Attribute{
 				Computed:    true,
 				Description: "Unix timestamp of the last cloud scan, or -1 when no scan has completed yet.",
-			},
-			"is_management_account": schema.BoolAttribute{
-				Computed:    true,
-				Description: "True when this cloud is the management account of a connected AWS Organization.",
 			},
 		},
 	}
@@ -302,15 +302,34 @@ func (r *awsCloudResource) Update(ctx context.Context, request resource.UpdateRe
 		return
 	}
 
-	input, diagnostics := updateAWSInput(ctx, planned, priorState)
-	response.Diagnostics.Append(diagnostics...)
-	if response.Diagnostics.HasError() {
+	if err := clouds.Update(ctx, r.client, id, clouds.UpdateCloudInput{
+		Name:        planned.Name.ValueString(),
+		Environment: planned.Environment.ValueString(),
+	}); err != nil {
+		response.Diagnostics.AddError("Error updating AWS cloud", err.Error())
 		return
 	}
 
-	if err := clouds.UpdateAWS(ctx, r.client, id, input); err != nil {
-		response.Diagnostics.AddError("Error updating AWS cloud", err.Error())
-		return
+	if planned.Organization.IsNull() {
+		if priorState.RoleARN.ValueString() != planned.RoleARN.ValueString() {
+			if err := clouds.UpdateAwsCloudCredentials(ctx, r.client, id, clouds.UpdateAwsCloudCredentialsInput{
+				RoleARN: planned.RoleARN.ValueString(),
+			}); err != nil {
+				response.Diagnostics.AddError("Error updating AWS cloud credentials", err.Error())
+				return
+			}
+		}
+	} else {
+		orgInput, diagnostics := updateAWSOrganizationInput(ctx, planned)
+		response.Diagnostics.Append(diagnostics...)
+		if response.Diagnostics.HasError() {
+			return
+		}
+
+		if err := clouds.UpdateOrganization(ctx, r.client, id, orgInput); err != nil {
+			response.Diagnostics.AddError("Error updating AWS cloud organization", err.Error())
+			return
+		}
 	}
 
 	state, diagnostics := r.readBack(ctx, id, planned)
@@ -396,30 +415,13 @@ func createAWSOrganizationInput(ctx context.Context, planned awsCloudModel) (clo
 	}, diagnostics
 }
 
-func updateAWSInput(ctx context.Context, planned, prior awsCloudModel) (clouds.UpdateAWSInput, diag.Diagnostics) {
+func updateAWSOrganizationInput(ctx context.Context, planned awsCloudModel) (clouds.UpdateCloudOrganizationInput, diag.Diagnostics) {
 	var diagnostics diag.Diagnostics
-
-	name := planned.Name.ValueString()
-	environment := planned.Environment.ValueString()
-	roleARN := planned.RoleARN.ValueString()
-
-	input := clouds.UpdateAWSInput{
-		Name:        &name,
-		Environment: &environment,
-	}
-
-	if planned.Organization.IsNull() {
-		if prior.RoleARN.ValueString() != roleARN {
-			input.RoleARN = &roleARN
-		}
-
-		return input, diagnostics
-	}
 
 	var plannedOrg awsOrganizationModel
 	diagnostics.Append(planned.Organization.As(ctx, &plannedOrg, basetypes.ObjectAsOptions{})...)
 	if diagnostics.HasError() {
-		return clouds.UpdateAWSInput{}, diagnostics
+		return clouds.UpdateCloudOrganizationInput{}, diagnostics
 	}
 
 	syncedUnitIDs, listDiagnostics := stringListValues(ctx, plannedOrg.SyncedUnitIDs)
@@ -429,37 +431,33 @@ func updateAWSInput(ctx context.Context, planned, prior awsCloudModel) (clouds.U
 	diagnostics.Append(listDiagnostics...)
 
 	if diagnostics.HasError() {
-		return clouds.UpdateAWSInput{}, diagnostics
+		return clouds.UpdateCloudOrganizationInput{}, diagnostics
 	}
 
-	input.Organization = &clouds.UpdateOrganization{
+	return clouds.UpdateCloudOrganizationInput{
 		SyncedUnitIDs:    strings.Join(syncedUnitIDs, ","),
 		ExcludedAccounts: strings.Join(excludedAccounts, ","),
-	}
-
-	return input, diagnostics
+	}, diagnostics
 }
 
 func awsCloudModelFromAPI(ctx context.Context, cloud clouds.Cloud) (awsCloudModel, diag.Diagnostics) {
 	var diagnostics diag.Diagnostics
 
 	state := awsCloudModel{
-		ID:                  types.StringValue(strconv.FormatInt(cloud.ID, 10)),
-		Name:                types.StringValue(cloud.Name),
-		RoleARN:             types.StringNull(),
-		Environment:         types.StringValue(cloud.Environment),
-		ExternalID:          types.StringValue(cloud.ExternalID),
-		LastScannedAt:       types.Int64Value(cloud.LastScannedAt),
-		IsManagementAccount: types.BoolValue(false),
-		Organization:        types.ObjectNull(awsOrganizationAttributeTypes()),
+		ID:            types.StringValue(strconv.FormatInt(cloud.ID, 10)),
+		Name:          types.StringValue(cloud.Name),
+		RoleARN:       types.StringNull(),
+		Environment:   types.StringValue(cloud.Environment),
+		ExternalID:    types.StringValue(cloud.ExternalID),
+		LastScannedAt: types.Int64Value(cloud.LastScannedAt),
+		Organization:  types.ObjectNull(awsOrganizationAttributeTypes()),
 	}
 
 	if cloud.AWS != nil {
 		state.RoleARN = types.StringValue(cloud.AWS.RoleARN)
-		state.IsManagementAccount = types.BoolValue(cloud.AWS.IsManagementAccount)
 
 		if cloud.AWS.IsManagementAccount && cloud.AWS.Organization != nil {
-			orgObject, orgDiagnostics := organizationObjectValue(ctx, *cloud.AWS.Organization)
+			orgObject, orgDiagnostics := organizationObjectValue(ctx, *cloud.AWS.Organization, cloud.AWS.IsManagementAccount)
 			diagnostics.Append(orgDiagnostics...)
 			state.Organization = orgObject
 		}
@@ -468,7 +466,7 @@ func awsCloudModelFromAPI(ctx context.Context, cloud clouds.Cloud) (awsCloudMode
 	return state, diagnostics
 }
 
-func organizationObjectValue(ctx context.Context, org clouds.Organization) (types.Object, diag.Diagnostics) {
+func organizationObjectValue(ctx context.Context, org clouds.CloudOrganization, isManagementAccount bool) (types.Object, diag.Diagnostics) {
 	synced, diagnostics := types.ListValueFrom(ctx, types.StringType, clouds.SplitCommaSeparated(org.SyncedUnitIDs))
 	excluded, excludedDiagnostics := types.ListValueFrom(ctx, types.StringType, clouds.SplitCommaSeparated(org.ExcludedAccounts))
 	diagnostics.Append(excludedDiagnostics...)
@@ -477,6 +475,7 @@ func organizationObjectValue(ctx context.Context, org clouds.Organization) (type
 	}
 
 	return types.ObjectValueFrom(ctx, awsOrganizationAttributeTypes(), awsOrganizationModel{
+		IsManagementAccount:  types.BoolValue(isManagementAccount),
 		OrganizationID:       types.StringValue(org.OrganizationID),
 		SyncedUnitIDs:        synced,
 		ExcludedAccounts:     excluded,
@@ -487,6 +486,7 @@ func organizationObjectValue(ctx context.Context, org clouds.Organization) (type
 
 func awsOrganizationAttributeTypes() map[string]attr.Type {
 	return map[string]attr.Type{
+		"is_management_account":  types.BoolType,
 		"organization_id":        types.StringType,
 		"synced_unit_ids":        types.ListType{ElemType: types.StringType},
 		"excluded_accounts":      types.ListType{ElemType: types.StringType},
@@ -504,7 +504,6 @@ func identityOnlyAWSCloud(id int64, planned awsCloudModel) awsCloudModel {
 		Organization:        planned.Organization,
 		ExternalID:          types.StringNull(),
 		LastScannedAt:       types.Int64Null(),
-		IsManagementAccount: types.BoolNull(),
 	}
 }
 

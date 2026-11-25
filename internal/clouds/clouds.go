@@ -16,24 +16,63 @@ const (
 	BasePath        = "/public/v1/clouds"
 	pageSize        = 100
 	cacheKey        = "clouds"
-	listQueryParams = "with_org_details=true"
+	listQueryParams = "org_details=true"
+
+	// Environment purpose values accepted by the clouds API.
+	EnvironmentProduction  = "production"
+	EnvironmentStaging     = "staging"
+	EnvironmentDevelopment = "development"
+	EnvironmentMixed       = "mixed"
 )
 
 var SupportedProviders = []string{ProviderAWS}
 
+// SupportedEnvironments are the environment purpose values the API accepts.
+var SupportedEnvironments = []string{
+	EnvironmentProduction,
+	EnvironmentStaging,
+	EnvironmentDevelopment,
+	EnvironmentMixed,
+}
+
 func IsSupported(provider string) bool {
 	return slices.Contains(SupportedProviders, provider)
+}
+
+func IsValidEnvironment(environment string) bool {
+	return slices.Contains(SupportedEnvironments, environment)
 }
 
 type Cloud struct {
 	ID            int64  `json:"id"`
 	Name          string `json:"name"`
 	Provider      string `json:"provider"`
-	Environment   string `json:"environment"`
+	Environment   string `json:"environment"` // one of SupportedEnvironments
 	ExternalID    string `json:"external_id"`
 	LastScannedAt int64  `json:"last_scanned_at"`
 
 	AWS *AWSDetails `json:"-"`
+}
+
+type CloudOrganization struct {
+	OrganizationID       string `json:"organization_id"`
+	SyncedUnitIDs        string `json:"synced_unit_ids"`
+	ExcludedAccounts     string `json:"excluded_accounts"`
+	ExcludedFolders      string `json:"excluded_folders"`
+	ContainerScanEnabled bool   `json:"container_scan_enabled"`
+	VMScanEnabled        bool   `json:"vm_scan_enabled"`
+}
+
+
+type UpdateCloudInput struct {
+	Name        string `json:"name"`
+	Environment string `json:"environment"` // one of SupportedEnvironments
+}
+
+type UpdateCloudOrganizationInput struct {
+	SyncedUnitIDs    string `json:"synced_unit_ids"`
+	ExcludedAccounts string `json:"excluded_accounts"`
+	ExcludedFolders  string `json:"excluded_folders"`
 }
 
 // GetAllClouds returns every cloud from the shared list cache, sorted by ID.
@@ -113,6 +152,18 @@ func Get(ctx context.Context, apiClient *client.Client, id int64) (Cloud, error)
 func Delete(ctx context.Context, apiClient *client.Client, id int64) error {
 	defer client.InvalidateCached(apiClient, cacheKey)
 	return apiClient.Do(ctx, http.MethodDelete, DetailPath(id), nil, nil)
+}
+
+// Update updates a cloud connection.
+func Update(ctx context.Context, apiClient *client.Client, id int64, input UpdateCloudInput) error {
+	defer client.InvalidateCached(apiClient, cacheKey)
+	return apiClient.Do(ctx, http.MethodPut, DetailPath(id), input, nil)
+}
+
+// update cloud organization settings
+func UpdateOrganization(ctx context.Context, apiClient *client.Client, id int64, input UpdateCloudOrganizationInput) error {
+	defer client.InvalidateCached(apiClient, cacheKey)
+	return apiClient.Do(ctx, http.MethodPut, DetailPath(id) + "/organization", input, nil)
 }
 
 // DetailPath is the path of a single cloud.

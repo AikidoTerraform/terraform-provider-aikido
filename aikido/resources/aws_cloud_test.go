@@ -41,9 +41,6 @@ func TestAWSCloudModelFromAPI(t *testing.T) {
 		if !model.Organization.IsNull() {
 			t.Errorf("Organization = %v, want null", model.Organization)
 		}
-		if model.IsManagementAccount != types.BoolValue(false) {
-			t.Errorf("IsManagementAccount = %v", model.IsManagementAccount)
-		}
 	})
 
 	t.Run("organization management account", func(t *testing.T) {
@@ -57,7 +54,7 @@ func TestAWSCloudModelFromAPI(t *testing.T) {
 			AWS: &clouds.AWSDetails{
 				RoleARN:             "arn:aws:iam::111111111111:role/aikido",
 				IsManagementAccount: true,
-				Organization: &clouds.Organization{
+				Organization: &clouds.CloudOrganization{
 					OrganizationID:       "o-123",
 					SyncedUnitIDs:        "r-abcd",
 					ExcludedAccounts:     "222222222222",
@@ -78,6 +75,9 @@ func TestAWSCloudModelFromAPI(t *testing.T) {
 		var org awsOrganizationModel
 		if diagnostics := model.Organization.As(context.Background(), &org, basetypes.ObjectAsOptions{}); diagnostics.HasError() {
 			t.Fatalf("Organization.As: %v", diagnostics)
+		}
+		if org.IsManagementAccount != types.BoolValue(true) {
+			t.Errorf("is_management_account = %v", org.IsManagementAccount)
 		}
 		if org.OrganizationID != types.StringValue("o-123") {
 			t.Errorf("organization_id = %v", org.OrganizationID)
@@ -159,7 +159,7 @@ func TestAWSCloudCreateAndDelete(t *testing.T) {
 			w.WriteHeader(http.StatusCreated)
 			_ = json.NewEncoder(w).Encode(map[string]int64{"id": listed.ID})
 		case r.Method == http.MethodGet && r.URL.Path == clouds.BasePath:
-			listHadOrgDetails = r.URL.Query().Get("with_org_details") == "true"
+			listHadOrgDetails = r.URL.Query().Get("org_details") == "true"
 			_ = json.NewEncoder(w).Encode([]clouds.Cloud{listed})
 		case r.Method == http.MethodDelete && r.URL.Path == clouds.DetailPath(listed.ID):
 			_, _ = io.WriteString(w, `{"success":true}`)
@@ -210,6 +210,6 @@ func TestAWSCloudCreateAndDelete(t *testing.T) {
 		t.Fatalf("call order = %v", order)
 	}
 	if !listHadOrgDetails {
-		t.Error("list GET missing with_org_details=true")
+		t.Error("list GET missing org_details=true")
 	}
 }

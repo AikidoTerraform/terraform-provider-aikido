@@ -26,7 +26,7 @@ func awsOrgCloud() clouds.Cloud {
 		AWS: &clouds.AWSDetails{
 			RoleARN:             "arn:aws:iam::111111111111:role/aikido",
 			IsManagementAccount: true,
-			Organization: &clouds.Organization{
+			Organization: &clouds.CloudOrganization{
 				OrganizationID: "o-123",
 				SyncedUnitIDs:  "r-abcd",
 			},

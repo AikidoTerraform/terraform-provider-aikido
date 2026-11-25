@@ -122,8 +122,8 @@ func TestCreateAWSAndList(t *testing.T) {
 	if cloud.Name != "prod" {
 		t.Errorf("Name = %q", cloud.Name)
 	}
-	if got := listQuery; !strings.Contains(got, "with_org_details=true") {
-		t.Errorf("list query = %q, want with_org_details=true", got)
+	if got := listQuery; !strings.Contains(got, "org_details=true") {
+		t.Errorf("list query = %q, want org_details=true", got)
 	}
 }
 
@@ -172,8 +172,10 @@ func TestGet_RequestsOrgDetails(t *testing.T) {
 			AWS: &AWSDetails{
 				RoleARN:             "arn:aws:iam::111111111111:role/aikido",
 				IsManagementAccount: true,
-				Organization: &Organization{
+				Organization: &CloudOrganization{
 					OrganizationID: "o-1", SyncedUnitIDs: "r-1",
+					ContainerScanEnabled: true,
+					VMScanEnabled:        true,
 				},
 			},
 		})

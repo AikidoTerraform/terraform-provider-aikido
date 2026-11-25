@@ -87,6 +87,9 @@ func (d *cloudsDataSource) Schema(_ context.Context, _ datasource.SchemaRequest,
 			"environment": schema.StringAttribute{
 				Optional:    true,
 				Description: "Only return clouds with this environment purpose. One of: production, staging, development, mixed.",
+				Validators: []validator.String{
+					stringvalidator.OneOf(clouds.SupportedEnvironments...),
+				},
 			},
 			"external_id": schema.StringAttribute{
 				Optional:    true,
@@ -314,7 +317,7 @@ func cloudModelFromAPI(ctx context.Context, cloud clouds.Cloud) (cloudModel, dia
 	return model, diagnostics
 }
 
-func cloudOrganizationObjectValue(ctx context.Context, org clouds.Organization) (types.Object, diag.Diagnostics) {
+func cloudOrganizationObjectValue(ctx context.Context, org clouds.CloudOrganization) (types.Object, diag.Diagnostics) {
 	synced, diagnostics := types.ListValueFrom(ctx, types.StringType, clouds.SplitCommaSeparated(org.SyncedUnitIDs))
 	excluded, excludedDiagnostics := types.ListValueFrom(ctx, types.StringType, clouds.SplitCommaSeparated(org.ExcludedAccounts))
 	diagnostics.Append(excludedDiagnostics...)

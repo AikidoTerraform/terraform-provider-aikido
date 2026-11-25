@@ -18,24 +18,13 @@ const (
 // AWSDetails holds AWS-specific fields. On the public API they are flat on the
 // cloud object; Cloud.UnmarshalJSON / MarshalJSON project them here.
 type AWSDetails struct {
-	RoleARN             string        `json:"role_arn"`
-	IsManagementAccount bool          `json:"is_management_account"`
-	Organization        *Organization `json:"organization"`
+	RoleARN             string             `json:"role_arn"`
+	IsManagementAccount bool               `json:"is_management_account"`
+	Organization        *CloudOrganization `json:"organization"`
 }
 
 func (a AWSDetails) empty() bool {
 	return a.RoleARN == "" && !a.IsManagementAccount && a.Organization == nil
-}
-
-// Organization is the organization block returned on GET/list for an AWS
-// management-account cloud. SyncedUnitIDs and ExcludedAccounts are
-// comma-separated IDs (e.g. "ou-a,ou-b").
-type Organization struct {
-	OrganizationID       string `json:"organization_id"`
-	SyncedUnitIDs        string `json:"synced_unit_ids"`
-	ExcludedAccounts     string `json:"excluded_accounts"`
-	ContainerScanEnabled bool   `json:"container_scan_enabled"`
-	VMScanEnabled        bool   `json:"vm_scan_enabled"`
 }
 
 func SplitCommaSeparated(value string) []string {
@@ -57,39 +46,25 @@ func SplitCommaSeparated(value string) []string {
 	return out
 }
 
-// CreateAWSInput is the body for POST /clouds/aws (single account).
 type CreateAWSInput struct {
 	Name        string `json:"name"`
 	RoleARN     string `json:"role_arn"`
 	Environment string `json:"environment"`
 }
 
-// CreateAWSOrganizationInput is the body for POST /clouds/aws/organization.
-// Fields are flat on the request, matching the public API.
 type CreateAWSOrganizationInput struct {
 	Name                 string `json:"name"`
-	RoleARN              string `json:"role_arn"`
 	Environment          string `json:"environment"`
 	OrganizationID       string `json:"organization_id"`
 	SyncedUnitIDs        string `json:"synced_unit_ids"`
+	RoleARN              string `json:"role_arn"`
 	ExcludedAccounts     string `json:"excluded_accounts,omitempty"`
-	ContainerScanEnabled bool   `json:"container_scan_enabled"`
-	VMScanEnabled        bool   `json:"vm_scan_enabled"`
+	ContainerScanEnabled bool   `json:"container_scan_enabled,omitempty"`
+	VMScanEnabled        bool   `json:"vm_scan_enabled,omitempty"`
 }
 
-// UpdateAWSInput is the body for PUT /clouds/aws/{id}. Omitted pointer fields
-// are left unchanged.
-type UpdateAWSInput struct {
-	Name         *string             `json:"name,omitempty"`
-	RoleARN      *string             `json:"role_arn,omitempty"`
-	Environment  *string             `json:"environment,omitempty"`
-	Organization *UpdateOrganization `json:"organization,omitempty"`
-}
-
-// UpdateOrganization updates sync settings for a management account.
-type UpdateOrganization struct {
-	SyncedUnitIDs    string `json:"synced_unit_ids,omitempty"`
-	ExcludedAccounts string `json:"excluded_accounts"`
+type UpdateAwsCloudCredentialsInput struct {
+	RoleARN string `json:"role_arn"`
 }
 
 // CreateAWS connects a single AWS account and returns its new ID.
@@ -123,8 +98,10 @@ func CreateAWSOrganization(ctx context.Context, apiClient *client.Client, input 
 	return created.ID, nil
 }
 
-// UpdateAWS updates an AWS cloud connection.
-func UpdateAWS(ctx context.Context, apiClient *client.Client, id int64, input UpdateAWSInput) error {
+// Update the IAM role ARN for a single-account AWS cloud connection. 
+// Updating IAM roles for organization-linked clouds is not allowed.
+// Reconnect the cloud to change the IAM role.
+func UpdateAwsCloudCredentials(ctx context.Context, apiClient *client.Client, id int64, input UpdateAwsCloudCredentialsInput) error {
 	defer client.InvalidateCached(apiClient, cacheKey)
-	return apiClient.Do(ctx, http.MethodPut, AWSBasePath+"/"+strconv.FormatInt(id, 10), input, nil)
+	return apiClient.Do(ctx, http.MethodPut, AWSBasePath+"/"+strconv.FormatInt(id, 10)+"/credentials", input, nil)
 }
