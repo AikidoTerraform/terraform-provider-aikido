@@ -47,3 +47,15 @@ provider "aikido" {
 - `client_id` (String) Aikido API client ID. Falls back to the AIKIDO_CLIENT_ID environment variable.
 - `client_secret` (String, Sensitive) Aikido API client secret. Falls back to the AIKIDO_CLIENT_SECRET environment variable.
 - `requests_per_minute` (Number) Client-side rate limit for outbound API requests, in requests per minute. Defaults to 20 (the standard API limit). Only raise this if the Aikido team has increased your workspace's API rate limit accordingly; otherwise requests will be throttled with HTTP 429 responses.
+
+## Rate limits and large configurations
+
+Large initial applies can take longer because workspace API rate limits apply. Before increasing `requests_per_minute`, ask Aikido to raise your workspace limit. Subsequent applies are generally faster because unchanged settings are skipped.
+
+## Teams and Git provider synchronisation
+
+`aikido_team`, `aikido_team_user` and `aikido_team_resource` support teams created in Aikido. Teams synced from a Git provider are read-only in the Terraform provider.
+
+To give people access that their Git provider does not grant — security engineers who are not assigned to every repository, for instance — create an Aikido team for them and link the repositories to it. That access is independent of the Git provider and survives synchronisation.
+
+Membership only widens access for users whose role is `team_only`, since those see just the repositories of the teams they belong to. `default` and `admin` users already see every repository, so putting them on a team says who owns what rather than who may look at what.

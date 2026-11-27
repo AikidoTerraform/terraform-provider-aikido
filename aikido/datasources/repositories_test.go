@@ -1,11 +1,13 @@
 package datasources
 
 import (
+	"context"
 	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/AikidoTerraform/terraform-provider-aikido/internal/repositories"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
@@ -16,11 +18,16 @@ func TestMatchesFilters(t *testing.T) {
 		Provider: "github",
 		Branch:   "main",
 		Active:   true,
+		Labels: []repositories.Label{
+			{Name: "product:payments", IsImported: true},
+			{Name: "tier:1"},
+		},
 	}
 
 	tests := []struct {
 		name   string
 		config repositoriesDataSourceModel
+		labels []string
 		want   bool
 	}{
 		{
@@ -56,15 +63,88 @@ func TestMatchesFilters(t *testing.T) {
 			},
 			want: false,
 		},
+		{
+			name:   "empty label filter matches everything",
+			labels: []string{},
+			want:   true,
+		},
+		{
+			name:   "single label matches",
+			labels: []string{"product:payments"},
+			want:   true,
+		},
+		{
+			name:   "label matching is exact, not a prefix",
+			labels: []string{"product"},
+			want:   false,
+		},
+		{
+			name:   "multiple labels combine with AND",
+			labels: []string{"product:payments", "tier:1"},
+			want:   true,
+		},
+		{
+			name:   "one missing label excludes",
+			labels: []string{"product:payments", "tier:2"},
+			want:   false,
+		},
+		{
+			name:   "label filter combines with the other filters",
+			config: repositoriesDataSourceModel{Name: types.StringValue("checkout")},
+			labels: []string{"tier:1"},
+			want:   false,
+		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if got := matchesFilters(repo, test.config); got != test.want {
+			if got := matchesFilters(repo, test.config, test.labels); got != test.want {
 				t.Errorf("matchesFilters = %v, want %v", got, test.want)
 			}
 		})
 	}
+}
+
+// A repository with no labels must never satisfy a label filter, and must still
+// pass when no label filter is set.
+func TestMatchesFilters_RepositoryWithoutLabels(t *testing.T) {
+	repo := repositories.Repository{ID: 1, Name: "payments"}
+
+	if !matchesFilters(repo, repositoriesDataSourceModel{}, nil) {
+		t.Error("unfiltered match = false, want true")
+	}
+	if matchesFilters(repo, repositoriesDataSourceModel{}, []string{"tier:1"}) {
+		t.Error("label match on an unlabelled repository = true, want false")
+	}
+}
+
+func TestLabelFilter(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("null set yields no filter", func(t *testing.T) {
+		names, diagnostics := labelFilter(ctx, types.SetNull(types.StringType))
+		if diagnostics.HasError() {
+			t.Fatalf("got %v, want no diagnostics", diagnostics)
+		}
+		if names != nil {
+			t.Errorf("names = %v, want nil", names)
+		}
+	})
+
+	t.Run("values are converted in order", func(t *testing.T) {
+		set := types.SetValueMust(types.StringType, []attr.Value{
+			types.StringValue("product:payments"),
+			types.StringValue("tier:1"),
+		})
+
+		names, diagnostics := labelFilter(ctx, set)
+		if diagnostics.HasError() {
+			t.Fatalf("got %v, want no diagnostics", diagnostics)
+		}
+		if len(names) != 2 || names[0] != "product:payments" || names[1] != "tier:1" {
+			t.Errorf("names = %v", names)
+		}
+	})
 }
 
 func TestRepositoryModelFromAPI(t *testing.T) {
@@ -124,9 +204,12 @@ func TestRepositoryModelFromAPI_EmptyEnumsBecomeNull(t *testing.T) {
 // workspace mirrors a real one: a single Git provider, repositories both active
 // and inactive, and more than one scanned branch.
 var workspace = []repositories.Repository{
-	{ID: 10, Name: "payments", Provider: "github", Branch: "main", Active: true},
-	{ID: 20, Name: "legacy-batch", Provider: "github", Branch: "master", Active: false},
-	{ID: 30, Name: "checkout", Provider: "github", Branch: "main", Active: true},
+	{ID: 10, Name: "payments", Provider: "github", Branch: "main", Active: true,
+		Labels: []repositories.Label{{Name: "product:payments", IsImported: true}, {Name: "tier:1"}}},
+	{ID: 20, Name: "legacy-batch", Provider: "github", Branch: "master", Active: false,
+		Labels: []repositories.Label{{Name: "product:payments", IsImported: true}}},
+	{ID: 30, Name: "checkout", Provider: "github", Branch: "main", Active: true,
+		Labels: []repositories.Label{{Name: "product:payments", IsImported: true}, {Name: "tier:1"}}},
 	{ID: 40, Name: "team-a-billing", Provider: "github", Branch: "main", Active: true},
 }
 
@@ -136,12 +219,29 @@ func TestMatchingRepositories_IDsStayAlignedAfterFiltering(t *testing.T) {
 	tests := []struct {
 		name    string
 		config  repositoriesDataSourceModel
+		labels  []string
 		wantIDs []int64
 	}{
 		{
 			name:    "no filters returns everything",
 			config:  repositoriesDataSourceModel{},
 			wantIDs: []int64{10, 20, 30, 40},
+		},
+		{
+			name:    "label selects a product across repositories",
+			labels:  []string{"product:payments"},
+			wantIDs: []int64{10, 20, 30},
+		},
+		{
+			name:    "label and active combine with AND",
+			config:  repositoriesDataSourceModel{Active: types.BoolValue(true)},
+			labels:  []string{"product:payments"},
+			wantIDs: []int64{10, 30},
+		},
+		{
+			name:    "unmatched label yields empty, not null",
+			labels:  []string{"product:identity"},
+			wantIDs: []int64{},
 		},
 		{
 			name:    "active filter",
@@ -175,7 +275,7 @@ func TestMatchingRepositories_IDsStayAlignedAfterFiltering(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			matched, matchedIDs := matchingRepositories(workspace, test.config)
+			matched, matchedIDs := matchingRepositories(workspace, test.config, test.labels)
 
 			if matched == nil || matchedIDs == nil {
 				t.Fatal("matchingRepositories returned nil; want non-nil slices so Terraform sees an empty list")
@@ -229,6 +329,11 @@ func TestUnknownFilterDiagnostics(t *testing.T) {
 			{"name", repositoriesDataSourceModel{Name: types.StringUnknown()}},
 			{"branch", repositoriesDataSourceModel{Branch: types.StringUnknown()}},
 			{"active", repositoriesDataSourceModel{Active: types.BoolUnknown()}},
+			{"labels", repositoriesDataSourceModel{Labels: types.SetUnknown(types.StringType)}},
+			{"labels", repositoriesDataSourceModel{Labels: types.SetValueMust(types.StringType, []attr.Value{
+				types.StringValue("tier:1"),
+				types.StringUnknown(),
+			})}},
 		}
 
 		for _, test := range tests {

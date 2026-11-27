@@ -6,11 +6,14 @@ package repositories
 import (
 	"cmp"
 	"context"
+	"fmt"
 	"net/http"
+	"net/url"
 	"slices"
 	"strconv"
 
 	"github.com/AikidoTerraform/terraform-provider-aikido/internal/client"
+	"github.com/AikidoTerraform/terraform-provider-aikido/internal/labels"
 )
 
 const (
@@ -41,11 +44,7 @@ type Repository struct {
 	Labels                []Label `json:"labels"`
 }
 
-type Label struct {
-	ID         string `json:"id"`
-	Name       string `json:"name"`
-	IsImported bool   `json:"is_imported"`
-}
+type Label = labels.Label
 
 // DetailPath is the detail endpoint for a single repository.
 func DetailPath(id int64) string {
@@ -63,12 +62,7 @@ func ByID(ctx context.Context, apiClient *client.Client, id int64) (Repository, 
 
 	cached, ok := byID[id]
 	if !ok {
-		return Repository{}, &client.APIError{
-			StatusCode: http.StatusNotFound,
-			Method:     http.MethodGet,
-			Path:       DetailPath(id),
-			Body:       "repository not found",
-		}
+		return Repository{}, fmt.Errorf("%w: repository %d", client.ErrNotInList, id)
 	}
 
 	return cached, nil
@@ -93,6 +87,33 @@ func All(ctx context.Context, apiClient *client.Client) ([]Repository, error) {
 	return all, nil
 }
 
+// ByName returns repositories matching name and an optional branch, sorted by
+// ID. The filters are pushed to the API so the provider does not fetch the full
+// workspace list. Exact matching is also enforced locally.
+func ByName(ctx context.Context, apiClient *client.Client, name, branch string) ([]Repository, error) {
+	query := listQueryParams + "&filter_name=" + url.QueryEscape(name)
+	if branch != "" {
+		query += "&filter_branch=" + url.QueryEscape(branch)
+	}
+
+	items, err := client.FetchAllPages[Repository](ctx, apiClient, BasePath, pageSize, query)
+	if err != nil {
+		return nil, err
+	}
+
+	matched := make([]Repository, 0, len(items))
+	for _, repo := range items {
+		if repo.Name == name && (branch == "" || repo.Branch == branch) {
+			matched = append(matched, repo)
+		}
+	}
+	slices.SortFunc(matched, func(left, right Repository) int {
+		return cmp.Compare(left.ID, right.ID)
+	})
+
+	return matched, nil
+}
+
 // Detail loads one repository via GET /repositories/code/{id}. Use after writes
 // so state reflects the API rather than a possibly stale list cache.
 func Detail(ctx context.Context, apiClient *client.Client, id int64) (Repository, error) {
@@ -102,6 +123,13 @@ func Detail(ctx context.Context, apiClient *client.Client, id int64) (Repository
 	}
 
 	return repo, nil
+}
+
+// InvalidateCache drops the cached list so the next read reflects a write.
+// Callers that mutate a repository must invoke it, otherwise a data source
+// reading later in the same apply still sees the pre-write list.
+func InvalidateCache(apiClient *client.Client) {
+	client.InvalidateCached(apiClient, cacheKey)
 }
 
 // cachedByID fetches every repository once per client and keys them by ID.

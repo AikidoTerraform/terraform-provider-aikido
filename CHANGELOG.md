@@ -1,14 +1,63 @@
+## 1.10.0
+
+- **New Resource:** `aikido_task_tracking_code_repo_mapping` — maps Aikido code repositories to task-tracker projects (Linear, Jira, and others) via the public `mapCodeReposToProjects` API.
+
+## 1.9.0
+
+FEATURES:
+
+- **New Resource:** `aikido_container_clone` lets you scan multiple tags of the same container image.
+- **New Resource:** `aikido_custom_sast_rule` creates and manages custom security checks for code repository scans.
+- **New Data Source:** `aikido_custom_sast_rules` lists the workspace's custom SAST rules and identifies rules that failed during a scan.
+
+## 1.8.0
+
+FEATURES:
+
+- **New Data Source:** `aikido_repository` makes it easy to reference a code repository by name instead of its numeric Aikido ID. An optional branch can distinguish repositories configured for multiple branches.
+
+## 1.7.0
+
+FEATURES:
+
+- **New Resource:** `aikido_container` manages scanning activation, tag selection, sensitivity, connectivity, labels, and the linked code repository for an existing Aikido container. Removing the resource deactivates the container without deleting it from Aikido.
+- **New Data Source:** `aikido_containers` finds containers by name, registry, cloud, activation state, tag filter, or labels. Results can be used with `aikido_container` and `aikido_team_resource`.
+
+BUG FIXES:
+
+- `aikido_repository`: imported labels no longer cause persistent Terraform changes. They remain available through data sources but cannot be managed by the resource.
+
 ## 1.6.0
 
 FEATURES:
 
-- **New Resource:** `aikido_task_tracking_code_repo_mapping` — maps Aikido code repositories to task-tracker projects (Linear, Jira, and others) via the public `mapCodeReposToProjects` API.
+- **New Resource:** `aikido_team_resource` — links one resource (code repository, cloud, container image, domain or Zen app) to a team created in Aikido, including optional repository path limitations, via the public `linkResourceToTeam` / `unlinkResourceFromTeam` APIs.
+
+## 1.5.1
+
+BUG FIXES:
+
+- `aikido_repository`: label updates now accept the numeric label IDs returned by the repository detail API.
 
 ## 1.5.0
 
 FEATURES:
 
 - **New Resource:** `aikido_task_tracking_team_mapping` — maps Aikido teams to task-tracker projects (Linear, Jira, and others) via the public `mapTeamsToProjects` API.
+- **New Resource:** `aikido_team` — manages a team created in Aikido and, optionally, the code repositories it is responsible for. Teams synced from a Git provider belong to that provider and are rejected.
+- **New Data Source:** `aikido_teams` — looks up Aikido teams, including those synced from a Git provider, and reports the code repositories each is responsible for.
+- **New Data Source:** `aikido_users` — looks up workspace users, filtering by ID, email, full name, role, authentication type or activation state.
+- **New Resource:** `aikido_team_user` — manages one user's membership of a team created in Aikido. Memberships of teams synced from a Git provider are rejected.
+- **New Resource:** `aikido_user_permissions` — manages the role and permissions of a user who already exists in Aikido. Capability attributes are authoritative; removing the resource leaves the user's permissions unchanged.
+
+ENHANCEMENTS:
+
+- `aikido_repositories`: added a `labels` filter, returning repositories that carry every listed label. Labels imported from GitHub topics and custom properties match the same as labels managed in Aikido.
+
+BUG FIXES:
+
+- `aikido_repository`: activation, sensitivity, connectivity and label writes now drop the cached repository list, so a data source reading later in the same apply sees the change.
+- `aikido_repository`: a failure while fetching the repository list no longer removes the resource from Terraform state. State is removed only when a successful response confirms that the repository is absent.
 
 ## 1.4.0
 

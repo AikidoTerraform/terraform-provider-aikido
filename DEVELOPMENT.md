@@ -8,8 +8,8 @@ For user-facing docs, see [`README.md`](README.md).
 
 | Tool | Version | Notes |
 |------|---------|--------|
-| [Go](https://go.dev/doc/install) | >= 1.26 | Matches `go.mod` |
-| [Terraform](https://developer.hashicorp.com/terraform/downloads) | >= 1.0 | Required for e2e applies |
+| [Go](https://go.dev/doc/install) | >= 1.27.4 | Matches `go.mod` |
+| [Terraform](https://developer.hashicorp.com/terraform/downloads) | >= 1.2 | Required for e2e applies |
 | [golangci-lint](https://golangci-lint.run/welcome/install/) | latest | Optional; used by `make lint` |
 
 Also need an Aikido API client ID and secret (OAuth2 client credentials) from the Aikido dashboard for any live API / Terraform e2e work.

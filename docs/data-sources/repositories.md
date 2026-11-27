@@ -59,6 +59,29 @@ resource "aikido_autofix_sast_settings" "example" {
   repo_ids        = data.aikido_repositories.active.ids
 }
 
+# The labels filter is an exact match, and several labels are an AND: a repository
+# must carry all of them. GitHub topics arrive as plain labels (payments) and GitHub
+# custom properties as property:value (product:payments), so a repository's product
+# is selectable without maintaining a list of repository IDs by hand.
+data "aikido_repositories" "payments_tier_1" {
+  active = true
+  labels = ["product:payments", "tier:1"]
+}
+
+# OR, and anything else the AND filter cannot express, stays a Terraform expression
+# over the repositories list.
+data "aikido_repositories" "active_all" {
+  active = true
+}
+
+output "payments_or_identity_repository_ids" {
+  value = [
+    for repository in data.aikido_repositories.active_all.repositories :
+    tonumber(repository.id)
+    if contains(repository.labels, "product:payments") || contains(repository.labels, "product:identity")
+  ]
+}
+
 # The name filter is an exact match. Selecting repositories by naming convention
 # is done with a Terraform expression over the repositories list: startswith for a
 # prefix, endswith for a suffix, or can(regex(...)) for anything more involved.
@@ -112,6 +135,7 @@ output "never_scanned_repositories" {
 
 - `active` (Boolean) Only return repositories with this activation state. Omit to return both active and inactive repositories.
 - `branch` (String) Only return repositories whose scanned branch is exactly this.
+- `labels` (Set of String) Only return repositories carrying every one of these labels, matched exactly. Labels imported from GitHub topics (payments) or custom properties (product:payments) match the same as labels managed in Aikido. An empty set matches every repository; use Terraform expressions over the repositories attribute for OR and other conditions.
 - `name` (String) Only return repositories whose name is exactly this. Matching is exact, not a substring or glob. A name can match more than one repository: configuring a second branch for a repository adds a separate repository in Aikido, so combine this with branch to select exactly one. To select repositories by naming convention instead, omit this and filter the repositories list with a Terraform expression, for example: [for repository in data.aikido_repositories.all.repositories : tonumber(repository.id) if startswith(repository.name, "team-a-")].
 
 ### Read-Only
