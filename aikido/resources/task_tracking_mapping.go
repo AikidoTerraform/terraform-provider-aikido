@@ -41,21 +41,24 @@ func projectMappingGETPath(integrationID types.Int64) string {
 	return projectMappingPath + "?integration_id=" + strconv.FormatInt(integrationID.ValueInt64(), 10)
 }
 
-func mappingResourceID(integrationID types.Int64) string {
+// mappingResourceID returns the resource ID. sentinel is the resource's
+// workspace-wide ID, used when no integration_id is set.
+func mappingResourceID(integrationID types.Int64, sentinel string) string {
 	if integrationID.IsNull() || integrationID.IsUnknown() {
-		return taskTrackingTeamMappingResourceID
+		return sentinel
 	}
 	return strconv.FormatInt(integrationID.ValueInt64(), 10)
 }
 
-func parseMappingImportID(id string) (string, types.Int64, error) {
-	if id == taskTrackingTeamMappingResourceID {
+// parseMappingImportID accepts the resource's sentinel or a numeric integration ID.
+func parseMappingImportID(id, sentinel string) (string, types.Int64, error) {
+	if id == sentinel {
 		return id, types.Int64Null(), nil
 	}
 
 	integrationID, err := strconv.ParseInt(id, 10, 64)
 	if err != nil || integrationID < 1 {
-		return "", types.Int64Null(), fmt.Errorf("use %q when no integration_id is set, or the numeric integration ID", taskTrackingTeamMappingResourceID)
+		return "", types.Int64Null(), fmt.Errorf("use %q when no integration_id is set, or the numeric integration ID", sentinel)
 	}
 
 	return id, types.Int64Value(integrationID), nil

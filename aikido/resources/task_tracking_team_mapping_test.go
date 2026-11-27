@@ -75,10 +75,10 @@ func TestProjectMappingGETPath(t *testing.T) {
 }
 
 func TestTeamMappingResourceID(t *testing.T) {
-	if got := mappingResourceID(types.Int64Null()); got != taskTrackingTeamMappingResourceID {
+	if got := mappingResourceID(types.Int64Null(), taskTrackingTeamMappingResourceID); got != taskTrackingTeamMappingResourceID {
 		t.Errorf("null id = %s", got)
 	}
-	if got := mappingResourceID(types.Int64Value(7)); got != "7" {
+	if got := mappingResourceID(types.Int64Value(7), taskTrackingTeamMappingResourceID); got != "7" {
 		t.Errorf("integration id = %s, want 7", got)
 	}
 }
@@ -447,7 +447,7 @@ func TestTeamMappingDelete_LeavesRemoteUnchanged(t *testing.T) {
 }
 
 func TestParseTeamMappingImportID(t *testing.T) {
-	id, integrationID, err := parseMappingImportID(taskTrackingTeamMappingResourceID)
+	id, integrationID, err := parseMappingImportID(taskTrackingTeamMappingResourceID, taskTrackingTeamMappingResourceID)
 	if err != nil {
 		t.Fatalf("sentinel: %v", err)
 	}
@@ -455,7 +455,7 @@ func TestParseTeamMappingImportID(t *testing.T) {
 		t.Errorf("sentinel id=%s integration=%v", id, integrationID)
 	}
 
-	id, integrationID, err = parseMappingImportID("2")
+	id, integrationID, err = parseMappingImportID("2", taskTrackingTeamMappingResourceID)
 	if err != nil {
 		t.Fatalf("numeric: %v", err)
 	}
@@ -463,10 +463,10 @@ func TestParseTeamMappingImportID(t *testing.T) {
 		t.Errorf("numeric id=%s integration=%d", id, integrationID.ValueInt64())
 	}
 
-	if _, _, err := parseMappingImportID("linear"); err == nil {
+	if _, _, err := parseMappingImportID("linear", taskTrackingTeamMappingResourceID); err == nil {
 		t.Fatal("expected error for non-numeric import ID")
 	}
-	if _, _, err := parseMappingImportID("0"); err == nil {
+	if _, _, err := parseMappingImportID("0", taskTrackingTeamMappingResourceID); err == nil {
 		t.Fatal("expected error for integration ID 0")
 	}
 }
