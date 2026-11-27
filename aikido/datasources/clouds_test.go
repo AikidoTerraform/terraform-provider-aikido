@@ -5,8 +5,9 @@ import (
 	"testing"
 
 	"github.com/AikidoTerraform/terraform-provider-aikido/internal/clouds"
+	"github.com/hashicorp/terraform-plugin-framework/datasource"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 )
 
 func awsCloud() clouds.Cloud {
@@ -38,11 +39,25 @@ func azureCloud() clouds.Cloud {
 	return clouds.Cloud{
 		ID: 3, Name: "Azure prod", Provider: "azure", Environment: "production",
 		ExternalID: "sub-1",
+		Azure:      &clouds.AzureDetails{ApplicationId: "app-1", DirectoryId: "tenant-1", AzureEnvironment: "public"},
 	}
 }
 
+func azureOrgCloud() clouds.Cloud {
+	cloud := azureCloud()
+	cloud.ID = 4
+	cloud.Name = "Azure management"
+	cloud.Azure.IsManagementAccount = true
+	cloud.Azure.Organization = &clouds.CloudOrganization{
+		OrganizationID: "tenant-1", SyncedUnitIDs: "tenant-1",
+		ExcludedFolders: " group-1,group-2 ", ExcludedAccounts: "sub-2",
+		ContainerScanEnabled: true, VMScanEnabled: true,
+	}
+	return cloud
+}
+
 func allTestClouds() []clouds.Cloud {
-	return []clouds.Cloud{awsCloud(), awsOrgCloud(), azureCloud()}
+	return []clouds.Cloud{awsCloud(), awsOrgCloud(), azureCloud(), azureOrgCloud(), {ID: 5, Name: "GCP prod", Provider: "gcp"}}
 }
 
 func supportedTestClouds() []clouds.Cloud {
@@ -78,7 +93,7 @@ func TestMatchingClouds_Filters(t *testing.T) {
 		{
 			name:    "no filter returns every supported cloud",
 			config:  cloudsDataSourceModel{},
-			wantIDs: []int64{1, 2},
+			wantIDs: []int64{1, 2, 3, 4},
 		},
 		{
 			name:    "cloud_provider selects aws",
@@ -88,7 +103,17 @@ func TestMatchingClouds_Filters(t *testing.T) {
 		{
 			name:    "management account filter",
 			config:  cloudsDataSourceModel{IsManagementAccount: types.BoolValue(true)},
-			wantIDs: []int64{2},
+			wantIDs: []int64{2, 4},
+		},
+		{
+			name:    "non-management account filter",
+			config:  cloudsDataSourceModel{IsManagementAccount: types.BoolValue(false)},
+			wantIDs: []int64{1, 3},
+		},
+		{
+			name:    "azure management account filter",
+			config:  cloudsDataSourceModel{CloudProvider: types.StringValue(clouds.ProviderAzure), IsManagementAccount: types.BoolValue(true)},
+			wantIDs: []int64{4},
 		},
 		{
 			name:    "name matches exactly",
@@ -97,7 +122,7 @@ func TestMatchingClouds_Filters(t *testing.T) {
 		},
 		{
 			name:    "unsupported provider clouds are not listed",
-			config:  cloudsDataSourceModel{Name: types.StringValue("Azure prod")},
+			config:  cloudsDataSourceModel{Name: types.StringValue("GCP prod")},
 			wantIDs: []int64{},
 		},
 		{
@@ -135,54 +160,27 @@ func TestMatchingClouds_Filters(t *testing.T) {
 	}
 }
 
-func TestCloudModelFromAPI_NestsAWS(t *testing.T) {
-	model, diagnostics := cloudModelFromAPI(context.Background(), awsOrgCloud())
+func TestCloudsDataSourceStateMatchesSchema(t *testing.T) {
+	ctx := context.Background()
+	d := NewCloudsDataSource()
+	var response datasource.SchemaResponse
+	d.Schema(ctx, datasource.SchemaRequest{}, &response)
+	if diagnostics := response.Schema.ValidateImplementation(ctx); diagnostics.HasError() {
+		t.Fatal(diagnostics)
+	}
+	models, ids, diagnostics := matchingClouds(ctx, supportedTestClouds(), cloudsDataSourceModel{})
 	if diagnostics.HasError() {
-		t.Fatalf("diagnostics: %v", diagnostics)
+		t.Fatal(diagnostics)
 	}
-	if model.AWS.IsNull() {
-		t.Fatal("expected aws nested object")
+	state := tfsdk.State{Schema: response.Schema}
+	if diagnostics := state.Set(ctx, cloudsDataSourceModel{Clouds: models, IDs: ids}); diagnostics.HasError() {
+		t.Fatal(diagnostics)
 	}
-
-	var aws cloudAWSModel
-	diagnostics.Append(model.AWS.As(context.Background(), &aws, basetypes.ObjectAsOptions{})...)
-	if diagnostics.HasError() {
-		t.Fatalf("aws as: %v", diagnostics)
+	var roundTrip cloudsDataSourceModel
+	if diagnostics := state.Get(ctx, &roundTrip); diagnostics.HasError() {
+		t.Fatal(diagnostics)
 	}
-	if !aws.IsManagementAccount.ValueBool() {
-		t.Fatalf("is_management_account = %v", aws.IsManagementAccount)
-	}
-	if aws.Organization.IsNull() {
-		t.Fatal("expected organization nested object on management account")
-	}
-
-	var org cloudAWSOrganizationModel
-	diagnostics.Append(aws.Organization.As(context.Background(), &org, basetypes.ObjectAsOptions{})...)
-	if diagnostics.HasError() {
-		t.Fatalf("organization as: %v", diagnostics)
-	}
-	if org.OrganizationID != types.StringValue("o-123") {
-		t.Fatalf("organization_id = %v", org.OrganizationID)
-	}
-
-	singleModel, diagnostics := cloudModelFromAPI(context.Background(), awsCloud())
-	if diagnostics.HasError() {
-		t.Fatalf("diagnostics: %v", diagnostics)
-	}
-	var singleAWS cloudAWSModel
-	diagnostics.Append(singleModel.AWS.As(context.Background(), &singleAWS, basetypes.ObjectAsOptions{})...)
-	if diagnostics.HasError() {
-		t.Fatalf("aws as: %v", diagnostics)
-	}
-	if !singleAWS.Organization.IsNull() {
-		t.Fatal("expected organization to be null for single-account clouds")
-	}
-
-	azureModel, diagnostics := cloudModelFromAPI(context.Background(), azureCloud())
-	if diagnostics.HasError() {
-		t.Fatalf("diagnostics: %v", diagnostics)
-	}
-	if !azureModel.AWS.IsNull() {
-		t.Fatal("expected aws nested object to be null for non-aws clouds")
+	if len(roundTrip.Clouds) != 4 || !roundTrip.Clouds[0].Azure.IsNull() || roundTrip.Clouds[3].Azure.IsNull() || roundTrip.Clouds[0].AWS.IsNull() || !roundTrip.Clouds[3].AWS.IsNull() {
+		t.Fatalf("unexpected round-trip state: %#v", roundTrip)
 	}
 }

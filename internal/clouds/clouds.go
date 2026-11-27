@@ -8,8 +8,11 @@ import (
 	"net/http"
 	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/AikidoTerraform/terraform-provider-aikido/internal/client"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
 const (
@@ -25,7 +28,7 @@ const (
 	EnvironmentMixed       = "mixed"
 )
 
-var SupportedProviders = []string{ProviderAWS}
+var SupportedProviders = []string{ProviderAWS, ProviderAzure}
 
 // SupportedEnvironments are the environment purpose values the API accepts.
 var SupportedEnvironments = []string{
@@ -51,7 +54,8 @@ type Cloud struct {
 	ExternalID    string `json:"external_id"`
 	LastScannedAt int64  `json:"last_scanned_at"`
 
-	AWS *AWSDetails `json:"-"`
+	AWS   *AWSDetails   `json:"-"`
+	Azure *AzureDetails `json:"-"`
 }
 
 type CloudOrganization struct {
@@ -195,38 +199,57 @@ func (c *Cloud) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	*c = Cloud(decoded)
-	c.AWS = nil
+	next := Cloud(decoded)
 
-	var aws AWSDetails
-	if err := json.Unmarshal(data, &aws); err != nil {
-		return err
-	}
-	if c.Provider == ProviderAWS || !aws.empty() {
-		c.AWS = &aws
+	var details any
+	switch next.Provider {
+	case ProviderAWS:
+		next.AWS = &AWSDetails{}
+		details = next.AWS
+	case ProviderAzure:
+		next.Azure = &AzureDetails{}
+		details = next.Azure
 	}
 
+	if details != nil {
+		if err := json.Unmarshal(data, details); err != nil {
+			return err
+		}
+	}
+
+	*c = next
 	return nil
 }
 
 func (c Cloud) MarshalJSON() ([]byte, error) {
 	type shared Cloud
 	sharedJSON, err := json.Marshal(shared(c))
-
 	if err != nil {
 		return nil, err
 	}
 
-	if c.AWS == nil {
+	var details any
+	switch c.Provider {
+	case ProviderAWS:
+		if c.AWS != nil {
+			details = c.AWS
+		}
+	case ProviderAzure:
+		if c.Azure != nil {
+			details = c.Azure
+		}
+	}
+
+	if details == nil {
 		return sharedJSON, nil
 	}
 
-	awsJSON, err := json.Marshal(c.AWS)
+	detailsJSON, err := json.Marshal(details)
 	if err != nil {
 		return nil, err
 	}
 
-	return mergeJSONObjects(sharedJSON, awsJSON)
+	return mergeJSONObjects(sharedJSON, detailsJSON)
 }
 
 func mergeJSONObjects(base, extra []byte) ([]byte, error) {
@@ -245,4 +268,44 @@ func mergeJSONObjects(base, extra []byte) ([]byte, error) {
 	}
 
 	return json.Marshal(left)
+}
+
+func SplitCommaSeparated(value string) []string {
+	if strings.TrimSpace(value) == "" {
+		return []string{}
+	}
+
+	parts := strings.Split(value, ",")
+	out := make([]string, 0, len(parts))
+
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+
+		if part != "" {
+			out = append(out, part)
+		}
+	}
+
+	return out
+}
+
+func StringListValues(ctx context.Context, list types.List) ([]string, diag.Diagnostics) {
+	if list.IsNull() || list.IsUnknown() {
+		return nil, nil
+	}
+
+	values := []string{}
+	diagnostics := list.ElementsAs(ctx, &values, false)
+
+	return values, diagnostics
+}
+
+func ParseCloudID(cloudID string) (int64, error) {
+	id, err := strconv.ParseInt(cloudID, 10, 64)
+
+	if err != nil {
+		return 0, fmt.Errorf("invalid cloud id %q: %w", cloudID, err)
+	}
+
+	return id, nil
 }

@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"strconv"
 
+	cloudhelpers "github.com/AikidoTerraform/terraform-provider-aikido/aikido/datasources/clouds"
 	"github.com/AikidoTerraform/terraform-provider-aikido/internal/client"
 	"github.com/AikidoTerraform/terraform-provider-aikido/internal/clouds"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
-	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -48,20 +48,7 @@ type cloudModel struct {
 	ExternalID    types.String `tfsdk:"external_id"`
 	LastScannedAt types.Int64  `tfsdk:"last_scanned_at"`
 	AWS           types.Object `tfsdk:"aws"`
-}
-
-type cloudAWSModel struct {
-	RoleARN             types.String `tfsdk:"role_arn"`
-	IsManagementAccount types.Bool   `tfsdk:"is_management_account"`
-	Organization        types.Object `tfsdk:"organization"`
-}
-
-type cloudAWSOrganizationModel struct {
-	OrganizationID       types.String `tfsdk:"organization_id"`
-	SyncedUnitIDs        types.List   `tfsdk:"synced_unit_ids"`
-	ExcludedAccounts     types.List   `tfsdk:"excluded_accounts"`
-	ContainerScanEnabled types.Bool   `tfsdk:"container_scan_enabled"`
-	VMScanEnabled        types.Bool   `tfsdk:"vm_scan_enabled"`
+	Azure         types.Object `tfsdk:"azure"`
 }
 
 func (d *cloudsDataSource) Metadata(_ context.Context, request datasource.MetadataRequest, response *datasource.MetadataResponse) {
@@ -70,7 +57,7 @@ func (d *cloudsDataSource) Metadata(_ context.Context, request datasource.Metada
 
 func (d *cloudsDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, response *datasource.SchemaResponse) {
 	response.Schema = schema.Schema{
-		Description: "Looks up connected Aikido clouds (currently AWS only). " +
+		Description: "Looks up connected Aikido AWS and Azure clouds. " +
 			"Filters combine with AND; a filter that matches nothing yields an empty list rather than an error.",
 		Attributes: map[string]schema.Attribute{
 			"name": schema.StringAttribute{
@@ -79,7 +66,7 @@ func (d *cloudsDataSource) Schema(_ context.Context, _ datasource.SchemaRequest,
 			},
 			"cloud_provider": schema.StringAttribute{
 				Optional:    true,
-				Description: "Only return clouds for this provider. Currently only AWS is supported.",
+				Description: "Only return clouds for this provider: aws or azure.",
 				Validators: []validator.String{
 					stringvalidator.OneOf(clouds.SupportedProviders...),
 				},
@@ -93,7 +80,7 @@ func (d *cloudsDataSource) Schema(_ context.Context, _ datasource.SchemaRequest,
 			},
 			"external_id": schema.StringAttribute{
 				Optional:    true,
-				Description: "Only return clouds whose provider-specific external ID is exactly this. For AWS this is the account ID.",
+				Description: "Only return clouds whose provider-specific external ID is exactly this. For AWS this is the account ID; for Azure it is the subscription ID.",
 			},
 			"is_management_account": schema.BoolAttribute{
 				Optional:    true,
@@ -127,54 +114,14 @@ func (d *cloudsDataSource) Schema(_ context.Context, _ datasource.SchemaRequest,
 						},
 						"external_id": schema.StringAttribute{
 							Computed:    true,
-							Description: "Provider-specific external ID. For AWS this is the account ID.",
+							Description: "Provider-specific external ID. For AWS this is the account ID; for Azure it is the subscription ID.",
 						},
 						"last_scanned_at": schema.Int64Attribute{
 							Computed:    true,
 							Description: "Unix timestamp of the last cloud scan, or -1 when no scan has completed yet.",
 						},
-						"aws": schema.SingleNestedAttribute{
-							Computed:    true,
-							Description: "AWS-specific attributes. Null when cloud_provider is not aws.",
-							Attributes: map[string]schema.Attribute{
-								"role_arn": schema.StringAttribute{
-									Computed:    true,
-									Description: "IAM role ARN Aikido assumes to scan this account.",
-								},
-								"is_management_account": schema.BoolAttribute{
-									Computed:    true,
-									Description: "Whether this cloud is an organization management account.",
-								},
-								"organization": schema.SingleNestedAttribute{
-									Computed:    true,
-									Description: "AWS Organization sync settings when this cloud is a management account. Null for single-account connections.",
-									Attributes: map[string]schema.Attribute{
-										"organization_id": schema.StringAttribute{
-											Computed:    true,
-											Description: "AWS Organizations ID, for example o-1234567890.",
-										},
-										"synced_unit_ids": schema.ListAttribute{
-											Computed:    true,
-											ElementType: types.StringType,
-											Description: "Root ID (r-...) or Organization Unit IDs (ou-...) included in organization sync.",
-										},
-										"excluded_accounts": schema.ListAttribute{
-											Computed:    true,
-											ElementType: types.StringType,
-											Description: "AWS account IDs excluded from organization sync.",
-										},
-										"container_scan_enabled": schema.BoolAttribute{
-											Computed:    true,
-											Description: "Whether organization-wide ECR scanning is enabled.",
-										},
-										"vm_scan_enabled": schema.BoolAttribute{
-											Computed:    true,
-											Description: "Whether organization-wide EBS/EC2 scanning is enabled.",
-										},
-									},
-								},
-							},
-						},
+						"azure": cloudhelpers.AzureSchema(),
+						"aws":   cloudhelpers.AWSSchema(),
 					},
 				},
 			},
@@ -269,7 +216,15 @@ func cloudMatchesFilters(cloud clouds.Cloud, config cloudsDataSourceModel) bool 
 	}
 
 	if !config.IsManagementAccount.IsNull() {
-		isManagement := cloud.AWS != nil && cloud.AWS.IsManagementAccount
+		var isManagement bool
+
+		switch cloud.Provider {
+		case clouds.ProviderAWS:
+			isManagement = cloud.AWS != nil && cloud.AWS.IsManagementAccount
+		case clouds.ProviderAzure:
+			isManagement = cloud.Azure != nil && cloud.Azure.IsManagementAccount
+		}
+
 		if isManagement != config.IsManagementAccount.ValueBool() {
 			return false
 		}
@@ -288,68 +243,23 @@ func cloudModelFromAPI(ctx context.Context, cloud clouds.Cloud) (cloudModel, dia
 		Environment:   types.StringValue(cloud.Environment),
 		ExternalID:    types.StringValue(cloud.ExternalID),
 		LastScannedAt: types.Int64Value(cloud.LastScannedAt),
-		AWS:           types.ObjectNull(cloudAWSAttributeTypes()),
 	}
 
-	if cloud.AWS != nil {
-		awsModel := cloudAWSModel{
-			RoleARN:             types.StringValue(cloud.AWS.RoleARN),
-			IsManagementAccount: types.BoolValue(cloud.AWS.IsManagementAccount),
-			Organization:        types.ObjectNull(cloudAWSOrganizationAttributeTypes()),
-		}
-
-		if cloud.AWS.Organization != nil {
-			orgObject, orgDiagnostics := cloudOrganizationObjectValue(ctx, *cloud.AWS.Organization)
-			diagnostics.Append(orgDiagnostics...)
-
-			if diagnostics.HasError() {
-				return cloudModel{}, diagnostics
-			}
-
-			awsModel.Organization = orgObject
-		}
-
-		awsObject, awsDiagnostics := types.ObjectValueFrom(ctx, cloudAWSAttributeTypes(), awsModel)
-		diagnostics.Append(awsDiagnostics...)
-		model.AWS = awsObject
+	awsObject, awsDiagnostics := cloudhelpers.AWSObjectValue(ctx, cloud.AWS)
+	diagnostics.Append(awsDiagnostics...)
+	if diagnostics.HasError() {
+		return cloudModel{}, diagnostics
 	}
+	model.AWS = awsObject
+
+	azureObject, azureDiagnostics := cloudhelpers.AzureObjectValue(ctx, cloud.ID, cloud.Azure)
+	diagnostics.Append(azureDiagnostics...)
+	if diagnostics.HasError() {
+		return cloudModel{}, diagnostics
+	}
+	model.Azure = azureObject
 
 	return model, diagnostics
-}
-
-func cloudOrganizationObjectValue(ctx context.Context, org clouds.CloudOrganization) (types.Object, diag.Diagnostics) {
-	synced, diagnostics := types.ListValueFrom(ctx, types.StringType, clouds.SplitCommaSeparated(org.SyncedUnitIDs))
-	excluded, excludedDiagnostics := types.ListValueFrom(ctx, types.StringType, clouds.SplitCommaSeparated(org.ExcludedAccounts))
-	diagnostics.Append(excludedDiagnostics...)
-	if diagnostics.HasError() {
-		return types.ObjectNull(cloudAWSOrganizationAttributeTypes()), diagnostics
-	}
-
-	return types.ObjectValueFrom(ctx, cloudAWSOrganizationAttributeTypes(), cloudAWSOrganizationModel{
-		OrganizationID:       types.StringValue(org.OrganizationID),
-		SyncedUnitIDs:        synced,
-		ExcludedAccounts:     excluded,
-		ContainerScanEnabled: types.BoolValue(org.ContainerScanEnabled),
-		VMScanEnabled:        types.BoolValue(org.VMScanEnabled),
-	})
-}
-
-func cloudAWSAttributeTypes() map[string]attr.Type {
-	return map[string]attr.Type{
-		"role_arn":              types.StringType,
-		"is_management_account": types.BoolType,
-		"organization":          types.ObjectType{AttrTypes: cloudAWSOrganizationAttributeTypes()},
-	}
-}
-
-func cloudAWSOrganizationAttributeTypes() map[string]attr.Type {
-	return map[string]attr.Type{
-		"organization_id":        types.StringType,
-		"synced_unit_ids":        types.ListType{ElemType: types.StringType},
-		"excluded_accounts":      types.ListType{ElemType: types.StringType},
-		"container_scan_enabled": types.BoolType,
-		"vm_scan_enabled":        types.BoolType,
-	}
 }
 
 func unknownCloudFilterDiagnostics(config cloudsDataSourceModel) diag.Diagnostics {

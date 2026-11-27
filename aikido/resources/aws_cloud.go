@@ -136,12 +136,14 @@ func (r *awsCloudResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 					},
 					"excluded_accounts": schema.ListAttribute{
 						Optional:    true,
+						Computed:    true,
 						ElementType: types.StringType,
 						Description: "Optional AWS account IDs to exclude from organization sync. Defaults to an empty list.",
 						Default:     listdefault.StaticValue(types.ListValueMust(types.StringType, []attr.Value{})),
 					},
 					"container_scan_enabled": schema.BoolAttribute{
 						Optional:    true,
+						Computed:    true,
 						Description: "When true, automatically configure ECR scanning across the organization. Defaults to false. Create-only; changing it forces replacement.",
 						Default:     booldefault.StaticBool(false),
 						PlanModifiers: []planmodifier.Bool{
@@ -150,6 +152,7 @@ func (r *awsCloudResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 					},
 					"vm_scan_enabled": schema.BoolAttribute{
 						Optional:    true,
+						Computed:    true,
 						Description: "When true, automatically configure EBS/EC2 scanning across the organization. Defaults to false. Create-only; changing it forces replacement.",
 						Default:     booldefault.StaticBool(false),
 						PlanModifiers: []planmodifier.Bool{
@@ -244,7 +247,7 @@ func (r *awsCloudResource) Read(ctx context.Context, request resource.ReadReques
 		return
 	}
 
-	id, err := parseCloudID(priorState.ID.ValueString())
+	id, err := clouds.ParseCloudID(priorState.ID.ValueString())
 	if err != nil {
 		response.Diagnostics.AddError("Error reading AWS cloud", err.Error())
 		return
@@ -293,7 +296,7 @@ func (r *awsCloudResource) Update(ctx context.Context, request resource.UpdateRe
 		return
 	}
 
-	id, err := parseCloudID(planned.ID.ValueString())
+	id, err := clouds.ParseCloudID(planned.ID.ValueString())
 	if err != nil {
 		response.Diagnostics.AddError("Error updating AWS cloud", err.Error())
 		return
@@ -345,7 +348,7 @@ func (r *awsCloudResource) Delete(ctx context.Context, request resource.DeleteRe
 		return
 	}
 
-	id, err := parseCloudID(priorState.ID.ValueString())
+	id, err := clouds.ParseCloudID(priorState.ID.ValueString())
 	if err != nil {
 		response.Diagnostics.AddError("Error deleting AWS cloud", err.Error())
 		return
@@ -392,9 +395,9 @@ func createAWSOrganizationInput(ctx context.Context, planned awsCloudModel) (clo
 		return clouds.CreateAWSOrganizationInput{}, diagnostics
 	}
 
-	syncedUnitIDs, listDiagnostics := stringListValues(ctx, org.SyncedUnitIDs)
+	syncedUnitIDs, listDiagnostics := clouds.StringListValues(ctx, org.SyncedUnitIDs)
 	diagnostics.Append(listDiagnostics...)
-	excludedAccounts, listDiagnostics := stringListValues(ctx, org.ExcludedAccounts)
+	excludedAccounts, listDiagnostics := clouds.StringListValues(ctx, org.ExcludedAccounts)
 	diagnostics.Append(listDiagnostics...)
 	if diagnostics.HasError() {
 		return clouds.CreateAWSOrganizationInput{}, diagnostics
@@ -421,10 +424,10 @@ func updateAWSOrganizationInput(ctx context.Context, planned awsCloudModel) (clo
 		return clouds.UpdateCloudOrganizationInput{}, diagnostics
 	}
 
-	syncedUnitIDs, listDiagnostics := stringListValues(ctx, plannedOrg.SyncedUnitIDs)
+	syncedUnitIDs, listDiagnostics := clouds.StringListValues(ctx, plannedOrg.SyncedUnitIDs)
 	diagnostics.Append(listDiagnostics...)
 
-	excludedAccounts, listDiagnostics := stringListValues(ctx, plannedOrg.ExcludedAccounts)
+	excludedAccounts, listDiagnostics := clouds.StringListValues(ctx, plannedOrg.ExcludedAccounts)
 	diagnostics.Append(listDiagnostics...)
 
 	if diagnostics.HasError() {
@@ -502,27 +505,6 @@ func identityOnlyAWSCloud(id int64, planned awsCloudModel) awsCloudModel {
 		ExternalID:    types.StringNull(),
 		LastScannedAt: types.Int64Null(),
 	}
-}
-
-func stringListValues(ctx context.Context, list types.List) ([]string, diag.Diagnostics) {
-	if list.IsNull() || list.IsUnknown() {
-		return nil, nil
-	}
-
-	values := []string{}
-	diagnostics := list.ElementsAs(ctx, &values, false)
-
-	return values, diagnostics
-}
-
-func parseCloudID(cloudID string) (int64, error) {
-	id, err := strconv.ParseInt(cloudID, 10, 64)
-
-	if err != nil {
-		return 0, fmt.Errorf("invalid cloud id %q: %w", cloudID, err)
-	}
-
-	return id, nil
 }
 
 // roleARNRequiresReplaceWhenOrganization forces replacement when role_arn
