@@ -136,14 +136,12 @@ func (r *awsCloudResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 					},
 					"excluded_accounts": schema.ListAttribute{
 						Optional:    true,
-						Computed:    true,
 						ElementType: types.StringType,
 						Description: "Optional AWS account IDs to exclude from organization sync. Defaults to an empty list.",
 						Default:     listdefault.StaticValue(types.ListValueMust(types.StringType, []attr.Value{})),
 					},
 					"container_scan_enabled": schema.BoolAttribute{
 						Optional:    true,
-						Computed:    true,
 						Description: "When true, automatically configure ECR scanning across the organization. Defaults to false. Create-only; changing it forces replacement.",
 						Default:     booldefault.StaticBool(false),
 						PlanModifiers: []planmodifier.Bool{
@@ -152,7 +150,6 @@ func (r *awsCloudResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 					},
 					"vm_scan_enabled": schema.BoolAttribute{
 						Optional:    true,
-						Computed:    true,
 						Description: "When true, automatically configure EBS/EC2 scanning across the organization. Defaults to false. Create-only; changing it forces replacement.",
 						Default:     booldefault.StaticBool(false),
 						PlanModifiers: []planmodifier.Bool{
