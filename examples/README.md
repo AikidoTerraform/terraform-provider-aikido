@@ -16,6 +16,7 @@ These are **fragments**, not a complete root module by themselves. Combine the p
 | [`data-sources/aikido_teams/data-source.tf`](data-sources/aikido_teams/data-source.tf) | `aikido_teams` data source |
 | [`data-sources/aikido_users/data-source.tf`](data-sources/aikido_users/data-source.tf) | `aikido_users` data source |
 | [`resources/aikido_aws_cloud/resource.tf`](resources/aikido_aws_cloud/resource.tf) | `aikido_aws_cloud` resource: connect a single AWS account or an AWS Organization |
+| [`resources/aikido_azure_cloud/resource.tf`](resources/aikido_azure_cloud/resource.tf) | `aikido_azure_cloud` resource: connect an Azure subscription or management account |
 | [`resources/aikido_repository/resource.tf`](resources/aikido_repository/resource.tf) | `aikido_repository` resource |
 | [`resources/aikido_autofix_dependency_settings/resource.tf`](resources/aikido_autofix_dependency_settings/resource.tf) | `aikido_autofix_dependency_settings` resource |
 | [`resources/aikido_autofix_sast_settings/resource.tf`](resources/aikido_autofix_sast_settings/resource.tf) | `aikido_autofix_sast_settings` resource |
@@ -30,6 +31,8 @@ These are **fragments**, not a complete root module by themselves. Combine the p
 | [`resources/aikido_user_permissions/resource.tf`](resources/aikido_user_permissions/resource.tf) | `aikido_user_permissions` resource |
 
 ## Prerequisites
+
+For Azure, register an application and grant the required scanning permissions before connecting it. The provider does not provision Azure roles or applications. Set the client secret through a sensitive variable; `key_value` is retained in Terraform state, so secure the state backend. An empty `organization` block syncs the tenant root. Scope and exclusion lists are updatable; identity fields, Azure environment, organization presence, and scanning flags force replacement. Import by numeric cloud ID and supply the secret in configuration to manage or rotate credentials.
 
 - Terraform >= 1.2
 - Aikido API credentials (`AIKIDO_CLIENT_ID` / `AIKIDO_CLIENT_SECRET`)

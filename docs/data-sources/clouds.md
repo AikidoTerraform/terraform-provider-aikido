@@ -3,12 +3,12 @@
 page_title: "Aikido Clouds"
 subcategory: ""
 description: |-
-  Looks up connected Aikido clouds (currently AWS only). Filters combine with AND; a filter that matches nothing yields an empty list rather than an error.
+  Looks up connected Aikido AWS and Azure clouds. Filters combine with AND; a filter that matches nothing yields an empty list rather than an error.
 ---
 
 # aikido_clouds (Data Source)
 
-Looks up connected Aikido clouds (currently AWS only). Filters combine with AND; a filter that matches nothing yields an empty list rather than an error.
+Looks up connected Aikido AWS and Azure clouds. Filters combine with AND; a filter that matches nothing yields an empty list rather than an error.
 
 ## Example Usage
 
@@ -37,6 +37,18 @@ output "org_synced_unit_ids" {
 }
 
 # Feed matching cloud IDs into team links.
+data "aikido_clouds" "azure_management" {
+  cloud_provider        = "azure"
+  is_management_account = true
+}
+
+output "azure_management_group_ids" {
+  value = [
+    for cloud in data.aikido_clouds.azure_management.clouds :
+    cloud.azure.organization.management_group_ids
+  ]
+}
+
 resource "aikido_team_resource" "clouds" {
   for_each = toset([for id in data.aikido_clouds.aws.ids : tostring(id)])
 
@@ -50,9 +62,9 @@ resource "aikido_team_resource" "clouds" {
 
 ### Optional
 
-- `cloud_provider` (String) Only return clouds for this provider. Currently only AWS is supported.
+- `cloud_provider` (String) Only return clouds for this provider: aws or azure.
 - `environment` (String) Only return clouds with this environment purpose. One of: production, staging, development, mixed.
-- `external_id` (String) Only return clouds whose provider-specific external ID is exactly this. For AWS this is the account ID.
+- `external_id` (String) Only return clouds whose provider-specific external ID is exactly this. For AWS this is the account ID; for Azure it is the subscription ID.
 - `is_management_account` (Boolean) Only return organization management accounts (true) or non-management clouds (false).
 - `name` (String) Only return clouds whose name is exactly this. Matching is exact, not a substring or glob.
 
@@ -67,9 +79,10 @@ resource "aikido_team_resource" "clouds" {
 Read-Only:
 
 - `aws` (Attributes) AWS-specific attributes. Null when cloud_provider is not aws. (see [below for nested schema](#nestedatt--clouds--aws))
+- `azure` (Attributes) Azure-specific attributes. Null when cloud_provider is not azure. (see [below for nested schema](#nestedatt--clouds--azure))
 - `cloud_provider` (String) Cloud provider identifier.
 - `environment` (String) Environment purpose. One of: production, staging, development, mixed.
-- `external_id` (String) Provider-specific external ID. For AWS this is the account ID.
+- `external_id` (String) Provider-specific external ID. For AWS this is the account ID; for Azure it is the subscription ID.
 - `id` (String) Aikido cloud ID.
 - `last_scanned_at` (Number) Unix timestamp of the last cloud scan, or -1 when no scan has completed yet.
 - `name` (String) Display name of the cloud connection.
@@ -93,3 +106,28 @@ Read-Only:
 - `organization_id` (String) AWS Organizations ID, for example o-1234567890.
 - `synced_unit_ids` (List of String) Root ID (r-...) or Organization Unit IDs (ou-...) included in organization sync.
 - `vm_scan_enabled` (Boolean) Whether organization-wide EBS/EC2 scanning is enabled.
+
+
+
+<a id="nestedatt--clouds--azure"></a>
+### Nested Schema for `clouds.azure`
+
+Read-Only:
+
+- `application_id` (String) Application (client) ID of the registered application.
+- `azure_environment` (String) Azure cloud environment: public, gov, or china.
+- `directory_id` (String) Azure directory (tenant) ID.
+- `is_management_account` (Boolean) Whether this cloud is an organization management account.
+- `organization` (Attributes) Azure organization sync settings when this cloud is a management account. Null for member and single-subscription connections. (see [below for nested schema](#nestedatt--clouds--azure--organization))
+
+<a id="nestedatt--clouds--azure--organization"></a>
+### Nested Schema for `clouds.azure.organization`
+
+Read-Only:
+
+- `acr_scan_enabled` (Boolean) Whether organization-wide Azure Container Registry scanning is enabled.
+- `excluded_management_group_ids` (List of String) Management group IDs excluded from sync.
+- `excluded_subscription_ids` (List of String) Subscription IDs excluded from sync.
+- `management_group_ids` (List of String) Management group IDs to sync. An empty list means tenant root scope.
+- `organization_id` (String) Azure directory ID of the connected organization.
+- `vm_scan_enabled` (Boolean) Whether organization-wide VM scanning is enabled.

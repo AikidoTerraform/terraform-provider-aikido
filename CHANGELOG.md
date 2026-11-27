@@ -2,6 +2,8 @@
 
 FEATURES:
 
+- **New Resource:** `aikido_azure_cloud` connects an Azure subscription or organization management account, manages sync scopes and exclusions, and rotates application credentials.
+- `aikido_clouds` now supports Azure, including management-account filtering and organization sync settings.
 - **New Resource:** `aikido_aws_cloud` connects a single account or an Organization management account to Aikido. AWS only support. 
 - **New Data Source:** `aikido_clouds` looks up connected clouds by name, provider, environment, external ID, or management-account status, and reports organization sync settings for org-linked clouds.
 

@@ -22,6 +22,18 @@ output "org_synced_unit_ids" {
 }
 
 # Feed matching cloud IDs into team links.
+data "aikido_clouds" "azure_management" {
+  cloud_provider        = "azure"
+  is_management_account = true
+}
+
+output "azure_management_group_ids" {
+  value = [
+    for cloud in data.aikido_clouds.azure_management.clouds :
+    cloud.azure.organization.management_group_ids
+  ]
+}
+
 resource "aikido_team_resource" "clouds" {
   for_each = toset([for id in data.aikido_clouds.aws.ids : tostring(id)])
 

@@ -4,7 +4,6 @@ import (
 	"context"
 	"net/http"
 	"strconv"
-	"strings"
 
 	"github.com/AikidoTerraform/terraform-provider-aikido/internal/client"
 )
@@ -21,29 +20,6 @@ type AWSDetails struct {
 	RoleARN             string             `json:"role_arn"`
 	IsManagementAccount bool               `json:"is_management_account"`
 	Organization        *CloudOrganization `json:"organization"`
-}
-
-func (a AWSDetails) empty() bool {
-	return a.RoleARN == "" && !a.IsManagementAccount && a.Organization == nil
-}
-
-func SplitCommaSeparated(value string) []string {
-	if strings.TrimSpace(value) == "" {
-		return []string{}
-	}
-
-	parts := strings.Split(value, ",")
-	out := make([]string, 0, len(parts))
-
-	for _, part := range parts {
-		part = strings.TrimSpace(part)
-
-		if part != "" {
-			out = append(out, part)
-		}
-	}
-
-	return out
 }
 
 type CreateAWSInput struct {

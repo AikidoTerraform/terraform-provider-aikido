@@ -4,6 +4,22 @@ Guide for building, unit-testing, and running end-to-end Terraform applies again
 
 For user-facing docs, see [`README.md`](README.md).
 
+## Cloud data source layout
+
+[`aikido/datasources/clouds.go`](aikido/datasources/clouds.go) contains the shared
+cloud data source lifecycle, common schema and models, filters, and conversion
+orchestration. Provider-specific schemas, private Terraform models, attribute
+types, and conversions live in [`aikido/datasources/clouds/`](aikido/datasources/clouds/),
+alongside their focused tests:
+
+- [`aws.go`](aikido/datasources/clouds/aws.go) handles AWS details.
+- [`azure.go`](aikido/datasources/clouds/azure.go) handles Azure details.
+
+The helper package does not import its parent package. API models, requests, and
+caching remain in [`internal/clouds/`](internal/clouds/). When adding a provider,
+add its helper and tests, then wire its schema, model field, conversion, and
+management-account filter into the shared data source.
+
 ## Prerequisites
 
 | Tool | Version | Notes |

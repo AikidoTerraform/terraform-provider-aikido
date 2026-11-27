@@ -131,6 +131,7 @@ func (p *aikidoProvider) Resources(_ context.Context) []func() resource.Resource
 		resources.NewTeamUserResource,
 		resources.NewUserPermissionsResource,
 		resources.NewAWSCloudResource,
+		resources.NewAzureCloudResource,
 	}
 }
 
