@@ -3,14 +3,9 @@ package resources
 import (
 	"context"
 	"fmt"
-	"slices"
-	"strconv"
-	"strings"
 
 	"github.com/AikidoTerraform/terraform-provider-aikido/internal/client"
-	"github.com/AikidoTerraform/terraform-provider-aikido/internal/helpers"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
-	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -24,9 +19,8 @@ import (
 
 const (
 	mapCodeReposToProjectsPath            = "/public/v1/task_tracking/mapCodeReposToProjects"
-	projectMappingPath                    = "/public/v1/task_tracking/projectMapping"
 	taskTrackingCodeRepoMappingResourceID = "task_tracking_code_repo_mapping"
-	projectRepoMapMode                    = "repos"
+	projectReposMapAttribute              = "project_repos_map"
 )
 
 var (
@@ -47,11 +41,6 @@ type taskTrackingCodeRepoMappingModel struct {
 	ID              types.String `tfsdk:"id"`
 	IntegrationID   types.Int64  `tfsdk:"integration_id"`
 	ProjectReposMap types.Map    `tfsdk:"project_repos_map"`
-}
-
-type projectMappingAPI struct {
-	MappingMode    string             `json:"mapping_mode"`
-	ProjectRepoMap map[string][]int64 `json:"project_repo_map"`
 }
 
 func (r *taskTrackingCodeRepoMappingResource) Metadata(_ context.Context, request resource.MetadataRequest, response *resource.MetadataResponse) {
@@ -171,7 +160,7 @@ func (r *taskTrackingCodeRepoMappingResource) Delete(context.Context, resource.D
 }
 
 func (r *taskTrackingCodeRepoMappingResource) ImportState(ctx context.Context, request resource.ImportStateRequest, response *resource.ImportStateResponse) {
-	resourceID, integrationID, err := parseMappingImportID(request.ID)
+	resourceID, integrationID, err := parseMappingImportID(request.ID, taskTrackingCodeRepoMappingResourceID)
 	if err != nil {
 		response.Diagnostics.AddError("Invalid import ID", err.Error())
 		return
@@ -183,29 +172,16 @@ func (r *taskTrackingCodeRepoMappingResource) ImportState(ctx context.Context, r
 	}
 }
 
-func parseMappingImportID(id string) (string, types.Int64, error) {
-	if id == taskTrackingCodeRepoMappingResourceID {
-		return id, types.Int64Null(), nil
-	}
-
-	integrationID, err := strconv.ParseInt(id, 10, 64)
-	if err != nil || integrationID < 1 {
-		return "", types.Int64Null(), fmt.Errorf("use %q when no integration_id is set, or the numeric integration ID", taskTrackingCodeRepoMappingResourceID)
-	}
-
-	return id, types.Int64Value(integrationID), nil
-}
-
 func (r *taskTrackingCodeRepoMappingResource) applyMapping(ctx context.Context, planned taskTrackingCodeRepoMappingModel) (taskTrackingCodeRepoMappingModel, diag.Diagnostics) {
 	var diags diag.Diagnostics
 
-	plannedMap, mapDiags := projectReposMapToAPI(ctx, planned.ProjectReposMap)
+	plannedMap, mapDiags := idMapToAPI(ctx, planned.ProjectReposMap, projectReposMapAttribute)
 	diags.Append(mapDiags...)
 	if diags.HasError() {
 		return taskTrackingCodeRepoMappingModel{}, diags
 	}
 
-	if err := r.client.Do(ctx, "POST", mapCodeReposToProjectsPath, constructProjectMappingBody(plannedMap, planned.IntegrationID), nil); err != nil {
+	if err := r.client.Do(ctx, "POST", mapCodeReposToProjectsPath, constructMappingBody(projectReposMapAttribute, plannedMap, planned.IntegrationID), nil); err != nil {
 		diags.AddError("Error configuring task tracking code repo mapping", err.Error())
 		return taskTrackingCodeRepoMappingModel{}, diags
 	}
@@ -216,28 +192,28 @@ func (r *taskTrackingCodeRepoMappingResource) applyMapping(ctx context.Context, 
 		return taskTrackingCodeRepoMappingModel{}, diags
 	}
 
-	if missing := missingRepoMappings(plannedMap, repoMapFromAPI(actual)); len(missing) > 0 {
+	if missing := missingIDMappings(plannedMap, repoMapFromAPI(actual)); len(missing) > 0 {
 		diags.AddError(
 			"Error configuring task tracking code repo mapping",
 			fmt.Sprintf(
 				"Aikido did not persist the repository mapping for: %s. "+
 					"Check that the project IDs belong to the task tracker integration and that the repository IDs exist. "+
 					"If the workspace uses team mapping, applying this resource switches it to repository mapping.",
-				formatMissingMappings(missing),
+				formatMissingMappings(missing, "repository"),
 			),
 		)
 		return taskTrackingCodeRepoMappingModel{}, diags
 	}
 
 	state := planned
-	state.ID = types.StringValue(mappingResourceID(planned.IntegrationID))
+	state.ID = types.StringValue(mappingResourceID(planned.IntegrationID, taskTrackingCodeRepoMappingResourceID))
 	return state, diags
 }
 
 func (r *taskTrackingCodeRepoMappingResource) readMapping(ctx context.Context, prior taskTrackingCodeRepoMappingModel) (*taskTrackingCodeRepoMappingModel, diag.Diagnostics) {
 	var diags diag.Diagnostics
 
-	keepEmpty, keyDiags := emptyProjectKeys(ctx, prior.ProjectReposMap)
+	keepEmpty, keyDiags := emptyMapKeys(ctx, prior.ProjectReposMap, projectReposMapAttribute)
 	diags.Append(keyDiags...)
 	if diags.HasError() {
 		return nil, diags
@@ -252,160 +228,23 @@ func (r *taskTrackingCodeRepoMappingResource) readMapping(ctx context.Context, p
 		return nil, diags
 	}
 
-	tfMap, mapDiags := projectReposMapFromAPI(ctx, normalizeProjectRepoMap(repoMapFromAPI(api), keepEmpty))
+	tfMap, mapDiags := idMapFromAPI(ctx, normalizeIDMap(repoMapFromAPI(api), keepEmpty))
 	diags.Append(mapDiags...)
 	if diags.HasError() {
 		return nil, diags
 	}
 
 	state := prior
-	state.ID = types.StringValue(mappingResourceID(prior.IntegrationID))
+	state.ID = types.StringValue(mappingResourceID(prior.IntegrationID, taskTrackingCodeRepoMappingResourceID))
 	state.ProjectReposMap = tfMap
 	return &state, diags
 }
 
-func getProjectMapping(ctx context.Context, apiClient *client.Client, integrationID types.Int64) (projectMappingAPI, error) {
-	var response projectMappingAPI
-	if err := apiClient.Do(ctx, "GET", projectMappingGETPath(integrationID), nil, &response); err != nil {
-		return projectMappingAPI{}, err
-	}
-	return response, nil
-}
-
-func projectMappingGETPath(integrationID types.Int64) string {
-	if integrationID.IsNull() || integrationID.IsUnknown() {
-		return projectMappingPath
-	}
-	return projectMappingPath + "?integration_id=" + strconv.FormatInt(integrationID.ValueInt64(), 10)
-}
-
-func mappingResourceID(integrationID types.Int64) string {
-	if integrationID.IsNull() || integrationID.IsUnknown() {
-		return taskTrackingCodeRepoMappingResourceID
-	}
-	return strconv.FormatInt(integrationID.ValueInt64(), 10)
-}
-
-func constructProjectMappingBody(projectRepos map[string][]int64, integrationID types.Int64) map[string]any {
-	normalized := make(map[string][]int64, len(projectRepos))
-	for projectID, repoIDs := range projectRepos {
-		normalized[projectID] = helpers.NormalizeIDs(repoIDs)
-	}
-
-	body := map[string]any{
-		"project_repos_map": normalized,
-	}
-	if !integrationID.IsNull() && !integrationID.IsUnknown() {
-		body["integration_id"] = integrationID.ValueInt64()
-	}
-	return body
-}
-
-func projectReposMapToAPI(ctx context.Context, m types.Map) (map[string][]int64, diag.Diagnostics) {
-	var diags diag.Diagnostics
-	if m.IsNull() || m.IsUnknown() {
-		return map[string][]int64{}, diags
-	}
-
-	result := make(map[string][]int64, len(m.Elements()))
-	for projectID, value := range m.Elements() {
-		set, ok := value.(types.Set)
-		if !ok {
-			diags.AddError(
-				"Invalid project_repos_map",
-				fmt.Sprintf("expected a set of repository IDs for project %q, got %T", projectID, value),
-			)
-			continue
-		}
-
-		var repoIDs []int64
-		diags.Append(set.ElementsAs(ctx, &repoIDs, false)...)
-		result[projectID] = helpers.NormalizeIDs(repoIDs)
-	}
-
-	return result, diags
-}
-
-func projectReposMapFromAPI(ctx context.Context, api map[string][]int64) (types.Map, diag.Diagnostics) {
-	setType := types.SetType{ElemType: types.Int64Type}
-	if api == nil {
-		api = map[string][]int64{}
-	}
-
-	elems := make(map[string]attr.Value, len(api))
-	var diags diag.Diagnostics
-	for projectID, repoIDs := range api {
-		set, setDiags := types.SetValueFrom(ctx, types.Int64Type, helpers.NormalizeIDs(repoIDs))
-		diags.Append(setDiags...)
-		if setDiags.HasError() {
-			return types.MapNull(setType), diags
-		}
-		elems[projectID] = set
-	}
-
-	m, mapDiags := types.MapValue(setType, elems)
-	diags.Append(mapDiags...)
-	return m, diags
-}
-
-func emptyProjectKeys(ctx context.Context, m types.Map) (map[string]struct{}, diag.Diagnostics) {
-	keys := make(map[string]struct{})
-	api, diags := projectReposMapToAPI(ctx, m)
-	if diags.HasError() {
-		return keys, diags
-	}
-	for projectID, repoIDs := range api {
-		if len(repoIDs) == 0 {
-			keys[projectID] = struct{}{}
-		}
-	}
-	return keys, diags
-}
-
-// normalizeProjectRepoMap drops empty projects that are not already in config,
-// so unmapped tracker projects do not show up as drift.
-func normalizeProjectRepoMap(api map[string][]int64, keepEmpty map[string]struct{}) map[string][]int64 {
-	out := make(map[string][]int64)
-	for projectID, repoIDs := range api {
-		ids := helpers.NormalizeIDs(repoIDs)
-		if len(ids) == 0 {
-			if _, ok := keepEmpty[projectID]; !ok {
-				continue
-			}
-		}
-		out[projectID] = ids
-	}
-	return out
-}
-
-func missingRepoMappings(planned, actual map[string][]int64) map[string][]int64 {
-	missing := make(map[string][]int64)
-	for projectID, plannedIDs := range planned {
-		dropped := helpers.DroppedRepoIDs(plannedIDs, actual[projectID])
-		if len(dropped) > 0 {
-			missing[projectID] = dropped
-		}
-	}
-	return missing
-}
-
+// repoMapFromAPI returns the repo-to-project map, or an empty map when the
+// integration is in team mapping mode.
 func repoMapFromAPI(api projectMappingAPI) map[string][]int64 {
-	if api.MappingMode != "" && api.MappingMode != projectRepoMapMode {
+	if api.MappingMode != "" && api.MappingMode != mappingModeRepos {
 		return map[string][]int64{}
 	}
 	return api.ProjectRepoMap
-}
-
-func formatMissingMappings(missing map[string][]int64) string {
-	projectIDs := make([]string, 0, len(missing))
-	for projectID := range missing {
-		projectIDs = append(projectIDs, projectID)
-	}
-	slices.Sort(projectIDs)
-
-	parts := make([]string, 0, len(projectIDs))
-	for _, projectID := range projectIDs {
-		parts = append(parts, fmt.Sprintf("project %s (missing repository IDs: %v)", projectID, missing[projectID]))
-	}
-	return strings.Join(parts, "; ")
 }

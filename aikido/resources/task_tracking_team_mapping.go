@@ -160,7 +160,7 @@ func (r *taskTrackingTeamMappingResource) Delete(context.Context, resource.Delet
 }
 
 func (r *taskTrackingTeamMappingResource) ImportState(ctx context.Context, request resource.ImportStateRequest, response *resource.ImportStateResponse) {
-	resourceID, integrationID, err := parseMappingImportID(request.ID)
+	resourceID, integrationID, err := parseMappingImportID(request.ID, taskTrackingTeamMappingResourceID)
 	if err != nil {
 		response.Diagnostics.AddError("Invalid import ID", err.Error())
 		return
@@ -212,7 +212,7 @@ func (r *taskTrackingTeamMappingResource) applyMapping(ctx context.Context, plan
 	}
 
 	state := planned
-	state.ID = types.StringValue(mappingResourceID(planned.IntegrationID))
+	state.ID = types.StringValue(mappingResourceID(planned.IntegrationID, taskTrackingTeamMappingResourceID))
 	return state, diags
 }
 
@@ -241,7 +241,7 @@ func (r *taskTrackingTeamMappingResource) readMapping(ctx context.Context, prior
 	}
 
 	state := prior
-	state.ID = types.StringValue(mappingResourceID(prior.IntegrationID))
+	state.ID = types.StringValue(mappingResourceID(prior.IntegrationID, taskTrackingTeamMappingResourceID))
 	state.ProjectTeamsMap = tfMap
 	return &state, diags
 }

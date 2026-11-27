@@ -16,11 +16,15 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
+// Shared helpers (ID maps, missing-ID checks, import parsing, GET path) are
+// covered in task_tracking_team_mapping_test.go. These tests cover what is
+// specific to the code repo resource.
+
 func testProjectReposMap(t *testing.T, m map[string][]int64) types.Map {
 	t.Helper()
-	tfMap, diags := projectReposMapFromAPI(context.Background(), m)
+	tfMap, diags := idMapFromAPI(context.Background(), m)
 	if diags.HasError() {
-		t.Fatalf("projectReposMapFromAPI: %v", diags)
+		t.Fatalf("idMapFromAPI: %v", diags)
 	}
 	return tfMap
 }
@@ -35,13 +39,13 @@ func testPlannedMapping(t *testing.T) taskTrackingCodeRepoMappingModel {
 	}
 }
 
-func TestConstructProjectMappingBody(t *testing.T) {
+func TestConstructCodeRepoMappingBody(t *testing.T) {
 	planned := map[string][]int64{
 		"10000": {1, 2, 3},
 		"10001": nil,
 	}
 
-	body := constructProjectMappingBody(planned, types.Int64Null())
+	body := constructMappingBody(projectReposMapAttribute, planned, types.Int64Null())
 	got, ok := body["project_repos_map"].(map[string][]int64)
 	if !ok {
 		t.Fatalf("project_repos_map type = %T", body["project_repos_map"])
@@ -55,61 +59,34 @@ func TestConstructProjectMappingBody(t *testing.T) {
 	if _, ok := body["integration_id"]; ok {
 		t.Errorf("did not expect integration_id, body = %#v", body)
 	}
-
-	body = constructProjectMappingBody(planned, types.Int64Value(2))
-	if body["integration_id"] != int64(2) {
-		t.Errorf("integration_id = %#v, want 2", body["integration_id"])
-	}
 }
 
-func TestProjectMappingGETPath(t *testing.T) {
-	if got := projectMappingGETPath(types.Int64Null()); got != projectMappingPath {
-		t.Errorf("null integration path = %s", got)
-	}
-	if got := projectMappingGETPath(types.Int64Unknown()); got != projectMappingPath {
-		t.Errorf("unknown integration path = %s", got)
-	}
-	if got := projectMappingGETPath(types.Int64Value(2)); got != projectMappingPath+"?integration_id=2" {
-		t.Errorf("set integration path = %s", got)
-	}
-}
-
-func TestMappingResourceID(t *testing.T) {
-	if got := mappingResourceID(types.Int64Null()); got != taskTrackingCodeRepoMappingResourceID {
+func TestMappingResourceID_CodeRepo(t *testing.T) {
+	if got := mappingResourceID(types.Int64Null(), taskTrackingCodeRepoMappingResourceID); got != taskTrackingCodeRepoMappingResourceID {
 		t.Errorf("null id = %s", got)
 	}
-	if got := mappingResourceID(types.Int64Value(7)); got != "7" {
+	if got := mappingResourceID(types.Int64Value(7), taskTrackingCodeRepoMappingResourceID); got != "7" {
 		t.Errorf("integration id = %s, want 7", got)
 	}
 }
 
-func TestNormalizeProjectRepoMap(t *testing.T) {
-	api := map[string][]int64{
-		"10000": {1, 2},
-		"10001": {},
-		"10002": nil,
-		"10003": {4},
+func TestParseMappingImportID_CodeRepo(t *testing.T) {
+	id, integrationID, err := parseMappingImportID(taskTrackingCodeRepoMappingResourceID, taskTrackingCodeRepoMappingResourceID)
+	if err != nil {
+		t.Fatalf("sentinel: %v", err)
 	}
-	keepEmpty := map[string]struct{}{"10001": {}}
-
-	got := normalizeProjectRepoMap(api, keepEmpty)
-	want := map[string][]int64{
-		"10000": {1, 2},
-		"10001": {},
-		"10003": {4},
-	}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("normalize = %#v, want %#v", got, want)
+	if id != taskTrackingCodeRepoMappingResourceID || !integrationID.IsNull() {
+		t.Errorf("sentinel id=%s integration=%v", id, integrationID)
 	}
 
-	if got := normalizeProjectRepoMap(nil, nil); len(got) != 0 {
-		t.Errorf("nil api = %#v, want empty", got)
+	if _, _, err := parseMappingImportID("team", taskTrackingCodeRepoMappingResourceID); err == nil {
+		t.Fatal("expected error for a non-sentinel, non-numeric import ID")
 	}
 }
 
 func TestRepoMapFromAPI_TeamsModeIsEmpty(t *testing.T) {
 	got := repoMapFromAPI(projectMappingAPI{
-		MappingMode: "teams",
+		MappingMode: mappingModeTeams,
 		ProjectRepoMap: map[string][]int64{
 			"10000": {1},
 		},
@@ -119,95 +96,13 @@ func TestRepoMapFromAPI_TeamsModeIsEmpty(t *testing.T) {
 	}
 
 	got = repoMapFromAPI(projectMappingAPI{
-		MappingMode: projectRepoMapMode,
+		MappingMode: mappingModeRepos,
 		ProjectRepoMap: map[string][]int64{
 			"10000": {1},
 		},
 	})
 	if !reflect.DeepEqual(got, map[string][]int64{"10000": {1}}) {
 		t.Errorf("repos mode map = %#v", got)
-	}
-}
-
-func TestMissingRepoMappings(t *testing.T) {
-	planned := map[string][]int64{
-		"10000": {1, 2, 3},
-		"10001": {4},
-		"10002": {},
-	}
-	actual := map[string][]int64{
-		"10000": {1, 2},
-		"10002": {},
-	}
-
-	got := missingRepoMappings(planned, actual)
-	want := map[string][]int64{
-		"10000": {3},
-		"10001": {4},
-	}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("missing = %#v, want %#v", got, want)
-	}
-}
-
-func TestFormatMissingMappings_SortsProjects(t *testing.T) {
-	got := formatMissingMappings(map[string][]int64{
-		"10001": {4},
-		"10000": {3},
-	})
-	want := "project 10000 (missing repository IDs: [3]); project 10001 (missing repository IDs: [4])"
-	if got != want {
-		t.Errorf("format = %q, want %q", got, want)
-	}
-}
-
-func TestProjectReposMapRoundTrip(t *testing.T) {
-	ctx := context.Background()
-	want := map[string][]int64{
-		"10000": {1, 2, 3},
-		"10001": {},
-	}
-
-	tfMap := testProjectReposMap(t, want)
-	got, diags := projectReposMapToAPI(ctx, tfMap)
-	if diags.HasError() {
-		t.Fatalf("projectReposMapToAPI: %v", diags)
-	}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("round trip = %#v, want %#v", got, want)
-	}
-}
-
-func TestGetProjectMapping(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != projectMappingPath {
-			t.Errorf("unexpected path %s", r.URL.Path)
-			w.WriteHeader(http.StatusNotFound)
-			return
-		}
-		if got := r.URL.Query().Get("integration_id"); got != "2" {
-			t.Errorf("integration_id = %q, want 2", got)
-		}
-		_, _ = io.WriteString(w, `{
-			"mapping_mode": "repos",
-			"project_repo_map": {
-				"10000": [1, 2, 3],
-				"10001": [4, 6],
-				"10002": []
-			}
-		}`)
-	}))
-	t.Cleanup(srv.Close)
-
-	api, err := getProjectMapping(context.Background(), client.New(srv.Client(), srv.URL), types.Int64Value(2))
-	if err != nil {
-		t.Fatalf("getProjectMapping: %v", err)
-	}
-	if api.MappingMode != projectRepoMapMode {
-		t.Errorf("mapping_mode = %s", api.MappingMode)
-	}
-	if !reflect.DeepEqual(api.ProjectRepoMap["10000"], []int64{1, 2, 3}) {
-		t.Errorf("10000 = %#v", api.ProjectRepoMap["10000"])
 	}
 }
 
@@ -355,9 +250,9 @@ func TestReadMapping_DropsEmptyProjects(t *testing.T) {
 		t.Fatalf("readMapping: %v", diags)
 	}
 
-	got, mapDiags := projectReposMapToAPI(context.Background(), state.ProjectReposMap)
+	got, mapDiags := idMapToAPI(context.Background(), state.ProjectReposMap, projectReposMapAttribute)
 	if mapDiags.HasError() {
-		t.Fatalf("projectReposMapToAPI: %v", mapDiags)
+		t.Fatalf("idMapToAPI: %v", mapDiags)
 	}
 	if _, ok := got["10002"]; ok {
 		t.Errorf("empty project 10002 should be omitted, got %#v", got)
@@ -392,7 +287,7 @@ func TestReadMapping_KeepsConfiguredEmptyProject(t *testing.T) {
 		t.Fatalf("readMapping: %v", diags)
 	}
 
-	got, _ := projectReposMapToAPI(context.Background(), state.ProjectReposMap)
+	got, _ := idMapToAPI(context.Background(), state.ProjectReposMap, projectReposMapAttribute)
 	if _, ok := got["10002"]; !ok {
 		t.Errorf("configured empty project 10002 should be kept, got %#v", got)
 	}
@@ -443,30 +338,5 @@ func TestDelete_LeavesRemoteUnchanged(t *testing.T) {
 	}
 	if called {
 		t.Error("Delete should not call the API")
-	}
-}
-
-func TestParseMappingImportID(t *testing.T) {
-	id, integrationID, err := parseMappingImportID(taskTrackingCodeRepoMappingResourceID)
-	if err != nil {
-		t.Fatalf("sentinel: %v", err)
-	}
-	if id != taskTrackingCodeRepoMappingResourceID || !integrationID.IsNull() {
-		t.Errorf("sentinel id=%s integration=%v", id, integrationID)
-	}
-
-	id, integrationID, err = parseMappingImportID("2")
-	if err != nil {
-		t.Fatalf("numeric: %v", err)
-	}
-	if id != "2" || integrationID.ValueInt64() != 2 {
-		t.Errorf("numeric id=%s integration=%d", id, integrationID.ValueInt64())
-	}
-
-	if _, _, err := parseMappingImportID("linear"); err == nil {
-		t.Fatal("expected error for non-numeric import ID")
-	}
-	if _, _, err := parseMappingImportID("0"); err == nil {
-		t.Fatal("expected error for integration ID 0")
 	}
 }
